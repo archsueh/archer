@@ -7,8 +7,8 @@ enum ArcherApp {
     static let name = "Archer" // [archer] display name; internal id stays ArcherApp
     static let displayVersion = "0.26.8"
     static let tagline = "A minimal modern terminal for AI coding"
-    static let author = "Corey Chiu"
-    static let authorURL = URL(string: "https://coreychiu.com?utm_source=archer")!
+    static let author = "archsueh"
+    static let authorURL = URL(string: "https://github.com/archsueh/archer")!
     static let copyrightYear = "2026"
 
     static let repositoryURL = URL(string: "https://github.com/archsueh/archer")!
