@@ -19,13 +19,7 @@ private enum SidebarSheet: Identifiable {
     }
 }
 
-// [archer]
-private enum SidebarTab: String, CaseIterable, Identifiable {
-    case workspaces = "Workspaces"
-    case updates = "Updates"
 
-    var id: Self { self }
-}
 
 struct SidebarView: View {
     static let fullWidth: CGFloat = 220
@@ -49,27 +43,14 @@ struct SidebarView: View {
     /// watches `store.pendingRemovalRequest` for ⌘⇧W routed via AppDelegate.
     @State private var sheet: SidebarSheet?
 
-    // [archer]
-    @State private var selectedTab: SidebarTab = .workspaces
-    @State private var updatesStore = UpdatesStore()
+
 
     var body: some View {
         let isCompact = store.sidebarMode == .compact
         VStack(spacing: 0) {
             brand(isCompact: isCompact)
             
-            // [archer]
-            if !isCompact {
-                Picker("", selection: $selectedTab) {
-                    ForEach(SidebarTab.allCases) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, Theme.space3)
-                .padding(.bottom, Theme.space2)
-            }
+
             
             ScrollViewReader { proxy in
                 list(isCompact: isCompact, proxy: proxy)
@@ -230,28 +211,7 @@ struct SidebarView: View {
                 sheet = .confirmCloseSource(request)
             }
         }
-        // [archer]
-        .onChange(of: store.activeWorkspaceId) { _, _ in
-            if let path = store.active?.diskPath.path {
-                Task {
-                    await updatesStore.loadUpdates(for: path)
-                }
-            }
-        }
-        .onChange(of: selectedTab) { _, _ in
-            if selectedTab == .updates, let path = store.active?.diskPath.path {
-                Task {
-                    await updatesStore.loadUpdates(for: path)
-                }
-            }
-        }
-        .onAppear {
-            if let path = store.active?.diskPath.path {
-                Task {
-                    await updatesStore.loadUpdates(for: path)
-                }
-            }
-        }
+
     }
 
     /// Shared subtitle string between the two bulk-close flows — folds
@@ -309,63 +269,59 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func list(isCompact: Bool, proxy: ScrollViewProxy) -> some View {
-        if !isCompact && selectedTab == .updates {
-            UpdatesSummaryView(store: updatesStore)
-        } else {
-            ScrollView(showsIndicators: false) {
-                LazyVStack(spacing: 2) {
-                    if isCompact {
-                        // 52pt-wide sidebar can't fit a disclosure triangle next
-                        // to a 28pt icon — fall back to a flat list. The order
-                        // is stable: store.workspaces already places worktrees
-                        // after their source by virtue of being appended at
-                        // creation time.
-                        ForEach(Array(store.workspaces.enumerated()), id: \.element.id) { index, workspace in
-                            // canCreateWorktree walks the fs (`findGitDir`) —
-                            // hoist once per workspace so the two row callbacks
-                            // don't each stat the same ancestor chain.
-                            let canCreate = canCreateWorktree(from: workspace)
-                            let goToSource: (() -> Void)? = workspace.worktreeParentId
-                                .flatMap { id in store.workspaces.first { $0.id == id } }
-                                .map { parent in { store.activateWorkspace(parent) } }
-                            DraggableWorkspaceRow(
-                                workspace: workspace,
-                                store: store,
-                                myIndex: index,
-                                isCompact: isCompact,
-                                draggingId: $draggingWorkspaceId,
-                                onCreateWorktree: canCreate ? { presentCreateWorktree(workspace) } : nil,
-                                onGoToSource: goToSource
-                            )
-                        }
-                    } else {
-                        // A workspace is "top-level" either because it has no
-                        // parent, or because its parent is gone — defensive
-                        // fallback so a bug that strands a worktree (parent
-                        // closed while child kept) still surfaces the row in
-                        // the sidebar instead of vanishing it entirely.
-                        let parentIds = Set(store.workspaces.map(\.id))
-                        let topLevel = store.workspaces.enumerated().filter { _, ws in
-                            guard let parentId = ws.worktreeParentId else { return true }
-                            return !parentIds.contains(parentId)
-                        }
-                        ForEach(Array(topLevel), id: \.element.id) { index, workspace in
-                            workspaceTree(parent: workspace, parentIndex: index)
-                        }
+        ScrollView(showsIndicators: false) {
+            LazyVStack(spacing: 2) {
+                if isCompact {
+                    // 52pt-wide sidebar can't fit a disclosure triangle next
+                    // to a 28pt icon — fall back to a flat list. The order
+                    // is stable: store.workspaces already places worktrees
+                    // after their source by virtue of being appended at
+                    // creation time.
+                    ForEach(Array(store.workspaces.enumerated()), id: \.element.id) { index, workspace in
+                        // canCreateWorktree walks the fs (`findGitDir`) —
+                        // hoist once per workspace so the two row callbacks
+                        // don't each stat the same ancestor chain.
+                        let canCreate = canCreateWorktree(from: workspace)
+                        let goToSource: (() -> Void)? = workspace.worktreeParentId
+                            .flatMap { id in store.workspaces.first { $0.id == id } }
+                            .map { parent in { store.activateWorkspace(parent) } }
+                        DraggableWorkspaceRow(
+                            workspace: workspace,
+                            store: store,
+                            myIndex: index,
+                            isCompact: isCompact,
+                            draggingId: $draggingWorkspaceId,
+                            onCreateWorktree: canCreate ? { presentCreateWorktree(workspace) } : nil,
+                            onGoToSource: goToSource
+                        )
+                    }
+                } else {
+                    // A workspace is "top-level" either because it has no
+                    // parent, or because its parent is gone — defensive
+                    // fallback so a bug that strands a worktree (parent
+                    // closed while child kept) still surfaces the row in
+                    // the sidebar instead of vanishing it entirely.
+                    let parentIds = Set(store.workspaces.map(\.id))
+                    let topLevel = store.workspaces.enumerated().filter { _, ws in
+                        guard let parentId = ws.worktreeParentId else { return true }
+                        return !parentIds.contains(parentId)
+                    }
+                    ForEach(Array(topLevel), id: \.element.id) { index, workspace in
+                        workspaceTree(parent: workspace, parentIndex: index)
                     }
                 }
-                .padding(.horizontal, Theme.space2)
-                .padding(.vertical, Theme.space2)
             }
-            // ⌘⇧R parks the active workspace on the store; reveal its row so the
-            // row's own rename popover can open. onChange catches a request made
-            // while the sidebar is up; onAppear catches one parked while the
-            // sidebar was hidden (SidebarView mounts only after the reveal).
-            .onChange(of: store.pendingRenameWorkspace?.id) { _, _ in
-                revealWorkspaceForRename(using: proxy)
-            }
-            .onAppear { revealWorkspaceForRename(using: proxy) }
+            .padding(.horizontal, Theme.space2)
+            .padding(.vertical, Theme.space2)
         }
+        // ⌘⇧R parks the active workspace on the store; reveal its row so the
+        // row's own rename popover can open. onChange catches a request made
+        // while the sidebar is up; onAppear catches one parked while the
+        // sidebar was hidden (SidebarView mounts only after the reveal).
+        .onChange(of: store.pendingRenameWorkspace?.id) { _, _ in
+            revealWorkspaceForRename(using: proxy)
+        }
+        .onAppear { revealWorkspaceForRename(using: proxy) }
     }
 
     @ViewBuilder

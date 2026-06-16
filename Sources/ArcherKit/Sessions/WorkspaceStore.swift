@@ -61,7 +61,7 @@ final class WorkspaceStore {
     /// all `TabBarView` instances so target panes can show drop indicators
     /// even when the source lives in a different pane.
     var draggingTabId: UUID?
-    private(set) var recentUpdateSnippets: [RecentUpdateSnippet] = []
+
     var sidebarMode: SidebarMode = .full
     /// Right-side agent-overview sidebar — per-window collapse state, sharing
     /// the left sidebar's three modes (full / compact / hidden). The content is
@@ -549,7 +549,6 @@ final class WorkspaceStore {
         guard activeWorkspaceId != workspace.id else { return }
         activeWorkspaceId = workspace.id
         scheduleSave()
-        Task { await refreshUpdates() }
     }
 
     @discardableResult
@@ -1527,60 +1526,7 @@ final class WorkspaceStore {
         }
     }
 
-    func refreshUpdates() async {
-        guard let workspace = active else {
-            recentUpdateSnippets = []
-            return
-        }
-        let cwd = workspace.workingDirectory
-        do {
-            let result = try await runGitDiffNameStatus(at: cwd)
-            recentUpdateSnippets = result.map { output in
-                let components = output.split(separator: "\t", maxSplits: 1)
-                let path = components.count > 1 ? String(components[1]) : ""
-                let status = components.first.map(String.init) ?? ""
-                let title: String
-                switch status.first {
-                case "A": title = "Added"
-                case "M": title = "Modified"
-                case "D": title = "Deleted"
-                case "R": title = "Renamed"
-                case "C": title = "Copied"
-                default: title = status
-                }
-                return RecentUpdateSnippet(status: status.first ?? " ", path: path)
-            }
-        } catch {
-            recentUpdateSnippets = []
-        }
-    }
 
-    private func runGitDiffNameStatus(at directory: URL) async throws -> [String] {
-        try await withCheckedThrowingContinuation { continuation in
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            task.arguments = ["git", "diff", "--name-status"]
-            task.currentDirectoryURL = directory
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError = Pipe()
-            task.terminationHandler = { process in
-                if process.terminationStatus != 0 {
-                    continuation.resume(throwing: NSError(domain: "git", code: Int(process.terminationStatus)))
-                } else {
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-                    let lines = output.split(separator: "\n").map(String.init)
-                    continuation.resume(returning: lines)
-                }
-            }
-            do {
-                try task.run()
-            } catch {
-                continuation.resume(throwing: error)
-            }
-        }
-    }
 
     private func installGitWatcher(for session: Session) {
         let watcher = GitWatcher { [weak self, weak session] in
