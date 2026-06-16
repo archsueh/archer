@@ -27,7 +27,7 @@ struct ContentView: View {
                     Rectangle().fill(Theme.chromeHairline).frame(width: 1)
                     FilePanelView(rootURL: store.active?.workingDirectory
                         ?? FileManager.default.homeDirectoryForCurrentUser)
-                        .id(store.active?.id)
+                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
                 }
             }
         }

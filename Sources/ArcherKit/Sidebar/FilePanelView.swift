@@ -2,14 +2,14 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum FilePanelLayout { case tree, grid }
+enum FilePanelLayout: String, Codable { case tree, grid }
 
 /// Right-side file panel: a live mirror of the active workspace's directory.
 /// Tree view or icon grid (with up/breadcrumb nav); drag a row onto a folder to
 /// move it on disk; a kqueue watcher keeps it aligned with external changes.
 struct FilePanelView: View {
     @StateObject private var model: FileTreeModel
-    @State private var layout: FilePanelLayout = .tree
+    @AppStorage("filePanelLayout") private var layout: FilePanelLayout = .tree
     @State private var currentDir: URL
     @State private var watcher: DirectoryWatcher?
     let rootURL: URL

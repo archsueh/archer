@@ -1305,6 +1305,8 @@ final class WorkspaceStore {
             : workspaces.first?.id
         sidebarMode = state.sidebarMode ?? .full
         rightSidebarMode = state.rightSidebarMode ?? .hidden
+        filePanelMode = state.filePanelMode ?? .hidden
+        usageStripVisible = state.usageStripVisible ?? false
     }
 
     private func restorePane(_ persisted: PersistedPaneNode, fm: FileManager) -> PaneNode? {
@@ -1619,7 +1621,9 @@ final class WorkspaceStore {
             workspaces: workspaces.map(PersistedWorkspace.init),
             activeWorkspaceId: activeWorkspaceId,
             sidebarMode: sidebarMode,
-            rightSidebarMode: rightSidebarMode
+            rightSidebarMode: rightSidebarMode,
+            filePanelMode: filePanelMode,
+            usageStripVisible: usageStripVisible
         )
     }
 }
