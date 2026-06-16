@@ -70,8 +70,8 @@ final class GitStatusFetcherTests: XCTestCase {
 
     func testShellSwitchCommandEscapesSingleQuote() {
         XCTAssertEqual(
-            GitBranchInventory.shellSwitchCommand(branch: "fix/corey's-branch"),
-            "git switch 'fix/corey'\\''s-branch'\r"
+            GitBranchInventory.shellSwitchCommand(branch: "fix/mac's-branch"),
+            "git switch 'fix/mac'\\''s-branch'\r"
         )
     }
 }

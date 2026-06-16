@@ -599,10 +599,10 @@ final class WorkspaceStoreTests: XCTestCase {
         let session = firstPane(ws).tabs[0]
 
         // An `ssh` remote shell emits its own OSC 0/2 title.
-        engine(session).emitTitle("corey@web-prod: ~/srv")
+        engine(session).emitTitle("mac@web-prod: ~/srv")
 
-        XCTAssertEqual(session.title, "corey@web-prod: ~/srv")
-        XCTAssertEqual(ws.title, "corey@web-prod: ~/srv")
+        XCTAssertEqual(session.title, "mac@web-prod: ~/srv")
+        XCTAssertEqual(ws.title, "mac@web-prod: ~/srv")
     }
 
     func testAgentStatusTitleMarkerSurfacesRemoteAgentWithoutChangingLaunchTemplate() {
@@ -643,11 +643,11 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.addWorkspace(workingDirectory: projectA)
         let session = firstPane(ws).tabs[0]
 
-        engine(session).emitTitle("corey@web-prod: ~/srv")
+        engine(session).emitTitle("mac@web-prod: ~/srv")
         engine(session).emitTitle(AgentStatusMarker.title(slug: "codex", event: .running))
 
-        XCTAssertEqual(session.terminalTitle, "corey@web-prod: ~/srv")
-        XCTAssertEqual(session.title, "corey@web-prod: ~/srv")
+        XCTAssertEqual(session.terminalTitle, "mac@web-prod: ~/srv")
+        XCTAssertEqual(session.title, "mac@web-prod: ~/srv")
         XCTAssertEqual(session.displayAgent.id, AgentTemplate.codex.id)
         XCTAssertEqual(ws.distinctAgents.map(\.id), [AgentTemplate.codex.id])
     }
@@ -704,7 +704,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.addWorkspace(workingDirectory: projectA)
         let session = firstPane(ws).tabs[0]
 
-        engine(session).emitTitle("corey@web-prod")
+        engine(session).emitTitle("mac@web-prod")
         store.renameTab(session, to: "deploy")
 
         XCTAssertEqual(session.title, "deploy")
@@ -721,11 +721,11 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.addWorkspace(workingDirectory: projectA)
         let session = firstPane(ws).tabs[0]
 
-        engine(session).emitTitle("corey@web-prod")
+        engine(session).emitTitle("mac@web-prod")
         engine(session).emitCommandFinished(exit: 0, duration: 0.1)
 
-        XCTAssertEqual(session.terminalTitle, "corey@web-prod")
-        XCTAssertEqual(session.title, "corey@web-prod")
+        XCTAssertEqual(session.terminalTitle, "mac@web-prod")
+        XCTAssertEqual(session.title, "mac@web-prod")
     }
 
     func testEmptyTerminalTitleReportFallsBackToCwd() {
@@ -764,14 +764,14 @@ final class WorkspaceStoreTests: XCTestCase {
         store.applyShellEnvironment([
             "VIRTUAL_ENV": "/tmp/projectA/.venv",
             "CONDA_DEFAULT_ENV": "",
-            "NVM_BIN": "/Users/corey/.nvm/versions/node/v22.3.0/bin",
-            "NVM_DIR": "/Users/corey/.nvm",
+            "NVM_BIN": "/Users/mac/.nvm/versions/node/v22.3.0/bin",
+            "NVM_DIR": "/Users/mac/.nvm",
             "ARCHER_NODE_VERSION": "v22.3.0",
         ], sessionId: session.id)
 
         XCTAssertEqual(session.environment.pythonVenv, ".venv")
         XCTAssertEqual(session.environment.nodeVersion, "v22.3.0")
-        XCTAssertEqual(session.environment.nvmDirectory, "/Users/corey/.nvm")
+        XCTAssertEqual(session.environment.nvmDirectory, "/Users/mac/.nvm")
     }
 
     func testWorkspaceFailureAggregatesAcrossPanes() {

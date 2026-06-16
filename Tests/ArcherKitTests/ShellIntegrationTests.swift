@@ -132,7 +132,7 @@ final class ShellIntegrationTests: XCTestCase {
         XCTAssertEqual(parsed.agent.id, AgentTemplate.codex.id)
         XCTAssertEqual(parsed.event, .attention)
         XCTAssertNil(AgentStatusMarker.parseTitle("archer-agent:not-real:running"))
-        XCTAssertNil(AgentStatusMarker.parseTitle("corey@web-prod: ~/srv"))
+        XCTAssertNil(AgentStatusMarker.parseTitle("mac@web-prod: ~/srv"))
     }
 
     func testKimiWrapperBracketsRunningAndEnded() {
@@ -317,8 +317,8 @@ final class ShellIntegrationTests: XCTestCase {
             "surface": id.uuidString,
             "VIRTUAL_ENV": "/tmp/app/.venv",
             "CONDA_DEFAULT_ENV": "",
-            "NVM_BIN": "/Users/corey/.nvm/versions/node/v20.1.0/bin",
-            "NVM_DIR": "/Users/corey/.nvm",
+            "NVM_BIN": "/Users/mac/.nvm/versions/node/v20.1.0/bin",
+            "NVM_DIR": "/Users/mac/.nvm",
             "ARCHER_NODE_VERSION": "v20.1.0",
         ])
 
@@ -327,19 +327,19 @@ final class ShellIntegrationTests: XCTestCase {
         }
         XCTAssertEqual(sessionId, id)
         XCTAssertEqual(env["VIRTUAL_ENV"], "/tmp/app/.venv")
-        XCTAssertEqual(env["NVM_BIN"], "/Users/corey/.nvm/versions/node/v20.1.0/bin")
-        XCTAssertEqual(env["NVM_DIR"], "/Users/corey/.nvm")
+        XCTAssertEqual(env["NVM_BIN"], "/Users/mac/.nvm/versions/node/v20.1.0/bin")
+        XCTAssertEqual(env["NVM_DIR"], "/Users/mac/.nvm")
         XCTAssertEqual(env["ARCHER_NODE_VERSION"], "v20.1.0")
     }
 
     func testBackslashEscapeLeavesPlainPathUntouched() {
-        XCTAssertEqual(ArcherShellIntegration.backslashEscape("/Users/corey/file.txt"), "/Users/corey/file.txt")
+        XCTAssertEqual(ArcherShellIntegration.backslashEscape("/Users/mac/file.txt"), "/Users/mac/file.txt")
     }
 
     func testBackslashEscapeEscapesSpaceAndQuoteAndDollar() {
         XCTAssertEqual(
-            ArcherShellIntegration.backslashEscape("/Users/corey/My Folder/don't $cost"),
-            #"/Users/corey/My\ Folder/don\'t\ \$cost"#
+            ArcherShellIntegration.backslashEscape("/Users/mac/My Folder/don't $cost"),
+            #"/Users/mac/My\ Folder/don\'t\ \$cost"#
         )
     }
 

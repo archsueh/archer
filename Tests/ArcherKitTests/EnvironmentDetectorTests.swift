@@ -85,12 +85,12 @@ final class EnvironmentDetectorTests: XCTestCase {
 
     func testNvmBinExtractsVersionFromPath() {
         let env = [
-            "NVM_BIN": "/Users/corey/.nvm/versions/node/v25.1.0/bin",
-            "NVM_DIR": "/Users/corey/.nvm"
+            "NVM_BIN": "/Users/mac/.nvm/versions/node/v25.1.0/bin",
+            "NVM_DIR": "/Users/mac/.nvm"
         ]
         let result = EnvironmentDetector.extract(shellEnv: env, cwd: tempDir)
         XCTAssertEqual(result.nodeVersion, "v25.1.0")
-        XCTAssertEqual(result.nvmDirectory, "/Users/corey/.nvm")
+        XCTAssertEqual(result.nvmDirectory, "/Users/mac/.nvm")
     }
 
     func testNvmBinTakesPriorityOverNvmrc() throws {
@@ -103,7 +103,7 @@ final class EnvironmentDetectorTests: XCTestCase {
     func testPromptReportedNodeVersionWinsOverNvmBin() {
         let env = [
             "ARCHER_NODE_VERSION": "v23.2.0",
-            "NVM_BIN": "/Users/corey/.nvm/versions/node/v20.1.0/bin",
+            "NVM_BIN": "/Users/mac/.nvm/versions/node/v20.1.0/bin",
         ]
         XCTAssertEqual(EnvironmentDetector.extract(shellEnv: env, cwd: tempDir).nodeVersion, "v23.2.0")
     }
@@ -114,7 +114,7 @@ final class EnvironmentDetectorTests: XCTestCase {
     }
 
     func testVirtualEnvBasenameSurfaces() {
-        let env = ["VIRTUAL_ENV": "/Users/corey/projects/api/.venv"]
+        let env = ["VIRTUAL_ENV": "/Users/mac/projects/api/.venv"]
         let result = EnvironmentDetector.extract(shellEnv: env, cwd: tempDir)
         XCTAssertEqual(result.pythonVenv, ".venv")
     }
@@ -129,7 +129,7 @@ final class EnvironmentDetectorTests: XCTestCase {
         // Both shouldn't be set together in practice, but if they are,
         // VIRTUAL_ENV is more specific (a real path) and wins.
         let env = [
-            "VIRTUAL_ENV": "/Users/corey/.venv",
+            "VIRTUAL_ENV": "/Users/mac/.venv",
             "CONDA_DEFAULT_ENV": "base"
         ]
         XCTAssertEqual(EnvironmentDetector.extract(shellEnv: env, cwd: tempDir).pythonVenv, ".venv")

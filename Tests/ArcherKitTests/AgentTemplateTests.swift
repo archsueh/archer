@@ -362,8 +362,8 @@ final class AgentTemplateTests: XCTestCase {
         // line begins `-rw-r--r--@`. Without the `--` separator the
         // agent's argparse would reject it as an unknown flag. The
         // POSIX separator + POSIX-quoted prompt together neutralise it.
-        let config = AgentTemplate.codex.makeSessionConfig(initialPrompt: "-rw-r--r--@  1 corey staff  44")
-        XCTAssertEqual(config.environment["ARCHER_AGENT"], "codex -- '-rw-r--r--@  1 corey staff  44'")
+        let config = AgentTemplate.codex.makeSessionConfig(initialPrompt: "-rw-r--r--@  1 mac staff  44")
+        XCTAssertEqual(config.environment["ARCHER_AGENT"], "codex -- '-rw-r--r--@  1 mac staff  44'")
     }
 
     // MARK: - parseEnv (custom-agent environment block)
