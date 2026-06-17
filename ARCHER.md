@@ -25,8 +25,11 @@
 | 功能 | 新文件 | 改的上游文件（标记 `// [archer]`）|
 |---|---|---|
 | P1 文件面板 | `Sidebar/FileTreeModel.swift`、`Sidebar/DirectoryWatcher.swift`、（扩 `Sidebar/SidebarFileTree.swift`）| `Sidebar/SidebarView.swift`（接线）|
+| P1 Git Diff | `Diff/DiffModel.swift`、`Diff/DiffPanelView.swift` | `App/ContentView.swift`、`Sessions/WorkspaceStore.swift`、`Sessions/Persistence.swift`（接线）|
+| P2 Fanbox 下载器 | `FanboxDownloader/Queue.swift` (重构)、`FanboxDownloader/FanboxDownloaderView.swift` | `App/ContentView.swift`、`Sessions/WorkspaceStore.swift`、`Sessions/Persistence.swift`（接线）|
 | P2 玻璃 | （主题逻辑文件）| `App/ArcherWindowController.swift` 或 `App/Theme.swift`（设窗口材质）|
 | P3 usage strip | `Sidebar/UsageStrip.swift`（lift TokenChecker 逻辑）| 顶层布局接线点 |
+| P3 自动分类规则 UI 与审核流 | `AutoClassify/ClassificationReviewManager.swift` | `AutoClassify/Classifier.swift`、`FanboxDownloader/FanboxDownloader.swift`、`App/ArcherSettingsUI.swift`、`FanboxDownloader/FanboxDownloaderView.swift`、`Tests/ArcherKitTests/FanboxClassifierTests.swift` |
 
 ---
 

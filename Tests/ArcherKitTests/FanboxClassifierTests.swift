@@ -63,4 +63,111 @@ final class FanboxClassifierTests: XCTestCase {
         let content = try String(contentsOf: expectedFile, encoding: .utf8)
         XCTAssertTrue(content.contains("placeholder: 999999999"))
     }
+
+    // [archer] begin: ClassificationReviewManager tests
+    func testClassificationReviewManagerQueuing() {
+        let reviewManager = ClassificationReviewManager.shared
+        reviewManager.declineAll() // Clean state
+        
+        let sourceURL = URL(fileURLWithPath: "/tmp/test-review-queue.swift")
+        let destURL = URL(fileURLWithPath: "/tmp/dest-review-queue.swift")
+        let rule = ClassifyRule(extension: "swift", folder: "Sources", priority: 1)
+        
+        reviewManager.addPendingMove(source: sourceURL, destination: destURL, rule: rule)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 1)
+        XCTAssertEqual(reviewManager.pendingMoves.first?.source, sourceURL)
+        XCTAssertEqual(reviewManager.pendingMoves.first?.destination, destURL)
+        
+        // Test duplicate prevention
+        reviewManager.addPendingMove(source: sourceURL, destination: destURL, rule: rule)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 1)
+        
+        reviewManager.declineAll()
+        XCTAssertEqual(reviewManager.pendingMoves.count, 0)
+    }
+    
+    func testClassificationReviewManagerApproveDecline() throws {
+        let reviewManager = ClassificationReviewManager.shared
+        reviewManager.declineAll()
+        
+        let fm = FileManager.default
+        let testDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("review-manager-test-\(UUID().uuidString)")
+        try fm.createDirectory(at: testDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? fm.removeItem(at: testDir)
+        }
+        
+        let sourceFile = testDir.appendingPathComponent("file.swift")
+        try "print(\"hello\")".write(to: sourceFile, atomically: true, encoding: .utf8)
+        
+        let destFile = testDir.appendingPathComponent("Sources/file.swift")
+        let rule = ClassifyRule(extension: "swift", folder: "Sources", priority: 1)
+        
+        reviewManager.addPendingMove(source: sourceFile, destination: destFile, rule: rule)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 1)
+        
+        let move = reviewManager.pendingMoves.first!
+        
+        // Test decline
+        reviewManager.decline(move)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 0)
+        XCTAssertTrue(fm.fileExists(atPath: sourceFile.path))
+        XCTAssertFalse(fm.fileExists(atPath: destFile.path))
+        
+        // Re-add and test approve
+        reviewManager.addPendingMove(source: sourceFile, destination: destFile, rule: rule)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 1)
+        
+        let moveForApprove = reviewManager.pendingMoves.first!
+        var callbackCalled = false
+        
+        reviewManager.approve(moveForApprove) {
+            callbackCalled = true
+        }
+        
+        XCTAssertTrue(callbackCalled)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 0)
+        XCTAssertFalse(fm.fileExists(atPath: sourceFile.path))
+        XCTAssertTrue(fm.fileExists(atPath: destFile.path))
+    }
+    
+    func testClassificationReviewManagerBulkActions() throws {
+        let reviewManager = ClassificationReviewManager.shared
+        reviewManager.declineAll()
+        
+        let fm = FileManager.default
+        let testDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("review-manager-bulk-test-\(UUID().uuidString)")
+        try fm.createDirectory(at: testDir, withIntermediateDirectories: true)
+        
+        defer {
+            try? fm.removeItem(at: testDir)
+        }
+        
+        let source1 = testDir.appendingPathComponent("file1.swift")
+        try "1".write(to: source1, atomically: true, encoding: .utf8)
+        let dest1 = testDir.appendingPathComponent("Sources/file1.swift")
+        
+        let source2 = testDir.appendingPathComponent("file2.png")
+        try "2".write(to: source2, atomically: true, encoding: .utf8)
+        let dest2 = testDir.appendingPathComponent("Assets/file2.png")
+        
+        let rule1 = ClassifyRule(extension: "swift", folder: "Sources", priority: 1)
+        let rule2 = ClassifyRule(extension: "png", folder: "Assets", priority: 1)
+        
+        reviewManager.addPendingMove(source: source1, destination: dest1, rule: rule1)
+        reviewManager.addPendingMove(source: source2, destination: dest2, rule: rule2)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 2)
+        
+        var callbackCalled = false
+        reviewManager.approveAll {
+            callbackCalled = true
+        }
+        
+        XCTAssertTrue(callbackCalled)
+        XCTAssertEqual(reviewManager.pendingMoves.count, 0)
+        XCTAssertTrue(fm.fileExists(atPath: dest1.path))
+        XCTAssertTrue(fm.fileExists(atPath: dest2.path))
+    }
+    // [archer] end: ClassificationReviewManager tests
 }

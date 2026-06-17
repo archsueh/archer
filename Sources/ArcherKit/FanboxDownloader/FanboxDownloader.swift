@@ -115,18 +115,8 @@ public enum Downloader {
                             let textURL = postDirectory.appendingPathComponent("post_text.md")
                             try text.write(to: textURL, atomically: true, encoding: .utf8)
                             
-                            // Auto Classification hook for text description
-                            if let classification = Classifier.suggestMove(for: textURL, baseDir: directory) {
-                                let destDir = classification.destination.deletingLastPathComponent()
-                                try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
-                                if fileManager.fileExists(atPath: classification.destination.path) {
-                                    try fileManager.removeItem(at: classification.destination)
-                                }
-                                try fileManager.moveItem(at: textURL, to: classification.destination)
-                                downloadedFiles.append(classification.destination)
-                            } else {
-                                downloadedFiles.append(textURL)
-                            }
+                            let processedURL = try processFile(textURL, baseDir: directory, fileManager: fileManager)
+                            downloadedFiles.append(processedURL)
                         }
                     }
                     
@@ -136,18 +126,8 @@ public enum Downloader {
                         do {
                             try await downloadFile(from: item.url, to: tempDest)
                             
-                            // Auto Classification hook!
-                            if let classification = Classifier.suggestMove(for: tempDest, baseDir: directory) {
-                                let destDir = classification.destination.deletingLastPathComponent()
-                                try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
-                                if fileManager.fileExists(atPath: classification.destination.path) {
-                                    try fileManager.removeItem(at: classification.destination)
-                                }
-                                try fileManager.moveItem(at: tempDest, to: classification.destination)
-                                downloadedFiles.append(classification.destination)
-                            } else {
-                                downloadedFiles.append(tempDest)
-                            }
+                            let processedURL = try processFile(tempDest, baseDir: directory, fileManager: fileManager)
+                            downloadedFiles.append(processedURL)
                         } catch {
                             NSLog("[archer] Failed to download \(item.url): \(error.localizedDescription)")
                         }
@@ -162,18 +142,8 @@ public enum Downloader {
                 let sampleURL = postDirectory.appendingPathComponent("\(postId).txt")
                 try "placeholder: \(postId)".write(to: sampleURL, atomically: true, encoding: .utf8)
                 
-                // Auto Classification hook for fallback file
-                if let classification = Classifier.suggestMove(for: sampleURL, baseDir: directory) {
-                    let destDir = classification.destination.deletingLastPathComponent()
-                    try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
-                    if fileManager.fileExists(atPath: classification.destination.path) {
-                        try fileManager.removeItem(at: classification.destination)
-                    }
-                    try fileManager.moveItem(at: sampleURL, to: classification.destination)
-                    downloadedFiles.append(classification.destination)
-                } else {
-                    downloadedFiles.append(sampleURL)
-                }
+                let processedURL = try processFile(sampleURL, baseDir: directory, fileManager: fileManager)
+                downloadedFiles.append(processedURL)
             }
 
             let post = FanboxPost(
@@ -186,6 +156,30 @@ public enum Downloader {
         }
 
         return results
+    }
+
+    private static func processFile(_ url: URL, baseDir: URL, fileManager: FileManager) throws -> URL {
+        guard let classification = Classifier.suggestMove(for: url, baseDir: baseDir) else {
+            return url
+        }
+
+        let requiresReview = ArcherSettingsModel.shared.autoClassifyRequiresReview
+        if requiresReview, let rule = classification.rule {
+            ClassificationReviewManager.shared.addPendingMove(
+                source: url,
+                destination: classification.destination,
+                rule: rule
+            )
+            return url
+        } else {
+            let destDir = classification.destination.deletingLastPathComponent()
+            try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
+            if fileManager.fileExists(atPath: classification.destination.path) {
+                try fileManager.removeItem(at: classification.destination)
+            }
+            try fileManager.moveItem(at: url, to: classification.destination)
+            return classification.destination
+        }
     }
 
     private static func downloadFile(from url: URL, to destination: URL) async throws {
