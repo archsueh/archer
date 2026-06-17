@@ -147,7 +147,7 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
     <key>CFBundleName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key>
-    <string>archer</string>
+    <string>${APP_NAME}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
