@@ -325,9 +325,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         switch kind {
         case .completed:
             // [archer] NSSound (not UN) so it fires under dev `swift run` too.
-            guard settings.notificationsEnabled, settings.notifyOnCompleted,
-                  !visible else { return }
-            NSSound(named: NSSound.Name("Glass"))?.play()
+            // Fires on every completion, including the active tab — an audible
+            // cue each time an agent finishes, not just background ones.
+            guard settings.notificationsEnabled, settings.notifyOnCompleted
+            else { return }
+            NSSound(named: NSSound.Name("Submarine"))?.play()
         case .attention:
             guard settings.notificationsEnabled, settings.notifyOnAttention,
                   !visible else { return }
