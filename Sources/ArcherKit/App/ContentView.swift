@@ -29,6 +29,18 @@ struct ContentView: View {
                         ?? FileManager.default.homeDirectoryForCurrentUser)
                         .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
                 }
+                if store.diffPanelMode != .hidden { // [archer]
+                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    DiffPanelView(rootURL: store.active?.workingDirectory
+                        ?? FileManager.default.homeDirectoryForCurrentUser)
+                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                }
+                if store.downloaderPanelMode != .hidden { // [archer]
+                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    FanboxDownloaderView(rootURL: store.active?.workingDirectory
+                        ?? FileManager.default.homeDirectoryForCurrentUser)
+                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                }
             }
         }
         .background(chromeBackground.opacity(Theme.glassOpacity)) // [archer] glass
@@ -86,6 +98,26 @@ struct ContentView: View {
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setFilePanelMode(store.filePanelMode.next)
+                }
+            }
+            HoverableIconButton( // [archer]
+                systemName: "arrow.triangle.pull",
+                fontSize: 12,
+                size: 28,
+                help: "Git Diff panel"
+            ) {
+                withAnimation(Theme.chromeTransition) {
+                    store.setDiffPanelMode(store.diffPanelMode.next)
+                }
+            }
+            HoverableIconButton( // [archer]
+                systemName: "square.and.arrow.down",
+                fontSize: 12,
+                size: 28,
+                help: "Fanbox Downloader"
+            ) {
+                withAnimation(Theme.chromeTransition) {
+                    store.setDownloaderPanelMode(store.downloaderPanelMode.next)
                 }
             }
             HoverableIconButton(
