@@ -50,3 +50,6 @@ IDEAS.md
 
 # Antigravity CLI runtime state (project-scoped symlinks into ~/.gemini)
 .antigravitycli/
+
+# /goal skill per-session tracking state (churns every turn)
+.claude/goal/
