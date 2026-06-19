@@ -7,7 +7,7 @@ let package = Package(
     platforms: [
         // .v14 floor — `@Observable` macro requires Sonoma+. Dropping further
         // would mean reverting all session models to ObservableObject + @Published.
-        .macOS(.v14)
+        .macOS(.v14),
     ],
     dependencies: [],
     targets: [

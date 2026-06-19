@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 final class FuzzyMatcherTests: XCTestCase {
     func testEmptyQueryReturnsZero() {
@@ -14,7 +14,7 @@ final class FuzzyMatcherTests: XCTestCase {
         XCTAssertNil(FuzzyMatcher.score(query: "workspace", against: "ws"))
     }
 
-    func testExactPrefixScoresHigherThanMidStringMatch() {
+    func testExactPrefixScoresHigherThanMidStringMatch() throws {
         // "wo" prefix-matches "workspace" (with prefix + consecutive
         // bonuses); same query subsequence-matches "twosome" mid-string
         // with only the consecutive bonus. Prefix should win clearly.
@@ -22,10 +22,10 @@ final class FuzzyMatcherTests: XCTestCase {
         let midScore = FuzzyMatcher.score(query: "wo", against: "twosome")
         XCTAssertNotNil(prefixScore)
         XCTAssertNotNil(midScore)
-        XCTAssertGreaterThan(prefixScore!, midScore!)
+        XCTAssertGreaterThan(try XCTUnwrap(prefixScore), try XCTUnwrap(midScore))
     }
 
-    func testWordBoundaryBonus() {
+    func testWordBoundaryBonus() throws {
         // "p" matches "project-x" (start) and "archer-project" (after `-`).
         // Both should score; the boundary-after-hyphen one still beats a
         // mid-word match.
@@ -33,10 +33,10 @@ final class FuzzyMatcherTests: XCTestCase {
         let midWord = FuzzyMatcher.score(query: "p", against: "deepworld")
         XCTAssertNotNil(boundary)
         XCTAssertNotNil(midWord)
-        XCTAssertGreaterThan(boundary!, midWord!)
+        XCTAssertGreaterThan(try XCTUnwrap(boundary), try XCTUnwrap(midWord))
     }
 
-    func testConsecutiveBonusBeatsSpread() {
+    func testConsecutiveBonusBeatsSpread() throws {
         // Neither target has prefix or boundary bonuses, isolating the
         // consecutive-match bonus as the sole differentiator: "abws"
         // matches w then s back-to-back (+3 consecutive), "awbs" matches
@@ -45,7 +45,7 @@ final class FuzzyMatcherTests: XCTestCase {
         let spread = FuzzyMatcher.score(query: "ws", against: "awbs")
         XCTAssertNotNil(consecutive)
         XCTAssertNotNil(spread)
-        XCTAssertGreaterThan(consecutive!, spread!)
+        XCTAssertGreaterThan(try XCTUnwrap(consecutive), try XCTUnwrap(spread))
     }
 
     func testCaseInsensitive() {

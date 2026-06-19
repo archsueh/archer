@@ -12,17 +12,17 @@ struct TerminalView: NSViewRepresentable {
     /// Called when new output arrives while scrolled up — shows Jump to Latest
     var onNewOutputWhileScrolledUp: (() -> Void)?
 
-    func makeNSView(context: Context) -> NSView {
+    func makeNSView(context _: Context) -> NSView {
         engine.grabsFocusOnMount = grabsFocusOnMount
         engine.onScrollPositionChange = onScrollPositionChange
         engine.onNewOutputWhileScrolledUp = onNewOutputWhileScrolledUp
         return engine.view
     }
 
-    // Also on update, not just mount: clicking a sibling pane flips `isFocused`
-    // in place (no re-mount → no `makeNSView`), so this keeps the engine flag in
-    // sync with the pane's active state for the next re-mount.
-    func updateNSView(_ nsView: NSView, context: Context) {
+    /// Also on update, not just mount: clicking a sibling pane flips `isFocused`
+    /// in place (no re-mount → no `makeNSView`), so this keeps the engine flag in
+    /// sync with the pane's active state for the next re-mount.
+    func updateNSView(_: NSView, context _: Context) {
         engine.grabsFocusOnMount = grabsFocusOnMount
         engine.onScrollPositionChange = onScrollPositionChange
         engine.onNewOutputWhileScrolledUp = onNewOutputWhileScrolledUp

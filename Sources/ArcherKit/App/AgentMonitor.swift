@@ -32,10 +32,10 @@ final class AgentMonitor {
     /// Sort priority — declaration order is "neediest first". `Comparable` is
     /// synthesized from that order, so no raw values / manual `<` are needed.
     enum State: Comparable {
-        case attention   // waiting on you
-        case failed      // last command exited non-zero
-        case running     // working
-        case idle        // alive but quiet
+        case attention // waiting on you
+        case failed // last command exited non-zero
+        case running // working
+        case idle // alive but quiet
 
         var label: String {
             switch self {
@@ -45,6 +45,7 @@ final class AgentMonitor {
             case .idle: return "idle"
             }
         }
+
         var help: String {
             switch self {
             case .attention: return "waiting on you"
@@ -56,7 +57,7 @@ final class AgentMonitor {
     }
 
     struct Entry: Identifiable {
-        let id: UUID            // sessionId
+        let id: UUID // sessionId
         let agent: AgentTemplate
         let state: State
         let tabTitle: String
@@ -66,7 +67,7 @@ final class AgentMonitor {
     /// `Session` reverts to `.terminal` (a shell) when its agent ends, so an
     /// ended agent naturally drops off — this is "agents alive right now".
     var entries: [Entry] {
-        _ = windowGeneration   // re-aggregate when the window set changes
+        _ = windowGeneration // re-aggregate when the window set changes
         return storesProvider().flatMap { store in
             store.workspaces.flatMap { workspace in
                 workspace.root.allPanes.flatMap { pane in
@@ -124,7 +125,7 @@ struct AgentOverviewSidebar: View {
 
     // Full: header + labelled rows.
     private var fullBody: some View {
-        let entries = monitor.entries   // aggregate once per render, not per read
+        let entries = monitor.entries // aggregate once per render, not per read
         return VStack(spacing: 0) {
             HStack(spacing: 7) {
                 Text("agents")
@@ -138,7 +139,7 @@ struct AgentOverviewSidebar: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)
-            .frame(height: 32)   // matches the top strip so left/right align
+            .frame(height: 32) // matches the top strip so left/right align
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
             if entries.isEmpty {
                 empty

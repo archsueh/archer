@@ -6,12 +6,23 @@ import SwiftUI
 /// (matching ⌘N), 101...109 for workspaces (⌥⌘N). The 100 offset keeps both
 /// sets identifiable from `menuNeedsUpdate`.
 private enum MenuTag {
-    static let tabRange = 1...9
-    static let workspaceRange = 101...109
-    static func tab(_ n: Int) -> Int { n }
-    static func workspace(_ n: Int) -> Int { 100 + n }
-    static func tabIndex(from tag: Int) -> Int { tag - 1 }
-    static func workspaceIndex(from tag: Int) -> Int { tag - 101 }
+    static let tabRange = 1 ... 9
+    static let workspaceRange = 101 ... 109
+    static func tab(_ n: Int) -> Int {
+        n
+    }
+
+    static func workspace(_ n: Int) -> Int {
+        100 + n
+    }
+
+    static func tabIndex(from tag: Int) -> Int {
+        tag - 1
+    }
+
+    static func workspaceIndex(from tag: Int) -> Int {
+        tag - 101
+    }
 }
 
 @MainActor
@@ -22,6 +33,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // window set, and no future mutation site can forget to.
         didSet { AgentMonitor.shared.windowGeneration += 1 }
     }
+
     private let appPersistence = AppPersistence()
     /// Set in `applicationShouldTerminate` so `windowWillClose` (fired for
     /// every window during ⌘Q) can tell "app quitting" from "user closed
@@ -45,13 +57,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         for controller in self.windowControllers {
             let store = controller.store
             switch message {
-            case .agent(let agent, let event, let sessionId):
+            case let .agent(agent, event, sessionId):
                 store.applyHookEvent(agent: agent, event: event, sessionId: sessionId)
-            case .shellEnvironment(let env, let sessionId):
+            case let .shellEnvironment(env, sessionId):
                 store.applyShellEnvironment(env, sessionId: sessionId)
-            case .conversationId(let conversationId, let sessionId):
+            case let .conversationId(conversationId, sessionId):
                 store.applyConversationId(conversationId: conversationId, sessionId: sessionId)
-            case .toolCall(let agent, let toolName, let identifier, let event, let success, let toolUseId, let sessionId):
+            case let .toolCall(agent, toolName, identifier, event, success, toolUseId, sessionId):
                 store.applyToolCallEvent(
                     agent: agent,
                     toolName: toolName,
@@ -65,10 +77,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         }
     }
 
+    override public init() {
+        super.init()
+    }
 
-    public override init() { super.init() }
-
-    public func applicationDidFinishLaunching(_ notification: Notification) {
+    public func applicationDidFinishLaunching(_: Notification) {
         ArcherFonts.registerOnce()
         // First-launch onboarding (blocking NSAlert if a ghostty config exists)
         // — must run before any window is created and before any libghostty
@@ -113,7 +126,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         if ids.isEmpty {
             addWindow()
         } else {
-            for id in ids { addWindow(windowId: id) }
+            for id in ids {
+                addWindow(windowId: id)
+            }
         }
         // `addWindow` keys each as it's created, so the last restored window
         // ends up frontmost — archer doesn't persist which window was key.
@@ -205,7 +220,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// (`titleVisibility = .hidden`), so AppKit never populates the Dock's
     /// automatic per-window list — picking a tab raises the window that owns
     /// it, selects the workspace, and focuses the tab.
-    public func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+    public func applicationDockMenu(_: NSApplication) -> NSMenu? {
         let menu = NSMenu()
         let newWindow = NSMenuItem(
             title: "New Window",
@@ -267,14 +282,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     }
 
     private func dockTabLocation(for sessionId: UUID)
-        -> (controller: ArcherWindowController, workspace: Workspace, session: Session)? {
+        -> (controller: ArcherWindowController, workspace: Workspace, session: Session)?
+    {
         for controller in windowControllers {
             for workspace in controller.store.workspaces {
                 // `pane(containingSessionId:)` short-circuits the tree walk —
                 // the codebase prefers it over `allPanes.first(where:)` (per
                 // PaneNode.swift), matching the Command Palette's tab jump.
                 if let pane = workspace.root.pane(containingSessionId: sessionId),
-                   let session = pane.tabs.first(where: { $0.id == sessionId }) {
+                   let session = pane.tabs.first(where: { $0.id == sessionId })
+                {
                     return (controller, workspace, session)
                 }
             }
@@ -412,7 +429,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// Nil only when no archer window exists.
     private var activeController: ArcherWindowController? {
         if let key = NSApp.keyWindow,
-           let controller = windowControllers.first(where: { $0.window === key }) {
+           let controller = windowControllers.first(where: { $0.window === key })
+        {
             return controller
         }
         return lastKeyController ?? windowControllers.first
@@ -421,7 +439,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// The `WorkspaceStore` of the key window — the target for menu actions.
     /// When a non-archer window (Settings / Update) is key, routes to the
     /// most-recently-key archer window; nil only when no archer window exists.
-    private var activeStore: WorkspaceStore? { activeController?.store }
+    private var activeStore: WorkspaceStore? {
+        activeController?.store
+    }
 
     /// Re-applies `Theme.windowAppearance` to every archer-owned window so a
     /// theme switch flips title bar / traffic lights / sheets in lockstep
@@ -439,18 +459,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         InboxWindowController.shared.window?.appearance = appearance
     }
 
-    public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    public func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         true
     }
 
-    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    public func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         // Runs before AppKit closes the windows, so every `windowWillClose`
         // that follows sees the flag and keeps its persisted slot.
         isTerminating = true
         return .terminateNow
     }
 
-    public func applicationWillTerminate(_ notification: Notification) {
+    public func applicationWillTerminate(_: Notification) {
         // `windowWillClose` is not reliably delivered to every window during
         // app termination, so flush each live window's store here — the 1s
         // `scheduleSave` debounce would otherwise drop changes made in the
@@ -466,7 +486,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// unread so a notification that landed while archer was backgrounded doesn't
     /// strand the bell's red dot (the tab didn't change, so `activateTab`
     /// wouldn't fire).
-    public func applicationDidBecomeActive(_ notification: Notification) {
+    public func applicationDidBecomeActive(_: Notification) {
         markVisibleSessionRead()
     }
 
@@ -530,7 +550,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         let tabSwitchRows: [MenuEntry] = MenuTag.tabRange.map { n in
             selfRow("Tab \(n)", #selector(handleSwitchTab(_:)), "\(n)", tag: MenuTag.tab(n))
         }
-        let workspaceSwitchRows: [MenuEntry] = (1...9).map { n in
+        let workspaceSwitchRows: [MenuEntry] = (1 ... 9).map { n in
             selfRow("Workspace \(n)", #selector(handleSwitchWorkspace(_:)), "\(n)",
                     modifiers: [.command, .option], tag: MenuTag.workspace(n))
         }
@@ -563,13 +583,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             selfRow("Previous Tab", #selector(handlePreviousTab), "\t", modifiers: [.control, .shift]),
             .separator,
         ]
-        + tabSwitchRows
-        + [.separator]
-        + workspaceSwitchRows
-        + [
-            .separator,
-            responderRow("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", modifiers: [.command, .control]),
-        ]
+            + tabSwitchRows
+            + [.separator]
+            + workspaceSwitchRows
+            + [
+                .separator,
+                responderRow("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", modifiers: [.command, .control]),
+            ]
         let viewMenu = buildMenu(title: "View", entries: viewEntries)
         viewMenu.delegate = self
         mainMenu.addItem(submenu(viewMenu))
@@ -582,9 +602,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         mainMenu.addItem(submenu(windowMenu))
 
         #if DEBUG
-        mainMenu.addItem(submenu(buildMenu(title: "Debug", entries: [
-            selfRow("Cycle Activity", #selector(handleCycleActivity), "a", modifiers: [.command, .shift]),
-        ])))
+            mainMenu.addItem(submenu(buildMenu(title: "Debug", entries: [
+                selfRow("Cycle Activity", #selector(handleCycleActivity), "a", modifiers: [.command, .shift]),
+            ])))
         #endif
 
         let helpMenu = buildMenu(title: "Help", entries: [
@@ -617,7 +637,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// Item routed to `self` — used for the AppDelegate's own `handle*`
     /// methods that need a concrete target.
     private func selfRow(_ title: String, _ selector: Selector, _ key: String = "",
-                         modifiers: NSEvent.ModifierFlags = .command, tag: Int = 0) -> MenuEntry {
+                         modifiers: NSEvent.ModifierFlags = .command, tag: Int = 0) -> MenuEntry
+    {
         .row(MenuRow(title: title, selector: selector, key: key,
                      modifiers: modifiers, target: self, tag: tag))
     }
@@ -626,7 +647,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// Used for system selectors like `NSWindow.performZoom(_:)` and
     /// `NSText.cut(_:)`, which let libghostty / the active window handle them.
     private func responderRow(_ title: String, _ selector: Selector, _ key: String = "",
-                              modifiers: NSEvent.ModifierFlags = .command) -> MenuEntry {
+                              modifiers: NSEvent.ModifierFlags = .command) -> MenuEntry
+    {
         .row(MenuRow(title: title, selector: selector, key: key,
                      modifiers: modifiers, target: nil, tag: 0))
     }
@@ -635,7 +657,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         let menu = NSMenu(title: title)
         for entry in entries {
             switch entry {
-            case .row(let row):
+            case let .row(row):
                 let item = NSMenuItem(title: row.title, action: row.selector, keyEquivalent: row.key)
                 item.keyEquivalentModifierMask = row.modifiers
                 item.target = row.target
@@ -704,12 +726,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// active workspace (matches the muscle memory of ⌘T).
     private func activate(_ item: PaletteItem) {
         switch item.kind {
-        case .workspace(let wsId, let winId):
+        case let .workspace(wsId, winId):
             guard let target = windowControllers.first(where: { $0.windowId == winId }),
                   let ws = target.store.workspaces.first(where: { $0.id == wsId }) else { return }
             target.window?.makeKeyAndOrderFront(nil)
             target.store.activateWorkspace(ws)
-        case .tab(let sId, let wsId, let winId):
+        case let .tab(sId, wsId, winId):
             // `pane(containingSessionId:)` short-circuits on the first
             // matching pane; the codebase prefers it over `allPanes.first(where:)`
             // for tree walks (per PaneNode.swift doc).
@@ -718,7 +740,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
                   let pane = ws.root.pane(containingSessionId: sId),
                   let session = pane.tabs.first(where: { $0.id == sId }) else { return }
             revealTab(session, in: ws, controller: target)
-        case .createWorktree(let wsId, let winId):
+        case let .createWorktree(wsId, winId):
             guard let target = windowControllers.first(where: { $0.windowId == winId }),
                   let ws = target.store.workspaces.first(where: { $0.id == wsId }) else { return }
             target.window?.makeKeyAndOrderFront(nil)
@@ -732,7 +754,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
                     target.store.setSidebarMode(.full)
                 }
             }
-        case .agent(let templateId):
+        case let .agent(templateId):
             guard let store = activeStore, let ws = store.active else { return }
             let template = AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared)
                 .first(where: { $0.id == templateId }) ?? .terminal
@@ -755,7 +777,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         panel.directoryURL = store?.active?.workingDirectory
 
         let openPicked: () -> Void = {
-            for url in panel.urls { store?.addWorkspace(workingDirectory: url) }
+            for url in panel.urls {
+                store?.addWorkspace(workingDirectory: url)
+            }
         }
         if let window = controller?.window {
             panel.beginSheetModal(for: window) { response in
@@ -1032,26 +1056,26 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     }
 
     #if DEBUG
-    /// Cycles through every dot state in precedence order: idle → running
-    /// → failure → attention → idle. Used to preview the dot palette without
-    /// running real agents / commands.
-    @objc private func handleCycleActivity() {
-        guard let session = activeStore?.active?.activeSession else { return }
-        let isFailure = session.lastCommandExit.map { $0 != 0 } ?? false
-        switch (session.activityState, isFailure) {
-        case (.idle, false):
-            session.activityState = .running
-        case (.running, _):
-            session.activityState = .idle
-            session.lastCommandExit = 1
-            session.lastCommandDuration = 0.42
-        case (.idle, true):
-            session.activityState = .attention
-        case (.attention, _):
-            session.activityState = .idle
-            session.lastCommandExit = nil
-            session.lastCommandDuration = nil
+        /// Cycles through every dot state in precedence order: idle → running
+        /// → failure → attention → idle. Used to preview the dot palette without
+        /// running real agents / commands.
+        @objc private func handleCycleActivity() {
+            guard let session = activeStore?.active?.activeSession else { return }
+            let isFailure = session.lastCommandExit.map { $0 != 0 } ?? false
+            switch (session.activityState, isFailure) {
+            case (.idle, false):
+                session.activityState = .running
+            case (.running, _):
+                session.activityState = .idle
+                session.lastCommandExit = 1
+                session.lastCommandDuration = 0.42
+            case (.idle, true):
+                session.activityState = .attention
+            case (.attention, _):
+                session.activityState = .idle
+                session.lastCommandExit = nil
+                session.lastCommandDuration = nil
+            }
         }
-    }
     #endif
 }

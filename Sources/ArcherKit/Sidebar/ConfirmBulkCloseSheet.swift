@@ -128,7 +128,9 @@ struct ConfirmBulkCloseSheet: View {
         return alsoDelete ? "close & delete" : "close"
     }
 
-    private func worktreePath(for workspace: Workspace) -> URL { workspace.diskPath }
+    private func worktreePath(for workspace: Workspace) -> URL {
+        workspace.diskPath
+    }
 
     private func submit() {
         isWorking = true
@@ -138,7 +140,7 @@ struct ConfirmBulkCloseSheet: View {
             switch outcome {
             case .success:
                 dismiss()
-            case .failure(let message):
+            case let .failure(message):
                 isWorking = false
                 errorMessage = message
             }

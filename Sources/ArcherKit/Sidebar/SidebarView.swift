@@ -10,10 +10,10 @@ private enum SidebarSheet: Identifiable {
 
     var id: String {
         switch self {
-        case .createWorktree(let ws): return "create-\(ws.id.uuidString)"
-        case .confirmRemoveWorktree(let ws): return "remove-\(ws.id.uuidString)"
-        case .confirmCloseOthers(let req): return "close-others-\(req.keeping.id.uuidString)"
-        case .confirmCloseSource(let req): return "close-source-\(req.source.id.uuidString)"
+        case let .createWorktree(ws): return "create-\(ws.id.uuidString)"
+        case let .confirmRemoveWorktree(ws): return "remove-\(ws.id.uuidString)"
+        case let .confirmCloseOthers(req): return "close-others-\(req.keeping.id.uuidString)"
+        case let .confirmCloseSource(req): return "close-source-\(req.source.id.uuidString)"
         }
     }
 }
@@ -27,7 +27,7 @@ private enum SidebarRowItem: Identifiable, Hashable {
 
     var id: String {
         switch self {
-        case .workspace(let id): return id.uuidString
+        case let .workspace(id): return id.uuidString
         case .developerRoot: return "developer-root"
         case .memory: return "memory"
         }
@@ -131,8 +131,13 @@ private struct DeveloperTreeRow: View {
 
     @State private var children: [FileTreeItem] = []
 
-    private var indent: CGFloat { Theme.space2 + CGFloat(depth) * Theme.space3 }
-    private var isExpanded: Bool { expandedDirs.contains(item.url.standardizedFileURL) }
+    private var indent: CGFloat {
+        Theme.space2 + CGFloat(depth) * Theme.space3
+    }
+
+    private var isExpanded: Bool {
+        expandedDirs.contains(item.url.standardizedFileURL)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -167,7 +172,7 @@ private struct DeveloperTreeRow: View {
                         size: 16,
                         help: "Open in Finder"
                     ) { onOpenInFinder(item.url) }
-                    .opacity(0.6)
+                        .opacity(0.6)
                 }
             }
             .padding(.leading, indent)
@@ -363,7 +368,9 @@ struct SidebarView: View {
         .dropDestination(for: URL.self) { urls, _ in
             let folders = urls.filter(isDirectory)
             guard !folders.isEmpty else { return false }
-            for folder in folders { store.addWorkspace(workingDirectory: folder) }
+            for folder in folders {
+                store.addWorkspace(workingDirectory: folder)
+            }
             return true
         } isTargeted: { isFolderDropTargeted = $0 }
         .sheet(item: $sheet) { current in sheetContent(for: current) }
@@ -448,7 +455,9 @@ struct SidebarView: View {
         }
     }
 
-    private var favoriteItems: [SidebarRowItem] { [] }
+    private var favoriteItems: [SidebarRowItem] {
+        []
+    }
 
     private var workspaceItems: [SidebarRowItem] {
         let parentIds = Set(store.workspaces.map(\.id))
@@ -481,7 +490,7 @@ struct SidebarView: View {
                 systemName: "plus", fontSize: 12, size: 28,
                 help: L10n.string("New workspace")
             ) { store.addWorkspace() }
-            .padding(.top, Theme.space3).padding(.bottom, Theme.space2)
+                .padding(.top, Theme.space3).padding(.bottom, Theme.space2)
         } else {
             HStack(spacing: 0) {
                 Text("Archer").font(Theme.display(15, weight: .medium)).foregroundStyle(Theme.chromeForeground)
@@ -509,7 +518,7 @@ struct SidebarView: View {
     @ViewBuilder
     private func sheetContent(for current: SidebarSheet) -> some View {
         switch current {
-        case .createWorktree(let source):
+        case let .createWorktree(source):
             CreateWorktreeSheet(
                 source: source,
                 launchTemplates: AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared),
@@ -518,7 +527,7 @@ struct SidebarView: View {
                 create: { await store.createWorktree(source: source, request: $0) },
                 dismiss: { store.pendingCreateWorktreeRequest = nil; sheet = nil }
             )
-        case .confirmRemoveWorktree(let workspace):
+        case let .confirmRemoveWorktree(workspace):
             ConfirmRemoveWorktreeSheet(
                 workspace: workspace,
                 confirm: { alsoDelete in
@@ -529,7 +538,7 @@ struct SidebarView: View {
                 },
                 dismiss: { store.pendingRemovalRequest = nil; sheet = nil }
             )
-        case .confirmCloseOthers(let request):
+        case let .confirmCloseOthers(request):
             ConfirmBulkCloseSheet(
                 statusLabel: "CLOSE-OTHERS", headlineText: "keeping \(request.keeping.title)",
                 subtitleText: bulkSubtitle(closingCount: request.others.count, worktreeCount: request.worktreeOthers.count),
@@ -537,7 +546,7 @@ struct SidebarView: View {
                 confirm: { alsoDelete in if let msg = await store.performCloseOthers(request, alsoDelete: alsoDelete) { return .failure(msg) }; return .success },
                 dismiss: { store.pendingCloseOthersRequest = nil; sheet = nil }
             )
-        case .confirmCloseSource(let request):
+        case let .confirmCloseSource(request):
             ConfirmBulkCloseSheet(
                 statusLabel: "CLOSE-WORKSPACE", headlineText: "closing \(request.source.title)",
                 subtitleText: bulkSubtitle(closingCount: request.worktrees.count + 1, worktreeCount: request.worktrees.count),
@@ -608,7 +617,7 @@ private struct SectionView: View {
     @ViewBuilder
     private func sectionContent(for item: SidebarRowItem) -> some View {
         switch item {
-        case .workspace(let wsId):
+        case let .workspace(wsId):
             if let workspace = store.workspaces.first(where: { $0.id == wsId }) {
                 let worktrees = store.workspaces.filter { $0.worktreeParentId == workspace.id }
                 let hasWorktrees = !worktrees.isEmpty

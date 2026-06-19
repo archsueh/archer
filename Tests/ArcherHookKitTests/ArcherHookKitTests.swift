@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherHookKit
+import XCTest
 
 final class ArcherHookKitTests: XCTestCase {
     // MARK: env payload
@@ -168,7 +168,7 @@ final class ArcherHookKitTests: XCTestCase {
         XCTAssertEqual(payload?["tool_name"], "Bash")
         XCTAssertEqual(payload?["identifier"], "git status")
         XCTAssertEqual(payload?["event"], "pre")
-        XCTAssertNil(payload?["success"])  // PreToolUse 不带 success
+        XCTAssertNil(payload?["success"]) // PreToolUse 不带 success
     }
 
     func testParseToolEventEditPre() {
@@ -279,7 +279,7 @@ final class ArcherHookKitTests: XCTestCase {
     // MARK: Identifier truncation + control chars
 
     func testParseToolEventIdentifierTruncatedAt80() {
-        let longPath = String(repeating: "a", count: 100) + "_END"  // 104 chars
+        let longPath = String(repeating: "a", count: 100) + "_END" // 104 chars
         let json = #"{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"\#(longPath)"}}"#
         let payload = ArcherHookKit.parseToolEventPayload(from: Data(json.utf8), surface: "s", agent: "claude")
         XCTAssertEqual(payload?["identifier"]?.count, 80)
@@ -400,7 +400,7 @@ final class ArcherHookKitTests: XCTestCase {
         // Tests the full marker list — each maps to failure
         XCTAssertFalse(ArcherHookKit.detectSuccess(toolResponse: "Error: bad"))
         XCTAssertFalse(ArcherHookKit.detectSuccess(toolResponse: "stderr: command not found"))
-        XCTAssertFalse(ArcherHookKit.detectSuccess(toolResponse: "Permission Denied"))  // case-insensitive
+        XCTAssertFalse(ArcherHookKit.detectSuccess(toolResponse: "Permission Denied")) // case-insensitive
         XCTAssertFalse(ArcherHookKit.detectSuccess(toolResponse: "Fatal: oom"))
         XCTAssertFalse(ArcherHookKit.detectSuccess(toolResponse: "<error>X</error>"))
     }
@@ -420,7 +420,7 @@ final class ArcherHookKitTests: XCTestCase {
         XCTAssertEqual(p["kind"], "tool")
         XCTAssertEqual(p["surface"], "surf")
         XCTAssertEqual(p["agent"], "pi")
-        XCTAssertEqual(p["tool_name"], "bash")  // Pi's lowercase name passes through verbatim
+        XCTAssertEqual(p["tool_name"], "bash") // Pi's lowercase name passes through verbatim
         XCTAssertEqual(p["identifier"], "ls -la")
         XCTAssertEqual(p["event"], "pre")
         XCTAssertEqual(p["tool_use_id"], "call_1")

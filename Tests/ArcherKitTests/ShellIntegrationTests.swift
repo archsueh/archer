@@ -1,6 +1,6 @@
 import AppKit
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 /// Verifies the *content* the integration generates. Tests do not invoke
 /// `installAgentHooks()` because that writes to user-config dirs using a
@@ -98,7 +98,7 @@ final class ShellIntegrationTests: XCTestCase {
                       "preamble must pass through when both stdin and stdout are non-terminals")
     }
 
-    func testCodexWrapperGuardsBackgroundCallBeforeInstrumenting() {
+    func testCodexWrapperGuardsBackgroundCallBeforeInstrumenting() throws {
         // The reported hang: a broker spawns `codex app-server` (JSON-RPC over
         // piped stdin+stdout) and `codex:review` freezes. The guard must run
         // before the ArcherHook ping and before the `-c notify` injection (which
@@ -107,21 +107,21 @@ final class ShellIntegrationTests: XCTestCase {
         let guardLine = "if [[ ! -t 0 && ! -t 1 ]]; then"
         XCTAssertTrue(script.contains(guardLine), "codex wrapper must pass through a pipe-driven background call")
 
-        let guardIdx = script.range(of: guardLine)!.lowerBound
-        let pingIdx = script.range(of: "\"$ARCHER_HOOK_BIN\" codex running")!.lowerBound
-        let notifyIdx = script.range(of: "notify=")!.lowerBound
+        let guardIdx = try XCTUnwrap(script.range(of: guardLine)?.lowerBound)
+        let pingIdx = try XCTUnwrap(script.range(of: "\"$ARCHER_HOOK_BIN\" codex running")?.lowerBound)
+        let notifyIdx = try XCTUnwrap(script.range(of: "notify=")?.lowerBound)
         XCTAssertLessThan(guardIdx, pingIdx, "tty guard must precede the ArcherHook running ping")
         XCTAssertLessThan(guardIdx, notifyIdx, "tty guard must precede the -c notify injection")
     }
 
-    func testAntigravityIDEShimCheckPrecedesTtyPassthrough() {
+    func testAntigravityIDEShimCheckPrecedesTtyPassthrough() throws {
         // The generic pipe-driven passthrough must NOT run before agy's
         // IDE-launcher rejection — otherwise a background `agy` call (both fds
         // piped) would exec the resolved binary, reopening the GUI the wrapper
         // exists to block. The IDE-shim `case` must come first.
         let script = ArcherShellIntegration.antigravityWrapperScript
-        let ideIdx = script.range(of: "*/Antigravity.app/*")!.lowerBound
-        let guardIdx = script.range(of: "if [[ ! -t 0 && ! -t 1 ]]; then")!.lowerBound
+        let ideIdx = try XCTUnwrap(script.range(of: "*/Antigravity.app/*")?.lowerBound)
+        let guardIdx = try XCTUnwrap(script.range(of: "if [[ ! -t 0 && ! -t 1 ]]; then")?.lowerBound)
         XCTAssertLessThan(ideIdx, guardIdx, "IDE-shim rejection must precede the tty passthrough")
     }
 
@@ -301,7 +301,7 @@ final class ShellIntegrationTests: XCTestCase {
             "surface": id.uuidString,
         ])
 
-        guard case .agent(let agent, let event, let sessionId) = HookServer.parseMessage(data) else {
+        guard case let .agent(agent, event, sessionId) = HookServer.parseMessage(data) else {
             return XCTFail("expected agent hook message")
         }
         XCTAssertEqual(agent, .claudeCode)
@@ -322,7 +322,7 @@ final class ShellIntegrationTests: XCTestCase {
             "ARCHER_NODE_VERSION": "v20.1.0",
         ])
 
-        guard case .shellEnvironment(let env, let sessionId) = HookServer.parseMessage(data) else {
+        guard case let .shellEnvironment(env, sessionId) = HookServer.parseMessage(data) else {
             return XCTFail("expected shell environment hook message")
         }
         XCTAssertEqual(sessionId, id)
@@ -387,10 +387,9 @@ final class ShellIntegrationTests: XCTestCase {
     }
 
     /// 1×1 transparent PNG — small valid PNG to exercise the image-spill path.
-    private static let oneByOnePNG: Data = Data(base64Encoded:
+    private static let oneByOnePNG: Data = .init(base64Encoded:
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIA" +
-        "AAoAAv/lxKUAAAAASUVORK5CYII="
-    )!
+            "AAoAAv/lxKUAAAAASUVORK5CYII=")!
 
     func testReadTerminalPasteTextReturnsRawStringForPlainText() {
         // String paste is the common case (Cmd+V on a shell command).
@@ -457,14 +456,14 @@ final class ShellIntegrationTests: XCTestCase {
         let pb = makeIsolatedPasteboard()
         // Synthesise a 1×1 TIFF via NSBitmapImageRep so we exercise the
         // re-encode branch without bundling a binary fixture.
-        let rep = NSBitmapImageRep(
+        let rep = try XCTUnwrap(NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: 1, pixelsHigh: 1,
             bitsPerSample: 8, samplesPerPixel: 4,
             hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB,
             bytesPerRow: 4, bitsPerPixel: 32
-        )!
+        ))
         let tiffData = try XCTUnwrap(rep.representation(using: .tiff, properties: [:]))
         pb.declareTypes([.tiff], owner: nil)
         pb.setData(tiffData, forType: .tiff)

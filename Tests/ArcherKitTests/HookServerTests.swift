@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 /// Tests for `HookServer.parseMessage` — the wire-payload decoder that
 /// turns one JSON line off the unix socket into a typed `HookMessage`.
@@ -11,11 +11,13 @@ import XCTest
 final class HookServerTests: XCTestCase {
     private static let surfaceUUID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
 
-    private func data(_ json: String) -> Data { Data(json.utf8) }
+    private func data(_ json: String) -> Data {
+        Data(json.utf8)
+    }
 
     // MARK: Regression — existing message kinds keep working
 
-    func testParseAgentLifecyclePayload() throws {
+    func testParseAgentLifecyclePayload() {
         let json = #"{"surface":"\#(Self.surfaceUUID.uuidString)","agent":"claude","event":"running"}"#
         let message = HookServer.parseMessage(data(json))
         guard case let .agent(agent, event, sessionId) = message else {
@@ -26,7 +28,7 @@ final class HookServerTests: XCTestCase {
         XCTAssertEqual(sessionId, Self.surfaceUUID)
     }
 
-    func testParseEnvPayload() throws {
+    func testParseEnvPayload() {
         let json = #"""
         {"surface":"\#(Self.surfaceUUID.uuidString)","kind":"env","VIRTUAL_ENV":"/v","CONDA_DEFAULT_ENV":"","NVM_BIN":"","NVM_DIR":"","ARCHER_NODE_VERSION":"","https_proxy":"","http_proxy":"","all_proxy":""}
         """#
@@ -37,7 +39,7 @@ final class HookServerTests: XCTestCase {
         XCTAssertEqual(env["VIRTUAL_ENV"], "/v")
     }
 
-    func testParseConversationIdPayload() throws {
+    func testParseConversationIdPayload() {
         let json = #"{"surface":"\#(Self.surfaceUUID.uuidString)","kind":"conversationId","conversationId":"sess_abc"}"#
         let message = HookServer.parseMessage(data(json))
         guard case let .conversationId(conversationId, _) = message else {
@@ -48,7 +50,7 @@ final class HookServerTests: XCTestCase {
 
     // MARK: Tool event payload — happy paths
 
-    func testParseToolCallPrePayload() throws {
+    func testParseToolCallPrePayload() {
         let json = #"""
         {"surface":"\#(Self.surfaceUUID.uuidString)","kind":"tool","agent":"claude","tool_name":"Bash","identifier":"git status","event":"pre"}
         """#
@@ -64,7 +66,7 @@ final class HookServerTests: XCTestCase {
         XCTAssertEqual(sessionId, Self.surfaceUUID)
     }
 
-    func testParseToolCallPostSuccessPayload() throws {
+    func testParseToolCallPostSuccessPayload() {
         let json = #"""
         {"surface":"\#(Self.surfaceUUID.uuidString)","kind":"tool","agent":"claude","tool_name":"Edit","identifier":"/repo/x.swift","event":"post","success":"true"}
         """#
@@ -76,7 +78,7 @@ final class HookServerTests: XCTestCase {
         XCTAssertEqual(success, true)
     }
 
-    func testParseToolCallPostFailurePayload() throws {
+    func testParseToolCallPostFailurePayload() {
         let json = #"""
         {"surface":"\#(Self.surfaceUUID.uuidString)","kind":"tool","agent":"claude","tool_name":"Bash","identifier":"missing","event":"post","success":"false"}
         """#

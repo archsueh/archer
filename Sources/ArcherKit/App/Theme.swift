@@ -9,23 +9,46 @@ import SwiftUI
 enum Theme {
     // MARK: Colors
 
-    static var chromeBackground: Color { Color(nsColor: resolved.chromeBackgroundColor).opacity(glassOpacity) } // [archer]
+    static var chromeBackground: Color {
+        Color(nsColor: resolved.chromeBackgroundColor).opacity(glassOpacity)
+    } // [archer]
     /// Single readout for translucent layers.
     /// NOTE: if you want to tint the slider or resizer, use the
     /// background colour at this opacity instead of changing the modifier.
     nonisolated static let glassOpacity: Double = 0.72 // [archer] was 0.60 — unified to match rester
-    static var chromeForeground: Color { Color(nsColor: resolved.foregroundColor) }
-    static var chromeMuted: Color { resolved.chromeMuted }
-    static var chromeFaint: Color { resolved.chromeFaint }
-    static var chromeHairline: Color { resolved.chromeHairline }
-    static var chromeHover: Color { resolved.chromeHover }
-    static var chromeActive: Color { resolved.chromeActive }
+    static var chromeForeground: Color {
+        Color(nsColor: resolved.foregroundColor)
+    }
+
+    static var chromeMuted: Color {
+        resolved.chromeMuted
+    }
+
+    static var chromeFaint: Color {
+        resolved.chromeFaint
+    }
+
+    static var chromeHairline: Color {
+        resolved.chromeHairline
+    }
+
+    static var chromeHover: Color {
+        resolved.chromeHover
+    }
+
+    static var chromeActive: Color {
+        resolved.chromeActive
+    }
 
     /// Color libghostty draws inside the terminal surface. Exposed as NSColor
     /// so AppKit code (engines, etc.) can reach it without bridging.
-    static var terminalSurface: NSColor { resolved.backgroundColor }
+    static var terminalSurface: NSColor {
+        resolved.backgroundColor
+    }
 
-    static var chromeColorScheme: ColorScheme { resolved.isLight ? .light : .dark }
+    static var chromeColorScheme: ColorScheme {
+        resolved.isLight ? .light : .dark
+    }
 
     static var windowAppearance: NSAppearance? {
         NSAppearance(named: resolved.isLight ? .aqua : .darkAqua)
@@ -49,6 +72,7 @@ enum Theme {
         cachedResolved = next
         return next
     }
+
     private static var cachedResolved: Resolved?
 
     /// Snapshot of every token derived from one terminal theme. Computed once
@@ -74,23 +98,23 @@ enum Theme {
         @MainActor
         fileprivate init(cacheKey: CacheKey, theme: ArcherTerminalTheme?) {
             self.cacheKey = cacheKey
-            self.backgroundColor = theme.flatMap { NSColor(hex: $0.backgroundHex) } ?? defaultTerminalSurface
-            self.foregroundColor = theme.flatMap { NSColor(hex: $0.foregroundHex) } ?? defaultForeground
-            self.isLight = backgroundColor.relativeLuminance > 0.55
+            backgroundColor = theme.flatMap { NSColor(hex: $0.backgroundHex) } ?? defaultTerminalSurface
+            foregroundColor = theme.flatMap { NSColor(hex: $0.foregroundHex) } ?? defaultForeground
+            isLight = backgroundColor.relativeLuminance > 0.55
             // Chrome sits one step off the surface so the terminal reads as
             // the framed canvas. Dark themes nudge toward black, light
             // themes toward the ink — keeps the chrome readable on each.
-            self.chromeBackgroundColor = isLight
+            chromeBackgroundColor = isLight
                 ? mix(backgroundColor, foregroundColor, 0.035)
                 : mix(backgroundColor, sRGBBlack, 0.16)
             let mutedNS = mix(foregroundColor, chromeBackgroundColor, isLight ? 0.42 : 0.52)
             let faintNS = mix(foregroundColor, chromeBackgroundColor, isLight ? 0.68 : 0.72)
             let fgColor = Color(nsColor: foregroundColor)
-            self.chromeMuted = Color(nsColor: mutedNS)
-            self.chromeFaint = Color(nsColor: faintNS)
-            self.chromeHairline = fgColor.opacity(isLight ? 0.16 : 0.07)
-            self.chromeHover = fgColor.opacity(isLight ? 0.11 : 0.07)
-            self.chromeActive = fgColor.opacity(isLight ? 0.20 : 0.15)
+            chromeMuted = Color(nsColor: mutedNS)
+            chromeFaint = Color(nsColor: faintNS)
+            chromeHairline = fgColor.opacity(isLight ? 0.16 : 0.07)
+            chromeHover = fgColor.opacity(isLight ? 0.11 : 0.07)
+            chromeActive = fgColor.opacity(isLight ? 0.20 : 0.15)
         }
     }
 
@@ -115,6 +139,7 @@ enum Theme {
     static let gitDeletion = activityFailure
 
     // MARK: Fonts
+
     private static let displayName = "Onest"
     private static let monoName = "JetBrainsMono-Regular"
 
@@ -127,6 +152,7 @@ enum Theme {
     }
 
     // MARK: Spacing rhythm — multiples of 4. Use space3+ for chrome breathing.
+
     static let space1: CGFloat = 4
     static let space2: CGFloat = 8
     static let space3: CGFloat = 12
@@ -134,13 +160,14 @@ enum Theme {
     static let space5: CGFloat = 24
 
     // MARK: Motion
+
     /// Standard transition for chrome state changes (sidebar collapse,
     /// drag-reorder commit). One source so timings can't drift across sites.
     static let chromeTransition: Animation = .easeInOut(duration: 0.2)
 
-// MARK: Motion — collapse animation reusable across collapsible panels
-static let collapseAnimation: Animation = .snappy(duration: 0.16, extraBounce: 0)
+    // MARK: Motion — collapse animation reusable across collapsible panels
 
+    static let collapseAnimation: Animation = .snappy(duration: 0.16, extraBounce: 0)
 }
 
 /// Linear interpolation between two NSColors in sRGB. Module-internal so

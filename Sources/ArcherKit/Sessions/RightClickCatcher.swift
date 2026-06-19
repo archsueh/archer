@@ -13,13 +13,13 @@ import SwiftUI
 struct RightClickCatcher: NSViewRepresentable {
     let action: (UnitPoint) -> Void
 
-    func makeNSView(context: Context) -> SecondaryClickView {
+    func makeNSView(context _: Context) -> SecondaryClickView {
         let view = SecondaryClickView()
         view.action = action
         return view
     }
 
-    func updateNSView(_ nsView: SecondaryClickView, context: Context) {
+    func updateNSView(_ nsView: SecondaryClickView, context _: Context) {
         nsView.action = action
     }
 

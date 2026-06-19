@@ -14,7 +14,9 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
     let lines: [String]
     let source: Source
 
-    var isBundled: Bool { source == .bundled }
+    var isBundled: Bool {
+        source == .bundled
+    }
 
     static let presets: [ArcherTerminalTheme] = [
         .init(
@@ -143,7 +145,8 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> URL {
         if let xdg = environment["XDG_CONFIG_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !xdg.isEmpty {
+           !xdg.isEmpty
+        {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent("ghostty/themes", isDirectory: true)
         }
@@ -188,11 +191,11 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
     ) {
         self.id = id
         self.title = title
-        self.storedValue = id
-        self.backgroundHex = background
-        self.foregroundHex = foreground
-        self.source = .bundled
-        self.lines = [
+        storedValue = id
+        backgroundHex = background
+        foregroundHex = foreground
+        source = .bundled
+        lines = [
             "background = \(background)",
             "foreground = \(foreground)",
             "cursor-color = \(cursor)",
@@ -204,13 +207,13 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
     }
 
     private init(userThemeName: String, background: String?, foreground: String?) {
-        self.id = "ghostty-user:\(userThemeName)"
-        self.title = userThemeName
-        self.storedValue = userThemeName
-        self.backgroundHex = background ?? "#282C34"
-        self.foregroundHex = foreground ?? "#EFEFF1"
-        self.lines = []
-        self.source = .ghosttyUser
+        id = "ghostty-user:\(userThemeName)"
+        title = userThemeName
+        storedValue = userThemeName
+        backgroundHex = background ?? "#282C34"
+        foregroundHex = foreground ?? "#EFEFF1"
+        lines = []
+        source = .ghosttyUser
     }
 
     private static func parseGhosttyConfigLines(_ text: String) -> [String: String] {

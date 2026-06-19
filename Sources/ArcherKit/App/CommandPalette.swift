@@ -21,7 +21,7 @@ enum FuzzyMatcher {
         var prevMatchedAt = -2
         var prevIsBoundary = true
 
-        for ti in 0..<t.count {
+        for ti in 0 ..< t.count {
             let ch = t[ti]
             if qi < q.count, ch == q[qi] {
                 var bonus = 1
@@ -49,7 +49,7 @@ enum FuzzyMatcher {
 /// What a palette row represents. Carries enough id information for the
 /// activate path to find the target without re-walking the entire window
 /// set later.
-enum PaletteItemKind: Hashable, Sendable {
+enum PaletteItemKind: Hashable {
     case workspace(workspaceId: UUID, windowId: UUID)
     case tab(sessionId: UUID, workspaceId: UUID, windowId: UUID)
     case createWorktree(workspaceId: UUID, windowId: UUID)
@@ -282,8 +282,8 @@ private struct CommandPaletteRow: View {
         // to-center fire that an onChange(of:selected) would otherwise
         // do on every cursor twitch.
         .background(isSelected ? Theme.chromeActive
-                  : isHovered  ? Theme.chromeHover
-                  : Color.clear)
+            : isHovered ? Theme.chromeHover
+            : Color.clear)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
@@ -326,7 +326,7 @@ final class CommandPaletteWindowController: NSWindowController {
         )
     }
 
-    @objc private func panelResignedKey(_ note: Notification) {
+    @objc private func panelResignedKey(_: Notification) {
         // Fires on any background click that hands key to another window.
         // Dismiss instead of leaving a ghost panel floating with stale
         // focus.

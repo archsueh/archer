@@ -1,14 +1,16 @@
 import Foundation
 
 /// One rate-limit window. `utilization` is 0.0–1.0+ (1.0 = 100%, can exceed).
-struct RateLimit: Equatable, Sendable {
+struct RateLimit: Equatable {
     let utilization: Double
     let resetsAt: Date
-    var percent: Int { Int((utilization * 100).rounded()) }
+    var percent: Int {
+        Int((utilization * 100).rounded())
+    }
 }
 
 /// Claude usage: rolling 5-hour and weekly windows (+ Sonnet weekly).
-struct ServiceUsage: Equatable, Sendable {
+struct ServiceUsage: Equatable {
     let fiveHour: RateLimit?
     let weekly: RateLimit?
     let weeklySonnet: RateLimit?
@@ -16,7 +18,7 @@ struct ServiceUsage: Equatable, Sendable {
 
 /// Errors surfaced by the Claude usage pipeline. Trimmed from TokenChecker's
 /// DomainError to the Claude path, plain-English (no localization dependency).
-enum UsageError: Error, Equatable, LocalizedError, Sendable {
+enum UsageError: Error, Equatable, LocalizedError {
     case keychainTokenMissing
     case anthropicUnauthorized
     case anthropicRateLimited(retryAfter: TimeInterval?)
@@ -30,14 +32,14 @@ enum UsageError: Error, Equatable, LocalizedError, Sendable {
             return "No Claude token in Keychain — run `claude login`."
         case .anthropicUnauthorized:
             return "Anthropic 401 — re-login with `claude login`."
-        case .anthropicRateLimited(let retryAfter):
+        case let .anthropicRateLimited(retryAfter):
             if let sec = retryAfter { return "Rate limited — retry in ~\(max(1, Int(sec / 60)))m." }
             return "Rate limited (429)."
-        case .anthropicHTTP(let status):
+        case let .anthropicHTTP(status):
             return "Anthropic API error (\(status))."
-        case .decoding(let detail):
+        case let .decoding(detail):
             return "Decode failed: \(detail)"
-        case .network(let detail):
+        case let .network(detail):
             return "Network error: \(detail)"
         }
     }

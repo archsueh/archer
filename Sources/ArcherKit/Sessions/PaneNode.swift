@@ -3,7 +3,7 @@ import Foundation
 /// Layout direction of a split. `horizontal` puts the two children side-by-side
 /// (divider runs vertically). `vertical` stacks them top-to-bottom (divider
 /// runs horizontally).
-enum SplitOrientation: String, Codable, Equatable, Sendable {
+enum SplitOrientation: String, Codable, Equatable {
     case horizontal
     case vertical
 }
@@ -42,8 +42,8 @@ extension PaneNode {
 
     private func collectPanes(into out: inout [Pane]) {
         switch content {
-        case .pane(let p): out.append(p)
-        case .split(_, let a, let b, _):
+        case let .pane(p): out.append(p)
+        case let .split(_, a, b, _):
             a.collectPanes(into: &out)
             b.collectPanes(into: &out)
         }
@@ -51,8 +51,8 @@ extension PaneNode {
 
     var firstPane: Pane? {
         switch content {
-        case .pane(let p): return p
-        case .split(_, let a, _, _): return a.firstPane
+        case let .pane(p): return p
+        case let .split(_, a, _, _): return a.firstPane
         }
     }
 
@@ -60,16 +60,18 @@ extension PaneNode {
     /// avoids walking the whole tree when the match is found early.
     func pane(id: UUID) -> Pane? {
         switch content {
-        case .pane(let p):
+        case let .pane(p):
             return p.id == id ? p : nil
-        case .split(_, let a, let b, _):
+        case let .split(_, a, b, _):
             return a.pane(id: id) ?? b.pane(id: id)
         }
     }
 
     /// Subtree membership — same short-circuit walk as `pane(id:)`, just
     /// without resurfacing the leaf when callers only need the boolean.
-    func contains(paneId: UUID) -> Bool { pane(id: paneId) != nil }
+    func contains(paneId: UUID) -> Bool {
+        pane(id: paneId) != nil
+    }
 
     /// True when this subtree contains more than one leaf pane (i.e. it
     /// has any split node). O(1) vs `allPanes.count > 1`'s O(n) array
@@ -84,9 +86,9 @@ extension PaneNode {
 
     func paneNode(paneId: UUID) -> PaneNode? {
         switch content {
-        case .pane(let p):
+        case let .pane(p):
             return p.id == paneId ? self : nil
-        case .split(_, let a, let b, _):
+        case let .split(_, a, b, _):
             return a.paneNode(paneId: paneId) ?? b.paneNode(paneId: paneId)
         }
     }
@@ -94,9 +96,9 @@ extension PaneNode {
     /// Pane that contains the given session, or nil.
     func pane(containingSessionId sessionId: UUID) -> Pane? {
         switch content {
-        case .pane(let p):
+        case let .pane(p):
             return p.tabs.contains(where: { $0.id == sessionId }) ? p : nil
-        case .split(_, let a, let b, _):
+        case let .split(_, a, b, _):
             return a.pane(containingSessionId: sessionId) ?? b.pane(containingSessionId: sessionId)
         }
     }
@@ -105,11 +107,11 @@ extension PaneNode {
     /// leaf node itself, and its sibling. nil if the leaf is the root or is
     /// not in this subtree.
     func parentInfo(forPane paneId: UUID) -> (parent: PaneNode, leaf: PaneNode, sibling: PaneNode)? {
-        guard case .split(_, let first, let second, _) = content else { return nil }
-        if case .pane(let p) = first.content, p.id == paneId {
+        guard case let .split(_, first, second, _) = content else { return nil }
+        if case let .pane(p) = first.content, p.id == paneId {
             return (self, first, second)
         }
-        if case .pane(let p) = second.content, p.id == paneId {
+        if case let .pane(p) = second.content, p.id == paneId {
             return (self, second, first)
         }
         return first.parentInfo(forPane: paneId) ?? second.parentInfo(forPane: paneId)

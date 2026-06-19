@@ -21,7 +21,9 @@ struct ProjectEnvironment: Equatable {
     }
 
     static let empty = ProjectEnvironment()
-    var isEmpty: Bool { pythonVenv == nil && nodeVersion == nil && proxy == nil }
+    var isEmpty: Bool {
+        pythonVenv == nil && nodeVersion == nil && proxy == nil
+    }
 }
 
 /// Shell-level proxy configuration. `summary` is the compact `host:port` for
@@ -78,7 +80,8 @@ enum EnvironmentDetector {
     fileprivate static func parseHostPort(_ raw: String) -> String? {
         let normalized = raw.contains("://") ? raw : "http://" + raw
         guard let components = URLComponents(string: normalized),
-              let host = components.host, !host.isEmpty else {
+              let host = components.host, !host.isEmpty
+        else {
             return nil
         }
         let unwrapped = host.hasPrefix("[") && host.hasSuffix("]")
@@ -116,7 +119,8 @@ enum EnvironmentDetector {
             return live
         }
         if let bin = shellEnv["NVM_BIN"], !bin.isEmpty,
-           let version = nvmVersion(fromBinPath: bin) {
+           let version = nvmVersion(fromBinPath: bin)
+        {
             return version
         }
         guard allowProjectFallback else { return nil }
@@ -149,7 +153,8 @@ enum EnvironmentDetector {
             for name in names {
                 let candidate = (path as NSString).appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: candidate),
-                   let content = try? String(contentsOfFile: candidate, encoding: .utf8) {
+                   let content = try? String(contentsOfFile: candidate, encoding: .utf8)
+                {
                     let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty { return trimmed }
                 }
@@ -189,7 +194,7 @@ enum EnvironmentDetector {
 /// `lts/iron`, `node`, `system` — those must pass through verbatim, or
 /// the sidebar will display gibberish (`vlts/*`) and the switch popover
 /// won't match anything in the installed-versions list.
-fileprivate func nodeVersionWithVPrefix(_ version: String) -> String {
+private func nodeVersionWithVPrefix(_ version: String) -> String {
     if version.hasPrefix("v") { return version }
     if let first = version.first, first.isNumber { return "v\(version)" }
     return version
@@ -243,7 +248,6 @@ enum NodeVersionInventory {
         }
         return nvmDirectory
     }
-
 }
 
 /// Dotted-version compare shared by the nvm version sorter and the GitHub
@@ -255,7 +259,7 @@ enum Version {
     static func compare(_ lhs: String, _ rhs: String) -> ComparisonResult {
         let left = numericParts(lhs)
         let right = numericParts(rhs)
-        for i in 0..<max(left.count, right.count) {
+        for i in 0 ..< max(left.count, right.count) {
             let l = i < left.count ? left[i] : 0
             let r = i < right.count ? right[i] : 0
             if l > r { return .orderedDescending }

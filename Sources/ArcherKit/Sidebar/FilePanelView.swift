@@ -42,13 +42,15 @@ struct FilePanelView: View {
         .onChange(of: currentDir) { _, dir in enter(dir) }
     }
 
-    // Track + watch a directory so both views stay aligned with disk.
+    /// Track + watch a directory so both views stay aligned with disk.
     private func enter(_ dir: URL) {
         model.expand(dir)
         watcher?.add(dir)
     }
 
-    private func move(_ source: URL, into dest: URL) { try? model.move(source, into: dest) }
+    private func move(_ source: URL, into dest: URL) {
+        try? model.move(source, into: dest)
+    }
 
     // MARK: Header
 
@@ -148,8 +150,13 @@ private struct FileTreeNodeView: View {
     @State private var hovered = false
     @State private var targeted = false
 
-    private var key: URL { item.url.standardizedFileURL }
-    private var isExpanded: Bool { model.expanded.contains(key) }
+    private var key: URL {
+        item.url.standardizedFileURL
+    }
+
+    private var isExpanded: Bool {
+        model.expanded.contains(key)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -232,7 +239,9 @@ private struct FolderDrop: ViewModifier {
     func body(content: Content) -> some View {
         if isDir {
             content.onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
-                loadURLs(providers) { urls in for u in urls { onMove(u, dest) } }
+                loadURLs(providers) { urls in for u in urls {
+                    onMove(u, dest)
+                } }
                 return true
             }
         } else {
@@ -267,8 +276,8 @@ private func loadURLs(_ providers: [NSItemProvider], _ completion: @escaping ([U
     group.notify(queue: .main) { completion(urls) }
 }
 
-// Drop the file's escaped path on the pasteboard so it can be pasted into the
-// active terminal pane (matches the original SidebarFileTree behavior).
+/// Drop the file's escaped path on the pasteboard so it can be pasted into the
+/// active terminal pane (matches the original SidebarFileTree behavior).
 private func pasteFilePath(_ path: String) {
     let escaped = path.replacingOccurrences(of: " ", with: "\\ ")
     let pb = NSPasteboard.general

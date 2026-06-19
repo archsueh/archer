@@ -1,11 +1,13 @@
 import SwiftUI
 
 enum SidebarSection: String, Codable, CaseIterable, Identifiable {
-    case favorites = "favorites"
-    case workspaces = "workspaces"
-    case tools = "tools"
+    case favorites
+    case workspaces
+    case tools
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var titleKey: String {
         switch self {

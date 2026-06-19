@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 final class WorktreeManagerTests: XCTestCase {
     private var tempRoots: [URL] = []
@@ -8,7 +8,9 @@ final class WorktreeManagerTests: XCTestCase {
         // Each test creates its repo + worktree under temporaryDirectory;
         // collect them here so a `git worktree remove` skip doesn't leave
         // half-built repos around between runs.
-        for url in tempRoots { try? FileManager.default.removeItem(at: url) }
+        for url in tempRoots {
+            try? FileManager.default.removeItem(at: url)
+        }
         tempRoots.removeAll()
         super.tearDown()
     }
@@ -33,7 +35,7 @@ final class WorktreeManagerTests: XCTestCase {
             "-C", url.path,
             "-c", "user.email=test@example.com",
             "-c", "user.name=Test",
-            "commit", "--allow-empty", "-m", "init", "--no-gpg-sign"
+            "commit", "--allow-empty", "-m", "init", "--no-gpg-sign",
         ], timeout: 5) != nil else {
             return false
         }
@@ -129,24 +131,24 @@ final class WorktreeManagerTests: XCTestCase {
             path: wt,
             mode: .newBranch(name: "feat-x", base: nil)
         )
-        if case .failure(let err) = addResult {
+        if case let .failure(err) = addResult {
             XCTFail("add failed: \(err.description)")
             return
         }
 
-        guard case .success(let infos) = WorktreeManager.list(repoPath: repo) else {
+        guard case let .success(infos) = WorktreeManager.list(repoPath: repo) else {
             XCTFail("list failed"); return
         }
         XCTAssertEqual(infos.count, 2)
         XCTAssertTrue(infos.contains { $0.branch == "feat-x" })
 
         let removeResult = WorktreeManager.remove(repoPath: repo, path: wt, force: false)
-        if case .failure(let err) = removeResult {
+        if case let .failure(err) = removeResult {
             XCTFail("remove failed: \(err.description)")
             return
         }
 
-        guard case .success(let afterRemove) = WorktreeManager.list(repoPath: repo) else {
+        guard case let .success(afterRemove) = WorktreeManager.list(repoPath: repo) else {
             XCTFail("list after remove failed"); return
         }
         XCTAssertEqual(afterRemove.count, 1)
@@ -161,11 +163,11 @@ final class WorktreeManagerTests: XCTestCase {
         let result = WorktreeManager.add(
             repoPath: repo, path: wt, mode: .existing(branch: "side")
         )
-        if case .failure(let err) = result {
+        if case let .failure(err) = result {
             XCTFail("add existing failed: \(err.description)")
             return
         }
-        guard case .success(let infos) = WorktreeManager.list(repoPath: repo) else {
+        guard case let .success(infos) = WorktreeManager.list(repoPath: repo) else {
             XCTFail("list failed"); return
         }
         XCTAssertTrue(infos.contains { $0.branch == "side" })
@@ -184,7 +186,7 @@ final class WorktreeManagerTests: XCTestCase {
             path: wt,
             mode: .existing(branch: "this-branch-does-not-exist-12345")
         )
-        guard case .failure(let err) = result else {
+        guard case let .failure(err) = result else {
             XCTFail("expected failure when branch is unknown")
             return
         }

@@ -67,7 +67,9 @@ final class HookServer {
     private var listenFd: Int32 = -1
     private var source: DispatchSourceRead?
 
-    init(handler: @escaping Handler) { self.handler = handler }
+    init(handler: @escaping Handler) {
+        self.handler = handler
+    }
 
     /// Path agents and the CLI both target. Public so the CLI doesn't have to
     /// hardcode the same string in two places — but agents run in their own
@@ -176,7 +178,8 @@ final class HookServer {
 
         if dict["kind"] as? String == "conversationId",
            let conversationId = dict["conversationId"] as? String,
-           !conversationId.isEmpty {
+           !conversationId.isEmpty
+        {
             return .conversationId(conversationId: conversationId, sessionId: id)
         }
 

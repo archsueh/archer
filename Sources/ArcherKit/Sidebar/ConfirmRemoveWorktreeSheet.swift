@@ -108,7 +108,9 @@ struct ConfirmRemoveWorktreeSheet: View {
         return alsoDelete ? "close & delete" : "close"
     }
 
-    private var worktreePath: URL { workspace.diskPath }
+    private var worktreePath: URL {
+        workspace.diskPath
+    }
 
     private func submit() {
         isWorking = true
@@ -118,7 +120,7 @@ struct ConfirmRemoveWorktreeSheet: View {
             switch outcome {
             case .success:
                 dismiss()
-            case .failure(let msg):
+            case let .failure(msg):
                 isWorking = false
                 errorMessage = msg
             }

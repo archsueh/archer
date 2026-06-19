@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 /// Unit tests for the pure helpers underlying `ToolCallActivityPill`.
 /// The SwiftUI rendering itself is exercised manually (real Claude tab +
@@ -71,7 +71,7 @@ final class ToolCallActivityPillTests: XCTestCase {
             event(tool: "edit", state: .success),
             event(tool: "write", state: .success),
             event(tool: "read", state: .success),
-            event(tool: "find", state: .success),  // → other
+            event(tool: "find", state: .success), // → other
         ]
         let counts = ToolCallActivityPill.toolCounts(in: session.toolCallEvents)
         XCTAssertEqual(counts.bash, 1)
@@ -118,7 +118,7 @@ final class ToolCallActivityPillTests: XCTestCase {
     func testFormatElapsedDays() {
         XCTAssertEqual(ToolCallActivityPill.formatElapsed(86400), "1d 0:00:00")
         // The reported "thousands of minutes" case: ~50h now reads as days.
-        XCTAssertEqual(ToolCallActivityPill.formatElapsed(180000), "2d 2:00:00")
+        XCTAssertEqual(ToolCallActivityPill.formatElapsed(180_000), "2d 2:00:00")
     }
 
     func testDurationLabelUsesCompletedAtWhenAvailable() {

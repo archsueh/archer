@@ -50,7 +50,9 @@ public enum ArcherHookKit {
     /// precmd hook: VIRTUAL_ENV, CONDA_DEFAULT_ENV, NVM_BIN, NVM_DIR,
     /// ARCHER_NODE_VERSION, https_proxy, http_proxy, all_proxy.
     public static func buildEnvPayload(surface: String, args: [String]) -> [String: String] {
-        func arg(_ index: Int) -> String { args.indices.contains(index) ? args[index] : "" }
+        func arg(_ index: Int) -> String {
+            args.indices.contains(index) ? args[index] : ""
+        }
         return [
             "kind": "env",
             "surface": surface,
@@ -147,12 +149,12 @@ public enum ArcherHookKit {
         else { return nil }
 
         let event: String
-        let postSuccessOverride: Bool?  // nil → heuristic, true/false → forced
+        let postSuccessOverride: Bool? // nil → heuristic, true/false → forced
         switch hookEventName {
-        case "PreToolUse":         event = "pre";  postSuccessOverride = nil
-        case "PostToolUse":        event = "post"; postSuccessOverride = nil
+        case "PreToolUse": event = "pre"; postSuccessOverride = nil
+        case "PostToolUse": event = "post"; postSuccessOverride = nil
         case "PostToolUseFailure": event = "post"; postSuccessOverride = false
-        default:                   return nil  // not a tool event we handle
+        default: return nil // not a tool event we handle
         }
 
         let toolInput = parsed["tool_input"] as? [String: Any] ?? [:]
@@ -196,12 +198,12 @@ public enum ArcherHookKit {
         success: Bool?
     ) -> [String: String] {
         var payload: [String: String] = [
-            "kind":       "tool",
-            "surface":    surface,
-            "agent":      agent,
-            "tool_name":  toolName,
+            "kind": "tool",
+            "surface": surface,
+            "agent": agent,
+            "tool_name": toolName,
             "identifier": truncateForPayload(identifier),
-            "event":      event,
+            "event": event,
         ]
         if let toolUseId, !toolUseId.isEmpty {
             payload["tool_use_id"] = toolUseId

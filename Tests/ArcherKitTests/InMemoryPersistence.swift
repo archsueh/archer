@@ -1,5 +1,5 @@
-import Foundation
 @testable import ArcherKit
+import Foundation
 
 /// In-memory `Persistence` for tests — captures `save` calls so assertions
 /// can inspect the most recent snapshot without touching the filesystem.

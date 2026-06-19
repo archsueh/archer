@@ -27,7 +27,7 @@ final class ArcherSettingsModel {
     /// `nil` = not overridden — let libghostty fall back to ghostty's own
     /// config (or its default). Writing a default 13 unconditionally would
     /// silently shadow the user's `~/.config/ghostty/config` font-size.
-    var fontSize: Int? = nil
+    var fontSize: Int?
     var cursorStyle: String = "block"
     /// Picker selection for the terminal theme row. Values are one of:
     /// `defaultThemeSelection`, `customThemeSelection`, or a theme choice id.
@@ -36,7 +36,7 @@ final class ArcherSettingsModel {
     /// Unknown raw `terminal.theme` values from hand-edited settings.json.
     /// Kept so saving an unrelated Settings field doesn't delete a custom
     /// Ghostty theme path/name that the picker cannot represent as a preset.
-    private var customTerminalThemeRawValue: String? = nil
+    private var customTerminalThemeRawValue: String?
 
     /// User-customised order for the `+` menu agent list (Terminal stays
     /// pinned first regardless). Empty = use `AgentTemplate.all` order.
@@ -53,7 +53,7 @@ final class ArcherSettingsModel {
     /// `id` of the template that `+` / `⌘T` should open without prompting.
     /// `nil` (or pointing to a now-hidden / unknown agent) means "ask each
     /// time" — the popover stays. Terminal is always a valid choice.
-    var defaultAgentId: String? = nil
+    var defaultAgentId: String?
     /// User-defined agent entries (`agents.custom` in settings.json). Each
     /// becomes a runtime `AgentTemplate` via `AgentTemplate.fromCustom`,
     /// joins the `+` menu / Settings list alongside the builtin agents,
@@ -330,7 +330,7 @@ final class ArcherSettingsModel {
             && nonEmptyOptions.isEmpty
             && defaultAgentId == nil
             && serialisedCustom.isEmpty
-            && resumeConversations  // default-true is the no-op case
+            && resumeConversations // default-true is the no-op case
         if allDefaults {
             parsed.removeValue(forKey: "agents")
         } else {
@@ -380,7 +380,7 @@ final class ArcherSettingsModel {
             if !p.path.isEmpty { dict["path"] = p.path }
             return dict
         }
-        if serialisedPresets.isEmpty && hiddenPresets.isEmpty {
+        if serialisedPresets.isEmpty, hiddenPresets.isEmpty {
             parsed.removeValue(forKey: "terminals")
         } else {
             var terminals = parsed["terminals"] as? [String: Any] ?? [:]
@@ -390,7 +390,7 @@ final class ArcherSettingsModel {
         }
 
         let statusOrderIsDefault = statusBarItems == StatusBarItemKind.defaultOrder
-        if statusOrderIsDefault && hiddenStatusBarItems.isEmpty && hiddenToolCallAgents.isEmpty {
+        if statusOrderIsDefault, hiddenStatusBarItems.isEmpty, hiddenToolCallAgents.isEmpty {
             parsed.removeValue(forKey: "statusbar")
         } else {
             var statusbar = parsed["statusbar"] as? [String: Any] ?? [:]
@@ -405,7 +405,7 @@ final class ArcherSettingsModel {
             return [
                 "extension": rule.extension,
                 "folder": rule.folder,
-                "priority": rule.priority
+                "priority": rule.priority,
             ]
         }
 
@@ -477,7 +477,8 @@ final class ArcherSettingsModel {
         in themes: [ArcherTerminalTheme] = ArcherTerminalTheme.presets
     ) -> (selection: String, customRawValue: String?) {
         guard let rawTheme,
-              !rawTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+              !rawTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
             return (defaultThemeSelection, nil)
         }
         if rawTheme == autoThemeSelection {
@@ -514,7 +515,9 @@ final class ArcherSettingsModel {
         let usedIds = Set(AgentTemplate.builtin.map(\.id) + customAgents.map(\.id))
         var n = customAgents.count + 1
         var candidate = "custom-\(n)"
-        while usedIds.contains(candidate) { n += 1; candidate = "custom-\(n)" }
+        while usedIds.contains(candidate) {
+            n += 1; candidate = "custom-\(n)"
+        }
         customAgents.append(CustomAgentData(id: candidate))
         scheduleSave()
     }
@@ -534,11 +537,13 @@ final class ArcherSettingsModel {
     func addTerminalPreset() {
         let usedIds = Set(
             AgentTemplate.builtin.map(\.id)
-            + customAgents.map(\.id)
-            + terminalPresets.map(\.id)
+                + customAgents.map(\.id)
+                + terminalPresets.map(\.id)
         )
         var n = terminalPresets.count + 1
-        while usedIds.contains("preset-\(n)") { n += 1 }
+        while usedIds.contains("preset-\(n)") {
+            n += 1
+        }
         terminalPresets.append(TerminalPreset(id: "preset-\(n)"))
         scheduleSave()
     }
@@ -565,7 +570,9 @@ final class ArcherSettingsModel {
 enum SettingsCategory: String, CaseIterable, Identifiable {
     case general, terminalPresets, codingAgents, ssh, notifications, statusBar, advanced, classification // [archer]
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -681,7 +688,6 @@ struct ArcherSettingsView: View {
         .onTapGesture { selected = category }
     }
 
-    @ViewBuilder
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 14) {
@@ -769,7 +775,7 @@ struct ArcherSettingsView: View {
                         .foregroundStyle(Theme.chromeForeground)
                         .monospacedDigit()
                         .frame(width: 28, alignment: .trailing)
-                    Stepper("", value: fontSizeBinding, in: 8...32)
+                    Stepper("", value: fontSizeBinding, in: 8 ... 32)
                         .labelsHidden()
                 }
             }
@@ -886,7 +892,7 @@ struct ArcherSettingsView: View {
         }
     }
 
-    // [archer] begin: classification UI
+    /// [archer] begin: classification UI
     private var classificationDetail: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsRow(label: "require-review-on-classify") {
@@ -895,7 +901,7 @@ struct ArcherSettingsView: View {
                     .toggleStyle(.switch)
             }
             SettingsHairline()
-            
+
             VStack(alignment: .leading, spacing: 0) {
                 Text("classification-rules")
                     .font(Theme.mono(12.5))
@@ -903,7 +909,7 @@ struct ArcherSettingsView: View {
                     .padding(.horizontal, 28)
                     .padding(.top, 14)
                     .padding(.bottom, 8)
-                
+
                 if model.classificationRules.isEmpty {
                     Text("No classification rules defined.")
                         .font(Theme.mono(11.5))
@@ -917,17 +923,17 @@ struct ArcherSettingsView: View {
                                 .font(Theme.mono(12))
                                 .foregroundStyle(Theme.chromeForeground)
                                 .frame(width: 80, alignment: .leading)
-                            
+
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.chromeMuted)
-                            
+
                             Text(rule.folder)
                                 .font(Theme.mono(12))
                                 .foregroundStyle(Theme.chromeForeground)
-                            
+
                             Spacer()
-                            
+
                             Button("delete") {
                                 model.classificationRules.removeAll { $0.id == rule.id }
                                 model.scheduleSave()
@@ -942,16 +948,16 @@ struct ArcherSettingsView: View {
                     }
                 }
             }
-            
+
             SettingsHairline()
-            
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("add-new-rule")
                     .font(Theme.mono(12.5))
                     .foregroundStyle(Theme.chromeForeground)
                     .padding(.horizontal, 28)
                     .padding(.top, 14)
-                
+
                 HStack(spacing: 12) {
                     TextField("ext (e.g. zip)", text: $newRuleExt)
                         .font(Theme.mono(11.5))
@@ -960,11 +966,11 @@ struct ArcherSettingsView: View {
                         .background(Theme.chromeHairline.opacity(0.12))
                         .bracketBorder()
                         .frame(width: 120)
-                    
+
                     Text("to folder")
                         .font(Theme.mono(11.5))
                         .foregroundStyle(Theme.chromeMuted)
-                    
+
                     TextField("folder (e.g. Archives)", text: $newRuleFolder)
                         .font(Theme.mono(11.5))
                         .textFieldStyle(.plain)
@@ -972,7 +978,7 @@ struct ArcherSettingsView: View {
                         .background(Theme.chromeHairline.opacity(0.12))
                         .bracketBorder()
                         .frame(minWidth: 150)
-                    
+
                     Button("+ Add") {
                         let ext = newRuleExt.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                         let folder = newRuleFolder.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -997,6 +1003,7 @@ struct ArcherSettingsView: View {
             }
         }
     }
+
     // [archer] end: classification UI
 
     private var terminalRestartCallout: some View {
@@ -1030,7 +1037,7 @@ struct ArcherSettingsView: View {
         task.launchPath = "/bin/bash"
         task.arguments = [
             "-c",
-            "while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; sleep 0.3; open -n \(bundle)"
+            "while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; sleep 0.3; open -n \(bundle)",
         ]
         try? task.run()
         NSApp.terminate(nil)
@@ -1073,15 +1080,12 @@ struct ArcherSettingsView: View {
         )
     }
 
-    private static let monospaceFamilies: [String] = {
-        NSFontManager.shared.availableFontFamilies
-            .compactMap { family -> String? in
-                guard let font = NSFont(name: family, size: 12), font.isFixedPitch else { return nil }
-                return family
-            }
-            .sorted()
-    }()
-
+    private static let monospaceFamilies: [String] = NSFontManager.shared.availableFontFamilies
+        .compactMap { family -> String? in
+            guard let font = NSFont(name: family, size: 12), font.isFixedPitch else { return nil }
+            return family
+        }
+        .sorted()
 }
 
 private struct SettingsRow<Trailing: View>: View {
@@ -1216,7 +1220,9 @@ private struct AgentReorderList: View {
     /// hidden alike. Hidden agents render greyed out but stay wherever the
     /// user dragged them, so toggling visibility doesn't move them. The
     /// `+` menu's filter to visible-only lives in `AgentTemplate.visibleOrdered`.
-    private var rows: [AgentTemplate] { AgentTemplate.ordered(model: model) }
+    private var rows: [AgentTemplate] {
+        AgentTemplate.ordered(model: model)
+    }
 
     private var hasCustomisation: Bool {
         !model.agentOrder.isEmpty
@@ -1330,7 +1336,6 @@ private struct AgentRow: View {
     /// without reaching for `.alignmentGuide`.
     private static let optionsRowIndent: CGFloat = 56
 
-    @ViewBuilder
     private var expandedForm: some View {
         VStack(alignment: .leading, spacing: 6) {
             if isCustom {
@@ -1414,7 +1419,7 @@ private struct AgentRow: View {
                 .padding(.top, axis == .vertical ? 6 : 0)
             Group {
                 if axis == .vertical {
-                    TextField(placeholder, text: text, axis: .vertical).lineLimit(3...12)
+                    TextField(placeholder, text: text, axis: .vertical).lineLimit(3 ... 12)
                 } else {
                     TextField(placeholder, text: text)
                 }
@@ -1429,7 +1434,6 @@ private struct AgentRow: View {
         .padding(.leading, Self.optionsRowIndent)
         .padding(.trailing, 22)
     }
-
 }
 
 /// Singleton NSWindowController so reopening Settings reuses the same window
@@ -1448,7 +1452,10 @@ final class ArcherSettingsWindowController: NSWindowController {
         super.init(window: nil)
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError()
+    }
 
     static func show(storeProvider: @escaping () -> WorkspaceStore?) {
         let controller = shared
@@ -1793,7 +1800,6 @@ private struct TerminalPresetRow: View {
         .padding(.leading, Self.editRowIndent)
         .padding(.trailing, 22)
     }
-
 }
 
 private struct StatusBarReorderList: View {
@@ -2000,8 +2006,6 @@ private struct StatusBarRow: View {
             ReorderDropZone(row: item, isDragging: isDragging,
                             decode: StatusBarItemKind.init(rawValue:),
                             onDrop: onDrop)
-        } else {
-            EmptyView()
         }
     }
 }

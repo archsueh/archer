@@ -1,6 +1,6 @@
+import ArcherHookKit
 import Darwin
 import Foundation
-import ArcherHookKit
 
 // archer-hook: invoked by an agent's hook system (Claude Code's `--settings`
 // hooks, Codex equivalents, …) and the shell precmd hook (`env` mode) to
@@ -81,7 +81,9 @@ if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "env" {
         //   archer-hook <agent> tool pre  <toolCallId> <toolName> <identifier>
         //   archer-hook <agent> tool post <toolCallId> <toolName> <identifier> <ok|fail>
         let args = CommandLine.arguments
-        func at(_ i: Int) -> String { args.indices.contains(i) ? args[i] : "" }
+        func at(_ i: Int) -> String {
+            args.indices.contains(i) ? args[i] : ""
+        }
         let phase = at(3)
         let toolName = at(5)
         guard phase == "pre" || phase == "post", !toolName.isEmpty else { exit(0) }
@@ -135,7 +137,8 @@ let eventSent = ArcherHookKit.sendPayload(payloadObject, to: socketPath)
 //      but each call still pays a socket connect+write+close roundtrip.
 if payloadObject["agent"] == "claude",
    payloadObject["kind"] != "tool",
-   let conversationId = ArcherHookKit.parseClaudeConversationId(from: stdinData) {
+   let conversationId = ArcherHookKit.parseClaudeConversationId(from: stdinData)
+{
     let payload = ArcherHookKit.buildConversationIdPayload(
         surface: surface,
         conversationId: conversationId

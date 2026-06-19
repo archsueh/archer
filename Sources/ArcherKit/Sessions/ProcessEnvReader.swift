@@ -47,13 +47,19 @@ enum ProcessEnvReader {
         }
         var offset = MemoryLayout<Int32>.size
         // exec_path (NUL-terminated)
-        while offset < length, buffer[offset] != 0 { offset += 1 }
+        while offset < length, buffer[offset] != 0 {
+            offset += 1
+        }
         // alignment-pad nulls between exec_path and argv[0]
-        while offset < length, buffer[offset] == 0 { offset += 1 }
+        while offset < length, buffer[offset] == 0 {
+            offset += 1
+        }
         // skip argc argv strings, each ending in a single null
         var seen = 0
         while seen < Int(argc), offset < length {
-            while offset < length, buffer[offset] != 0 { offset += 1 }
+            while offset < length, buffer[offset] != 0 {
+                offset += 1
+            }
             offset += 1
             seen += 1
         }
@@ -61,16 +67,21 @@ enum ProcessEnvReader {
         // Apple's reference parser explicitly skips it. Without this hop
         // the env loop's `offset == start` guard fires immediately and we
         // miss every KEY=VALUE entry on cold-start.
-        while offset < length, buffer[offset] == 0 { offset += 1 }
+        while offset < length, buffer[offset] == 0 {
+            offset += 1
+        }
         // env block — KEY=VALUE strings until empty entry
         var env: [String: String] = [:]
         while offset < length {
             let start = offset
-            while offset < length, buffer[offset] != 0 { offset += 1 }
+            while offset < length, buffer[offset] != 0 {
+                offset += 1
+            }
             if offset == start { break }
-            let bytes = (start..<offset).map { UInt8(bitPattern: buffer[$0]) }
+            let bytes = (start ..< offset).map { UInt8(bitPattern: buffer[$0]) }
             if let entry = String(bytes: bytes, encoding: .utf8),
-               let eq = entry.firstIndex(of: "=") {
+               let eq = entry.firstIndex(of: "=")
+            {
                 env[String(entry[..<eq])] = String(entry[entry.index(after: eq)...])
             }
             offset += 1

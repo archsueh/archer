@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 @MainActor
 final class NotificationInboxTests: XCTestCase {
@@ -17,7 +17,9 @@ final class NotificationInboxTests: XCTestCase {
 
     func testCapDropsOldest() {
         let inbox = NotificationInbox()
-        for i in 0..<120 { add(inbox, .completed, tab: "\(i)") }
+        for i in 0 ..< 120 {
+            add(inbox, .completed, tab: "\(i)")
+        }
         XCTAssertEqual(inbox.events.count, 100, "capped at 100")
         XCTAssertEqual(inbox.events.first?.tabTitle, "119", "newest kept")
         XCTAssertFalse(inbox.events.contains { $0.tabTitle == "0" }, "oldest dropped")
@@ -31,11 +33,11 @@ final class NotificationInboxTests: XCTestCase {
         XCTAssertEqual(inbox.events.filter { !$0.isRead }.count, 2)
     }
 
-    func testMarkReadClearsOne() {
+    func testMarkReadClearsOne() throws {
         let inbox = NotificationInbox()
         add(inbox, .attention)
         add(inbox, .failure)
-        let id = inbox.events.first!.id
+        let id = try XCTUnwrap(inbox.events.first?.id)
         inbox.markRead(id)
         XCTAssertTrue(inbox.hasUnread, "one still unread")
         XCTAssertEqual(inbox.events.filter { !$0.isRead }.count, 1)
@@ -43,7 +45,9 @@ final class NotificationInboxTests: XCTestCase {
 
     func testMarkAllReadClearsFlag() {
         let inbox = NotificationInbox()
-        for _ in 0..<3 { add(inbox, .attention) }
+        for _ in 0 ..< 3 {
+            add(inbox, .attention)
+        }
         inbox.markAllRead()
         XCTAssertFalse(inbox.hasUnread)
         XCTAssertTrue(inbox.events.allSatisfy { $0.isRead })

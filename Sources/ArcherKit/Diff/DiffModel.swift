@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 /// Git change status types for individual files.
 public enum GitFileStatus: String, Sendable, Codable {
@@ -10,10 +10,10 @@ public enum GitFileStatus: String, Sendable, Codable {
 
 /// A parsed line of a git diff output.
 public enum DiffLineType: String, Sendable, Codable {
-    case added      // starts with "+"
-    case deleted    // starts with "-"
-    case context    // starts with " " or empty
-    case header     // starts with "diff", "index", "---", "+++", or "@@"
+    case added // starts with "+"
+    case deleted // starts with "-"
+    case context // starts with " " or empty
+    case header // starts with "diff", "index", "---", "+++", or "@@"
 }
 
 public struct DiffLine: Identifiable, Sendable, Hashable {
@@ -32,7 +32,10 @@ public struct DiffLine: Identifiable, Sendable, Hashable {
 }
 
 public struct ModifiedFile: Identifiable, Sendable, Hashable {
-    public var id: URL { url }
+    public var id: URL {
+        url
+    }
+
     public let url: URL
     public let status: GitFileStatus
 
@@ -110,10 +113,10 @@ public final class DiffModel: ObservableObject {
 
     public init(rootURL: URL) {
         self.rootURL = rootURL
-        self.gitWatcher = GitWatcher { [weak self] in
+        gitWatcher = GitWatcher { [weak self] in
             self?.refresh()
         }
-        self.gitWatcher?.watch(cwd: rootURL)
+        gitWatcher?.watch(cwd: rootURL)
         refresh()
     }
 
@@ -164,7 +167,7 @@ public final class DiffModel: ObservableObject {
         }
     }
 
-    nonisolated private static func fetchModifiedFiles(cwd: String) -> [ModifiedFile] {
+    private nonisolated static func fetchModifiedFiles(cwd: String) -> [ModifiedFile] {
         guard let output = GitStatusFetcher.runGit(["-C", cwd, "--no-optional-locks", "status", "--porcelain", "-z"]) else {
             return []
         }
@@ -174,14 +177,14 @@ public final class DiffModel: ObservableObject {
         for part in parts {
             let line = part.trimmingCharacters(in: .whitespaces)
             guard line.count > 3 else { continue }
-            
+
             let xCode = line[line.startIndex]
             let yCode = line[line.index(after: line.startIndex)]
-            
+
             // Extract the path (index offset 3 onwards)
             let relativePath = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
             guard !relativePath.isEmpty else { continue }
-            
+
             let url = URL(fileURLWithPath: relativePath, relativeTo: URL(fileURLWithPath: cwd)).standardizedFileURL
 
             let status: GitFileStatus
@@ -199,7 +202,7 @@ public final class DiffModel: ObservableObject {
         }
     }
 
-    nonisolated private static func fetchDiff(cwd: String, fileRelPath: String) -> String {
+    private nonisolated static func fetchDiff(cwd: String, fileRelPath: String) -> String {
         // Run git diff HEAD to show combined staged + unstaged changes
         let args = ["-C", cwd, "--no-optional-locks", "diff", "HEAD", "--no-color", "-U3", "--", fileRelPath]
         if let diff = GitStatusFetcher.runGit(args), !diff.isEmpty {
@@ -216,7 +219,7 @@ public final class DiffModel: ObservableObject {
                     "new file mode 100644",
                     "--- /dev/null",
                     "+++ b/\(fileRelPath)",
-                    "@@ -0,0 +1,\(contentLines.count) @@"
+                    "@@ -0,0 +1,\(contentLines.count) @@",
                 ]
                 for line in contentLines {
                     lines.append("+" + line)

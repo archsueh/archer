@@ -29,18 +29,18 @@ private struct MemoryBankWriter {
         let memoryRoot = URL(fileURLWithPath: "~/Library/Application Support/Archer/memory/claude", isDirectory: true)
             .standardizedFileURL
         let branchDir = memoryRoot.appendingPathComponent(classifierBranch, isDirectory: true)
-        
+
         do {
             try fm.createDirectory(at: branchDir, withIntermediateDirectories: true)
         } catch {
             return
         }
-        
+
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let safePostId = postId.replacingOccurrences(of: "/", with: "_")
         let fileName = "fanbox-\(safePostId)-\(timestamp).json"
         let fileURL = branchDir.appendingPathComponent(fileName)
-        
+
         let metadata: [String: Any] = [
             "source": "fanbox",
             "postId": postId,
@@ -48,9 +48,9 @@ private struct MemoryBankWriter {
             "downloadedAt": timestamp,
             "files": files.map { $0.lastPathComponent },
             "destination": destination.path,
-            "classifierBranch": classifierBranch
+            "classifierBranch": classifierBranch,
         ]
-        
+
         do {
             let data = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted])
             try data.write(to: fileURL, options: .atomic)

@@ -47,14 +47,14 @@ struct PersistedWorkspace: Codable, Equatable {
 
     @MainActor
     init(_ ws: Workspace) {
-        self.id = ws.id
-        self.workingDirectoryPath = ws.workingDirectory.path
-        self.root = PersistedPaneNode(ws.root)
-        self.activePaneId = ws.activePaneId
-        self.customTitle = ws.customTitle
-        self.worktreeParentId = ws.worktreeParentId
-        self.worktreeBranch = ws.worktreeBranch
-        self.worktreePath = ws.worktreePath?.path
+        id = ws.id
+        workingDirectoryPath = ws.workingDirectory.path
+        root = PersistedPaneNode(ws.root)
+        activePaneId = ws.activePaneId
+        customTitle = ws.customTitle
+        worktreeParentId = ws.worktreeParentId
+        worktreeBranch = ws.worktreeBranch
+        worktreePath = ws.worktreePath?.path
     }
 
     init(id: UUID, workingDirectoryPath: String, root: PersistedPaneNode, activePaneId: UUID? = nil, customTitle: String? = nil, worktreeParentId: UUID? = nil, worktreeBranch: String? = nil, worktreePath: String? = nil) {
@@ -71,7 +71,7 @@ struct PersistedWorkspace: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case id, workingDirectoryPath, root, activePaneId, customTitle
         case worktreeParentId, worktreeBranch, worktreePath
-        // Legacy keys
+        /// Legacy keys
         case tabs, activeTabId
     }
 
@@ -97,7 +97,7 @@ struct PersistedWorkspace: Codable, Equatable {
         worktreePath = try c.decodeIfPresent(String.self, forKey: .worktreePath)
         if let root = try c.decodeIfPresent(PersistedPaneNode.self, forKey: .root) {
             self.root = root
-            self.activePaneId = try c.decodeIfPresent(UUID.self, forKey: .activePaneId)
+            activePaneId = try c.decodeIfPresent(UUID.self, forKey: .activePaneId)
         } else {
             // Legacy schema: flat `tabs: [PersistedTab]`. Wrap into a single Pane.
             let legacy = try c.decode([PersistedTab].self, forKey: .tabs)
@@ -107,8 +107,8 @@ struct PersistedWorkspace: Codable, Equatable {
                 tabs: legacy,
                 activeTabId: activeTabId
             )
-            self.root = PersistedPaneNode(id: pane.id, kind: .pane(pane))
-            self.activePaneId = pane.id
+            root = PersistedPaneNode(id: pane.id, kind: .pane(pane))
+            activePaneId = pane.id
         }
     }
 }
@@ -126,12 +126,12 @@ indirect enum PersistedPaneKind: Equatable {
 extension PersistedPaneNode {
     @MainActor
     init(_ node: PaneNode) {
-        self.id = node.id
+        id = node.id
         switch node.content {
-        case .pane(let pane):
-            self.kind = .pane(PersistedPane(pane))
-        case .split(let orientation, let first, let second, let fraction):
-            self.kind = .split(
+        case let .pane(pane):
+            kind = .pane(PersistedPane(pane))
+        case let .split(orientation, first, second, fraction):
+            kind = .split(
                 orientation: orientation,
                 first: PersistedPaneNode(first),
                 second: PersistedPaneNode(second),
@@ -154,9 +154,9 @@ extension PersistedPaneKind: Codable {
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .pane(let p):
+        case let .pane(p):
             try c.encode(p, forKey: .pane)
-        case .split(let orient, let first, let second, let fraction):
+        case let .split(orient, first, second, fraction):
             try c.encode(
                 SplitPayload(orientation: orient, first: first, second: second, fraction: fraction),
                 forKey: .split
@@ -191,9 +191,9 @@ struct PersistedPane: Codable, Equatable {
 
     @MainActor
     init(_ pane: Pane) {
-        self.id = pane.id
-        self.tabs = pane.tabs.map(PersistedTab.init)
-        self.activeTabId = pane.activeTabId
+        id = pane.id
+        tabs = pane.tabs.map(PersistedTab.init)
+        activeTabId = pane.activeTabId
     }
 
     init(id: UUID, tabs: [PersistedTab], activeTabId: UUID? = nil) {
@@ -215,11 +215,11 @@ struct PersistedTab: Codable, Equatable {
 
     @MainActor
     init(_ session: Session) {
-        self.id = session.id
-        self.agentId = session.agent.id
-        self.currentDirectoryPath = session.currentDirectory.path
-        self.customTitle = session.customTitle
-        self.conversationId = session.conversationId
+        id = session.id
+        agentId = session.agent.id
+        currentDirectoryPath = session.currentDirectory.path
+        customTitle = session.customTitle
+        conversationId = session.conversationId
     }
 
     init(id: UUID, agentId: String, currentDirectoryPath: String, customTitle: String? = nil, conversationId: String? = nil) {
@@ -260,7 +260,9 @@ final class AppPersistence {
     }
 
     /// Window ids in restore order — `AppDelegate` rebuilds one window each.
-    var windowIds: [UUID] { windows.map(\.id) }
+    var windowIds: [UUID] {
+        windows.map(\.id)
+    }
 
     func state(for id: UUID) -> PersistedState? {
         windows.first { $0.id == id }?.state
@@ -315,6 +317,11 @@ struct WindowPersistence: Persistence {
     let windowId: UUID
     let app: AppPersistence
 
-    func load() -> PersistedState? { app.state(for: windowId) }
-    func save(_ state: PersistedState) { app.setWindow(windowId, state: state) }
+    func load() -> PersistedState? {
+        app.state(for: windowId)
+    }
+
+    func save(_ state: PersistedState) {
+        app.setWindow(windowId, state: state)
+    }
 }

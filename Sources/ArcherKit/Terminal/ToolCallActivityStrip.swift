@@ -21,13 +21,13 @@ extension ToolCallEventState {
             return Presentation(
                 textColor: Theme.activityRunning,
                 glyphColor: Theme.activityRunning,
-                glyph: "⋯",  // ASCII ellipsis (no ProgressView surface)
+                glyph: "⋯", // ASCII ellipsis (no ProgressView surface)
                 accessibleName: "running"
             )
         case .success:
             return Presentation(
                 textColor: Theme.chromeForeground,
-                glyphColor: Theme.gitInsertion,  // DRY reuse — same green as git diff
+                glyphColor: Theme.gitInsertion, // DRY reuse — same green as git diff
                 glyph: "✓",
                 accessibleName: "succeeded"
             )
@@ -211,21 +211,21 @@ struct ToolCallActivityPill: View {
         // read / edit / grep / find / ls) hit the same icons as Claude's
         // capitalized ones — and add Pi's find / ls which Claude lacks.
         switch toolName.lowercased() {
-        case "bash":                       return "terminal"
+        case "bash": return "terminal"
         case "edit", "write", "multiedit": return "pencil"
-        case "read":                       return "doc.text"
-        case "notebookedit":               return "book"
-        case "glob", "grep", "find":       return "magnifyingglass"
-        case "ls":                         return "list.bullet"
-        case "webfetch", "websearch":      return "globe"
-        case "task":                       return "rectangle.stack"
-        default:                           return "questionmark.app"
+        case "read": return "doc.text"
+        case "notebookedit": return "book"
+        case "glob", "grep", "find": return "magnifyingglass"
+        case "ls": return "list.bullet"
+        case "webfetch", "websearch": return "globe"
+        case "task": return "rectangle.stack"
+        default: return "questionmark.app"
         }
     }
 
-    // stateGlyph moved to ToolCallEventState.presentation.glyph — call via
-    // `event.state.presentation.glyph`. The static remains as a forwarder
-    // for any tests still pinning the public surface.
+    /// stateGlyph moved to ToolCallEventState.presentation.glyph — call via
+    /// `event.state.presentation.glyph`. The static remains as a forwarder
+    /// for any tests still pinning the public surface.
     static func stateGlyph(for event: ToolCallEvent) -> String {
         event.state.presentation.glyph
     }
@@ -271,10 +271,10 @@ struct ToolCallActivityPill: View {
         for event in events {
             // Lowercased so Pi's lowercase tool names bucket with Claude's.
             switch event.toolName.lowercased() {
-            case "bash":                       bash += 1
+            case "bash": bash += 1
             case "edit", "write", "multiedit": edit += 1
-            case "read":                       read += 1
-            default:                           other += 1
+            case "read": read += 1
+            default: other += 1
             }
         }
         return ToolCounts(bash: bash, edit: edit, read: read, other: other)

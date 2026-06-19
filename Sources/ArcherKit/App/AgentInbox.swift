@@ -48,9 +48,14 @@ final class NotificationInbox {
     private(set) var events: [Event] = []
 
     /// Drives the bell's red dot — true when any event is unread.
-    var hasUnread: Bool { events.contains { !$0.isRead } }
+    var hasUnread: Bool {
+        events.contains { !$0.isRead }
+    }
+
     /// Unread count — surfaced as the header badge.
-    var unreadCount: Int { events.lazy.filter { !$0.isRead }.count }
+    var unreadCount: Int {
+        events.lazy.filter { !$0.isRead }.count
+    }
 
     func add(kind: SessionAlertKind, sessionId: UUID, agent: AgentTemplate, tab: String, workspace: String, isRead: Bool = false) {
         var event = Event(
@@ -85,7 +90,9 @@ final class NotificationInbox {
     }
 
     func markAllRead() {
-        for i in events.indices where !events[i].isRead { events[i].isRead = true }
+        for i in events.indices where !events[i].isRead {
+            events[i].isRead = true
+        }
     }
 
     func clearAll() {
@@ -110,7 +117,7 @@ enum InboxTime {
 /// two can't drift — a mismatch leaves a chrome strip at the panel's edge. The
 /// per-section frames reference these same constants.
 enum InboxLayout {
-    static let headerHeight: CGFloat = 50   // single row, fits the 28pt buttons
+    static let headerHeight: CGFloat = 50 // single row, fits the 28pt buttons
     static let rowHeight: CGFloat = 50
     static let emptyHeight: CGFloat = 100
     static let maxListHeight: CGFloat = 412
@@ -119,6 +126,7 @@ enum InboxLayout {
     static func listHeight(rowCount: Int) -> CGFloat {
         min(CGFloat(rowCount) * rowHeight + 8, maxListHeight)
     }
+
     /// Total panel content: header + hairline + list (or the empty block).
     static func panelHeight(rowCount: Int) -> CGFloat {
         let base = headerHeight + 1
@@ -254,10 +262,10 @@ private struct InboxRow: View {
     let event: NotificationInbox.Event
     @State private var isHovered = false
 
-    // `Theme.activity*` is @MainActor; resolve the kind accent here in the
-    // view body rather than on the nonisolated `Event` struct. The left bar
-    // carries the kind (amber=attention / red=failure / blue=done); a read
-    // row dims the whole line instead of showing a separate unread dot.
+    /// `Theme.activity*` is @MainActor; resolve the kind accent here in the
+    /// view body rather than on the nonisolated `Event` struct. The left bar
+    /// carries the kind (amber=attention / red=failure / blue=done); a read
+    /// row dims the whole line instead of showing a separate unread dot.
     private var accent: Color {
         switch event.kind {
         case .attention: return Theme.activityAttention
@@ -340,7 +348,7 @@ final class InboxWindowController: NSWindowController {
         )
     }
 
-    @objc private func panelResignedKey(_ note: Notification) {
+    @objc private func panelResignedKey(_: Notification) {
         dismiss()
     }
 

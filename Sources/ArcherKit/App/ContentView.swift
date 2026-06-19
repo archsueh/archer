@@ -219,7 +219,6 @@ struct ContentView: View {
             panelSide: .trailing
         )
     }
-
 }
 
 // MARK: - Agent Template Picker (Topbar Dropdown)
