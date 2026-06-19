@@ -195,7 +195,7 @@ echo "==> Adhoc codesign (skips Gatekeeper kill on first launch)"
 # Sign inside-out: inner resource bundle first, then binaries, then the
 # .app — each layer wants its descendants already signed before signing
 # itself.
-ENTITLEMENTS="$(mktemp)/entitlements.plist"
+ENTITLEMENTS="$(mktemp -d)/entitlements.plist"
 cat > "$ENTITLEMENTS" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -224,7 +224,7 @@ codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/Resour
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/MacOS/${APP_NAME}"
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/MacOS/ArcherHook"
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}" 2>&1 | tail -3
-rm -f "$ENTITLEMENTS"
+rm -rf "$(dirname "$ENTITLEMENTS")"
 
 echo ""
 echo "✓ Built ${APP} (v${VERSION})"
