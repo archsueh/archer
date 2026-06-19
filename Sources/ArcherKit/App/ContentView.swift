@@ -64,19 +64,6 @@ struct ContentView: View {
                         width: store.panelWidths.rightPanel)
                         .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
                 }
-                if store.downloaderPanelMode != .hidden { // [archer]
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                        .overlay {
-                            if firstActiveRightPanel == .downloaderPanel {
-                                rightResizer
-                            }
-                        }
-                    FanboxDownloaderView(rootURL: store.active?.workingDirectory
-                        ?? FileManager.default.homeDirectoryForCurrentUser,
-                        onFinished: {},
-                        width: store.panelWidths.rightPanel)
-                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
-                }
             }
         }
         .background(chromeBackground.opacity(Theme.glassOpacity)) // [archer] glass
@@ -146,16 +133,6 @@ struct ContentView: View {
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setDiffPanelMode(store.diffPanelMode.next)
-                }
-            }
-            HoverableIconButton( // [archer]
-                systemName: "square.and.arrow.down",
-                fontSize: 12,
-                size: 28,
-                help: L10n.string("Fanbox Downloader")
-            ) {
-                withAnimation(Theme.chromeTransition) {
-                    store.setDownloaderPanelMode(store.downloaderPanelMode.next)
                 }
             }
             HoverableIconButton(
