@@ -419,29 +419,16 @@ struct SidebarView: View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 2) {
-                    ForEach(SidebarSection.allCases) { section in
-                        let items: [SidebarRowItem] = {
-                            switch section {
-                            case .favorites: return favoriteItems
-                            case .workspaces: return workspaceItems
-                            case .tools: return toolItems
-                            }
-                        }()
-                        SectionView(
-                            data: SectionData(
-                                section: section,
-                                items: items,
-                                isCollapsed: isSectionCollapsed(section),
-                                onToggle: { toggleSection(section) }
-                            ),
-                            store: store,
-                            draggingId: $draggingWorkspaceId,
-                            onActivate: { store.activateWorkspace($0) },
-                            onCreateWorktree: { presentCreateWorktree($0) },
-                            onGoToSource: { store.activateWorkspace($0) },
-                            onRevealForRename: { revealWorkspaceForRename($0, using: proxy) },
-                            collapsedParents: $collapsedParents
-                        )
+                    // Flat workspace list (Kooky parity) — no section header.
+                    // A workspace is "top-level" when it has no parent, or its
+                    // parent is gone (defensive: a stranded worktree still shows).
+                    let parentIds = Set(store.workspaces.map(\.id))
+                    let topLevel = store.workspaces.enumerated().filter { _, ws in
+                        guard let parentId = ws.worktreeParentId else { return true }
+                        return !parentIds.contains(parentId)
+                    }
+                    ForEach(Array(topLevel), id: \.element.id) { index, workspace in
+                        workspaceTree(parent: workspace, parentIndex: index)
                     }
                 }
                 .padding(.horizontal, Theme.space2)
@@ -451,6 +438,50 @@ struct SidebarView: View {
                 if let ws = store.pendingRenameWorkspace { revealWorkspaceForRename(ws, using: proxy) }
             }
             .onAppear { if let ws = store.pendingRenameWorkspace { revealWorkspaceForRename(ws, using: proxy) } }
+        }
+    }
+
+    /// One source workspace row plus its worktree children (when expanded).
+    @ViewBuilder
+    private func workspaceTree(parent: Workspace, parentIndex: Int) -> some View {
+        let worktrees = store.workspaces.filter { $0.worktreeParentId == parent.id }
+        let hasWorktrees = !worktrees.isEmpty
+        let isCollapsed = collapsedParents.contains(parent.id)
+        let canCreate = canCreateWorktree(from: parent)
+
+        DraggableWorkspaceRow(
+            workspace: parent,
+            store: store,
+            myIndex: parentIndex,
+            isCompact: false,
+            draggingId: $draggingWorkspaceId,
+            disclosure: hasWorktrees
+                ? SidebarWorkspaceRow.WorktreeDisclosure(isCollapsed: isCollapsed, toggle: { toggleCollapsed(parent.id) })
+                : nil,
+            onCreateWorktree: canCreate ? { presentCreateWorktree(parent) } : nil
+        )
+
+        if hasWorktrees && !isCollapsed {
+            ForEach(worktrees) { worktree in
+                SidebarWorkspaceRow(
+                    workspace: worktree,
+                    isActive: worktree.id == store.activeWorkspaceId,
+                    isCompact: false,
+                    canCloseOthers: store.workspaces.count > 1,
+                    onActivate: { store.activateWorkspace(worktree) },
+                    onClose: { store.requestCloseWorkspace(worktree) },
+                    onCloseOthers: { store.closeOtherWorkspaces(keeping: worktree) },
+                    onDuplicate: { store.duplicateWorkspace(worktree) },
+                    onRename: { store.renameWorkspace(worktree, to: $0) },
+                    onGoToSource: { store.activateWorkspace(parent) }
+                )
+            }
+        }
+    }
+
+    private func toggleCollapsed(_ id: UUID) {
+        withAnimation(Theme.collapseAnimation) {
+            if collapsedParents.contains(id) { collapsedParents.remove(id) } else { collapsedParents.insert(id) }
         }
     }
 
