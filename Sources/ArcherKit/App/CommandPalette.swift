@@ -397,15 +397,15 @@ struct SearchTriggerPill: View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Theme.chromeMuted)
+                .foregroundStyle(Theme.chromeForeground.opacity(0.75))
             Text("search workspace, tab, agent…")
                 .font(Theme.mono(11))
-                .foregroundStyle(Theme.chromeMuted)
+                .foregroundStyle(Theme.chromeForeground.opacity(0.75))
                 .lineLimit(1)
             Spacer(minLength: 14)
             Text("⌘P")
                 .font(Theme.mono(10, weight: .medium))
-                .foregroundStyle(Theme.chromeMuted.opacity(0.55))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.5))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
