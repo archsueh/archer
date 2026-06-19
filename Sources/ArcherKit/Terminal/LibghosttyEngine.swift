@@ -239,6 +239,14 @@ final class LibghosttyEngine: TerminalEngine {
         get { surfaceView.onProcessExitedCleanly }
         set { surfaceView.onProcessExitedCleanly = newValue }
     }
+    var onScrollPositionChange: ((_ offset: Int, _ total: Int, _ visible: Int) -> Void)? {
+        get { surfaceView.onScrollPositionChange }
+        set { surfaceView.onScrollPositionChange = newValue }
+    }
+    var onNewOutputWhileScrolledUp: (() -> Void)? {
+        get { surfaceView.onNewOutputWhileScrolledUp }
+        set { surfaceView.onNewOutputWhileScrolledUp = newValue }
+    }
     var onSearchStart: ((String) -> Void)? {
         get { surfaceView.onSearchStart }
         set { surfaceView.onSearchStart = newValue }
@@ -369,6 +377,8 @@ final class GhosttySurfaceView: NSView {
     var onCommandFinished: ((Int?, TimeInterval) -> Void)?
     var onUserInput: (() -> Void)?
     var onProcessExitedCleanly: (() -> Void)?
+    var onScrollPositionChange: ((_ offset: Int, _ total: Int, _ visible: Int) -> Void)?
+    var onNewOutputWhileScrolledUp: (() -> Void)?
     var onSearchStart: ((String) -> Void)?
     var onSearchEnd: (() -> Void)?
     var onSearchTotal: ((Int) -> Void)?
@@ -1079,10 +1089,20 @@ final class GhosttySurfaceView: NSView {
         // Track bottom-pinned state on every tick — including the ones we skip
         // below for indicator purposes — so the resize re-pin in
         // propagateSizeToSurface always sees a current value.
+        let wasAtBottom = viewportAtBottom
         viewportAtBottom = Self.isViewportAtBottom(total: total, offset: offset, len: len)
         guard total > len, len > 0 else { return }
         let next = (total: total, offset: offset, len: len)
         let previous = lastScrollbar
+        
+        // Fire scroll position change callback for persistence
+        onScrollPositionChange?(Int(offset), Int(total), Int(len))
+        
+        // Fire "new output while scrolled up" when content grows while not at bottom
+        if !wasAtBottom && previous != nil && total > (previous?.total ?? 0) {
+            onNewOutputWhileScrolledUp?()
+        }
+        
         guard previous?.total != total
                 || previous?.offset != offset
                 || previous?.len != len else { return }
