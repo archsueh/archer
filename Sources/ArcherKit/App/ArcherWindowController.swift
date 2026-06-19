@@ -43,7 +43,10 @@ final class ArcherWindowController: NSWindowController, NSWindowDelegate {
         store.onBecameEmpty = { [weak self] in self?.close() }
     }
 
-    required init?(coder: NSCoder) { fatalError("not a storyboard window") }
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("not a storyboard window")
+    }
 
     /// Builds a archer main window with the standard chrome. Mirrors the
     /// config that used to live inline in `applicationDidFinishLaunching`.
@@ -74,11 +77,11 @@ final class ArcherWindowController: NSWindowController, NSWindowDelegate {
         return window
     }
 
-    func windowWillClose(_ notification: Notification) {
+    func windowWillClose(_: Notification) {
         onWillClose?(self)
     }
 
-    func windowDidBecomeKey(_ notification: Notification) {
+    func windowDidBecomeKey(_: Notification) {
         onDidBecomeKey?(self)
     }
 }

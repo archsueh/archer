@@ -1,19 +1,18 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
-// [archer] P2: resizable panel width model — pure clamp + persistence logic.
+/// [archer] P2: resizable panel width model — pure clamp + persistence logic.
 final class PanelResizeTests: XCTestCase {
-
     func testClampWithinRangeUnchanged() {
-        XCTAssertEqual(PanelWidths.clamp(300, to: 220...560), 300)
+        XCTAssertEqual(PanelWidths.clamp(300, to: 220 ... 560), 300)
     }
 
     func testClampBelowMinSnapsToMin() {
-        XCTAssertEqual(PanelWidths.clamp(100, to: 160...420), 160)
+        XCTAssertEqual(PanelWidths.clamp(100, to: 160 ... 420), 160)
     }
 
     func testClampAboveMaxSnapsToMax() {
-        XCTAssertEqual(PanelWidths.clamp(9999, to: 160...420), 420)
+        XCTAssertEqual(PanelWidths.clamp(9999, to: 160 ... 420), 420)
     }
 
     func testResizeSidebarClampsToRange() {
@@ -32,8 +31,8 @@ final class PanelResizeTests: XCTestCase {
 
     func testDefaultsMatchExistingLayout() {
         let w = PanelWidths()
-        XCTAssertEqual(w.sidebar, 220)      // SidebarView.fullWidth
-        XCTAssertEqual(w.rightPanel, 280)   // DiffPanelView fixed width
+        XCTAssertEqual(w.sidebar, 220) // SidebarView.fullWidth
+        XCTAssertEqual(w.rightPanel, 280) // DiffPanelView fixed width
     }
 
     func testCodableRoundTrip() throws {

@@ -18,7 +18,9 @@ final class UsageStripModel: ObservableObject {
         }
     }
 
-    func stop() { task?.cancel(); task = nil }
+    func stop() {
+        task?.cancel(); task = nil
+    }
 
     private func refresh() async {
         do {

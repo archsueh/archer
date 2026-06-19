@@ -1,7 +1,6 @@
 import AppKit
 import GhosttyKit
 
-
 // MARK: - LibghosttyApp
 
 /// Process-wide libghostty runtime. ghostty_init runs once; every Surface is
@@ -38,8 +37,8 @@ final class LibghosttyApp {
             NSLog("archer: ghostty_config_new failed")
             return
         }
-        self.app = ghostty_app_new(&runtime, config)
-        if self.app == nil {
+        app = ghostty_app_new(&runtime, config)
+        if app == nil {
             NSLog("archer: ghostty_app_new failed")
         }
     }
@@ -205,6 +204,7 @@ private let archerWriteClipboardCb: ghostty_runtime_write_clipboard_cb = { _, ki
         pb.setString(text, forType: .string)
     }
 }
+
 private let archerCloseSurfaceCb: ghostty_runtime_close_surface_cb = { _, _ in }
 
 // MARK: - LibghosttyEngine
@@ -213,56 +213,74 @@ private let archerCloseSurfaceCb: ghostty_runtime_close_surface_cb = { _, _ in }
 final class LibghosttyEngine: TerminalEngine {
     private let surfaceView: GhosttySurfaceView
 
-    var view: NSView { surfaceView }
-    var backgroundColor: NSColor { Theme.terminalSurface }
+    var view: NSView {
+        surfaceView
+    }
+
+    var backgroundColor: NSColor {
+        Theme.terminalSurface
+    }
+
     var onPwdChange: ((String) -> Void)? {
         get { surfaceView.onPwdChange }
         set { surfaceView.onPwdChange = newValue }
     }
+
     var onTitleChange: ((String) -> Void)? {
         get { surfaceView.onTitleChange }
         set { surfaceView.onTitleChange = newValue }
     }
+
     var onFocus: (() -> Void)? {
         get { surfaceView.onFocus }
         set { surfaceView.onFocus = newValue }
     }
+
     var onCommandFinished: ((Int?, TimeInterval) -> Void)? {
         get { surfaceView.onCommandFinished }
         set { surfaceView.onCommandFinished = newValue }
     }
+
     var onUserInput: (() -> Void)? {
         get { surfaceView.onUserInput }
         set { surfaceView.onUserInput = newValue }
     }
+
     var onProcessExitedCleanly: (() -> Void)? {
         get { surfaceView.onProcessExitedCleanly }
         set { surfaceView.onProcessExitedCleanly = newValue }
     }
+
     var onScrollPositionChange: ((_ offset: Int, _ total: Int, _ visible: Int) -> Void)? {
         get { surfaceView.onScrollPositionChange }
         set { surfaceView.onScrollPositionChange = newValue }
     }
+
     var onNewOutputWhileScrolledUp: (() -> Void)? {
         get { surfaceView.onNewOutputWhileScrolledUp }
         set { surfaceView.onNewOutputWhileScrolledUp = newValue }
     }
+
     var onSearchStart: ((String) -> Void)? {
         get { surfaceView.onSearchStart }
         set { surfaceView.onSearchStart = newValue }
     }
+
     var onSearchEnd: (() -> Void)? {
         get { surfaceView.onSearchEnd }
         set { surfaceView.onSearchEnd = newValue }
     }
+
     var onSearchTotal: ((Int) -> Void)? {
         get { surfaceView.onSearchTotal }
         set { surfaceView.onSearchTotal = newValue }
     }
+
     var onSearchSelected: ((Int) -> Void)? {
         get { surfaceView.onSearchSelected }
         set { surfaceView.onSearchSelected = newValue }
     }
+
     var foregroundPid: pid_t? {
         guard let surface = surfaceView.surface else { return nil }
         let pid = pid_t(ghostty_surface_foreground_pid(surface))
@@ -322,9 +340,9 @@ final class LibghosttyEngine: TerminalEngine {
 
 @MainActor
 private enum GhosttySurfaceRegistry {
-    // `NSHashTable.weakObjects()` handles weak storage + compaction
-    // internally — every `register` is O(1), and dead refs disappear on
-    // their own (no manual `filter`).
+    /// `NSHashTable.weakObjects()` handles weak storage + compaction
+    /// internally — every `register` is O(1), and dead refs disappear on
+    /// their own (no manual `filter`).
     private static let views: NSHashTable<GhosttySurfaceView> = .weakObjects()
 
     static func register(_ view: GhosttySurfaceView) {
@@ -393,6 +411,7 @@ final class GhosttySurfaceView: NSView {
             updateDrawTimer()
         }
     }
+
     /// In-progress IME preedit string. `setMarkedText` writes it,
     /// `unmarkText` / `insertText` clear it. Mirrors ghostty.app's
     /// `markedText` field — `hasMarkedText() = !markedText.isEmpty`,
@@ -465,7 +484,7 @@ final class GhosttySurfaceView: NSView {
 
     private var currentCursor: NSCursor = .iBeam
 
-    override func cursorUpdate(with event: NSEvent) {
+    override func cursorUpdate(with _: NSEvent) {
         currentCursor.set()
     }
 
@@ -496,7 +515,8 @@ final class GhosttySurfaceView: NSView {
         cursor.set()
     }
 
-    required init?(coder: NSCoder) {
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
         fatalError("init(coder:) is not used")
     }
 
@@ -575,7 +595,7 @@ final class GhosttySurfaceView: NSView {
         // Dynamic count of env entries — strdup each, free after surface_new.
         // libghostty copies the strings during init, so the lifetime only needs
         // to span the call below.
-        let envCStrings = envDict.flatMap { (k, v) -> [UnsafeMutablePointer<CChar>] in
+        let envCStrings = envDict.flatMap { k, v -> [UnsafeMutablePointer<CChar>] in
             [strdup(k)!, strdup(v)!]
         }
         defer { envCStrings.forEach { free($0) } }
@@ -640,7 +660,9 @@ final class GhosttySurfaceView: NSView {
         drawTimer = nil
     }
 
-    override var acceptsFirstResponder: Bool { true }
+    override var acceptsFirstResponder: Bool {
+        true
+    }
 
     /// Toggled true around animated layout changes (pane zoom). Per-frame
     /// `setFrameSize` callbacks then skip the SIGWINCH-propagating
@@ -738,14 +760,14 @@ final class GhosttySurfaceView: NSView {
         // isn't what most shells recognise.
         if cmdOnly {
             switch event.keyCode {
-            case 123: sendInputBytes("\u{01}", to: surface); return  // Cmd+← → ^A
-            case 124: sendInputBytes("\u{05}", to: surface); return  // Cmd+→ → ^E
-            case 51:  sendInputBytes("\u{15}", to: surface); return  // Cmd+⌫ → ^U
-            default:  break
+            case 123: sendInputBytes("\u{01}", to: surface); return // Cmd+← → ^A
+            case 124: sendInputBytes("\u{05}", to: surface); return // Cmd+→ → ^E
+            case 51: sendInputBytes("\u{15}", to: surface); return // Cmd+⌫ → ^U
+            default: break
             }
         }
         if mods.contains(.option), !cmd, !mods.contains(.control), event.keyCode == 51 {
-            sendInputBytes("\u{17}", to: surface)                    // Option+⌫ → ^W
+            sendInputBytes("\u{17}", to: surface) // Option+⌫ → ^W
             return
         }
 
@@ -765,14 +787,16 @@ final class GhosttySurfaceView: NSView {
         // declines the key — shouldn't happen for a focused surface — fall
         // back to the CSI form; a non-mode-aware arrow still beats a dead one.
         if !hasMarkedText(),
-           Self.shouldForwardModeAwareKeyToLibghostty(keyCode: event.keyCode, modifierFlags: mods) {
+           Self.shouldForwardModeAwareKeyToLibghostty(keyCode: event.keyCode, modifierFlags: mods)
+        {
             // Arrow keys at a shell prompt recall history (↑/↓) or move the
             // cursor (←/→) — the start of the next command, so clear a stale
             // command-failure dot. Scrollback is the wheel, not arrows; inside
             // a TUI the dot is already cleared, so this is a no-op there.
             onUserInput?()
             if !sendKey(event: event, action: GHOSTTY_ACTION_PRESS, surface: surface),
-               let bytes = Self.handWrittenEscapeSequence(forKeyCode: event.keyCode, modifierFlags: mods) {
+               let bytes = Self.handWrittenEscapeSequence(forKeyCode: event.keyCode, modifierFlags: mods)
+            {
                 sendInputBytes(bytes, to: surface)
             }
             return
@@ -782,7 +806,8 @@ final class GhosttySurfaceView: NSView {
         // while IME is composing so Enter / Esc / arrows can dismiss / accept
         // the candidate window without leaking through to the PTY.
         if !hasMarkedText(),
-           let bytes = Self.handWrittenEscapeSequence(forKeyCode: event.keyCode, modifierFlags: mods) {
+           let bytes = Self.handWrittenEscapeSequence(forKeyCode: event.keyCode, modifierFlags: mods)
+        {
             sendInputBytes(bytes, to: surface)
             return
         }
@@ -791,7 +816,8 @@ final class GhosttySurfaceView: NSView {
         // "\u{01}"); IME would swallow these, so we forward them ourselves.
         if mods.contains(.control), !mods.contains(.option),
            let chars = event.characters, !chars.isEmpty,
-           let scalar = chars.unicodeScalars.first?.value, scalar < 0x20 {
+           let scalar = chars.unicodeScalars.first?.value, scalar < 0x20
+        {
             sendInputBytes(chars, to: surface)
             return
         }
@@ -843,7 +869,7 @@ final class GhosttySurfaceView: NSView {
     private func sendKeyText(_ text: String, to surface: ghostty_surface_t) {
         guard !text.isEmpty else { return }
         if let first = text.utf8.first, first < 0x20 {
-            sendInputBytes(text, to: surface)  // control byte → fires onUserInput there
+            sendInputBytes(text, to: surface) // control byte → fires onUserInput there
             return
         }
         // Visible typed text is the start of the next command — clear a stale
@@ -896,7 +922,7 @@ final class GhosttySurfaceView: NSView {
             return false
         }
         switch keyCode {
-        case 123, 124, 125, 126: return true  // left, right, down, up
+        case 123, 124, 125, 126: return true // left, right, down, up
         default: return false
         }
     }
@@ -919,10 +945,9 @@ final class GhosttySurfaceView: NSView {
             // Claude Code's documented `\` + Enter → newline trick both
             // honor this. `\n` alone is useless: ZLE binds it to accept-line.
             return mods.contains(.shift) ? "\\\r" : "\r"
-        case 48:  return mods.contains(.shift) ? "\u{1B}[Z" : "\t"  // Tab / Shift+Tab
-        case 51:  return "\u{7F}"                          // Backspace (DEL)
-        case 53:  return "\u{1B}"                          // Escape
-
+        case 48: return mods.contains(.shift) ? "\u{1B}[Z" : "\t" // Tab / Shift+Tab
+        case 51: return "\u{7F}" // Backspace (DEL)
+        case 53: return "\u{1B}" // Escape
         // Modified arrows (`ESC [ 1;m x`) resolve here. Unmodified arrows are
         // routed through `ghostty_surface_key` in `keyDown` so libghostty
         // picks CSI vs SS3 per DECCKM; these `csiArrow` forms are also that
@@ -931,51 +956,48 @@ final class GhosttySurfaceView: NSView {
         case 124: return csiArrow("C", modDigit: modDigit)
         case 125: return csiArrow("B", modDigit: modDigit)
         case 126: return csiArrow("A", modDigit: modDigit)
-
         // Control pad
-        case 115: return csiArrow("H", modDigit: modDigit)  // Home
-        case 119: return csiArrow("F", modDigit: modDigit)  // End
-        case 116: return csiTilde("5", modDigit: modDigit)  // Page Up
-        case 121: return csiTilde("6", modDigit: modDigit)  // Page Down
-        case 117: return csiTilde("3", modDigit: modDigit)  // Forward Delete
-        case 114: return csiTilde("2", modDigit: modDigit)  // Help / Insert
-
+        case 115: return csiArrow("H", modDigit: modDigit) // Home
+        case 119: return csiArrow("F", modDigit: modDigit) // End
+        case 116: return csiTilde("5", modDigit: modDigit) // Page Up
+        case 121: return csiTilde("6", modDigit: modDigit) // Page Down
+        case 117: return csiTilde("3", modDigit: modDigit) // Forward Delete
+        case 114: return csiTilde("2", modDigit: modDigit) // Help / Insert
         // Function keys
-        case 122: return ssFnKey("P", modDigit: modDigit)   // F1
-        case 120: return ssFnKey("Q", modDigit: modDigit)   // F2
-        case 99:  return ssFnKey("R", modDigit: modDigit)   // F3
-        case 118: return ssFnKey("S", modDigit: modDigit)   // F4
-        case 96:  return csiTilde("15", modDigit: modDigit) // F5
-        case 97:  return csiTilde("17", modDigit: modDigit) // F6
-        case 98:  return csiTilde("18", modDigit: modDigit) // F7
+        case 122: return ssFnKey("P", modDigit: modDigit) // F1
+        case 120: return ssFnKey("Q", modDigit: modDigit) // F2
+        case 99: return ssFnKey("R", modDigit: modDigit) // F3
+        case 118: return ssFnKey("S", modDigit: modDigit) // F4
+        case 96: return csiTilde("15", modDigit: modDigit) // F5
+        case 97: return csiTilde("17", modDigit: modDigit) // F6
+        case 98: return csiTilde("18", modDigit: modDigit) // F7
         case 100: return csiTilde("19", modDigit: modDigit) // F8
         case 101: return csiTilde("20", modDigit: modDigit) // F9
         case 109: return csiTilde("21", modDigit: modDigit) // F10
         case 103: return csiTilde("23", modDigit: modDigit) // F11
         case 111: return csiTilde("24", modDigit: modDigit) // F12
-
-        default:  return nil
+        default: return nil
         }
     }
 
     /// CSI modifier digit: 2 = Shift, 3 = Alt, 4 = Shift+Alt, 5 = Ctrl, … 8.
     /// Returns nil when no modifier is set so the unmodified sequence is used.
-    nonisolated private static func csiModifierDigit(shift: Bool, alt: Bool, ctrl: Bool) -> Int? {
+    private nonisolated static func csiModifierDigit(shift: Bool, alt: Bool, ctrl: Bool) -> Int? {
         let mask = (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0)
         return mask == 0 ? nil : mask + 1
     }
 
-    nonisolated private static func csiArrow(_ final: String, modDigit: Int?) -> String {
+    private nonisolated static func csiArrow(_ final: String, modDigit: Int?) -> String {
         if let m = modDigit { return "\u{1B}[1;\(m)\(final)" }
         return "\u{1B}[\(final)"
     }
 
-    nonisolated private static func csiTilde(_ number: String, modDigit: Int?) -> String {
+    private nonisolated static func csiTilde(_ number: String, modDigit: Int?) -> String {
         if let m = modDigit { return "\u{1B}[\(number);\(m)~" }
         return "\u{1B}[\(number)~"
     }
 
-    nonisolated private static func ssFnKey(_ final: String, modDigit: Int?) -> String {
+    private nonisolated static func ssFnKey(_ final: String, modDigit: Int?) -> String {
         if let m = modDigit { return "\u{1B}[1;\(m)\(final)" }
         return "\u{1B}O\(final)"
     }
@@ -1094,18 +1116,18 @@ final class GhosttySurfaceView: NSView {
         guard total > len, len > 0 else { return }
         let next = (total: total, offset: offset, len: len)
         let previous = lastScrollbar
-        
+
         // Fire scroll position change callback for persistence
         onScrollPositionChange?(Int(offset), Int(total), Int(len))
-        
+
         // Fire "new output while scrolled up" when content grows while not at bottom
         if !wasAtBottom && previous != nil && total > (previous?.total ?? 0) {
             onNewOutputWhileScrolledUp?()
         }
-        
+
         guard previous?.total != total
-                || previous?.offset != offset
-                || previous?.len != len else { return }
+            || previous?.offset != offset
+            || previous?.len != len else { return }
         lastScrollbar = next
 
         let maxOffset = total - len
@@ -1153,10 +1175,10 @@ final class GhosttySurfaceView: NSView {
 
     private static func mapModifiers(_ flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
         var raw: UInt32 = 0
-        if flags.contains(.shift)    { raw |= GHOSTTY_MODS_SHIFT.rawValue }
-        if flags.contains(.control)  { raw |= GHOSTTY_MODS_CTRL.rawValue }
-        if flags.contains(.option)   { raw |= GHOSTTY_MODS_ALT.rawValue }
-        if flags.contains(.command)  { raw |= GHOSTTY_MODS_SUPER.rawValue }
+        if flags.contains(.shift) { raw |= GHOSTTY_MODS_SHIFT.rawValue }
+        if flags.contains(.control) { raw |= GHOSTTY_MODS_CTRL.rawValue }
+        if flags.contains(.option) { raw |= GHOSTTY_MODS_ALT.rawValue }
+        if flags.contains(.command) { raw |= GHOSTTY_MODS_SUPER.rawValue }
         if flags.contains(.capsLock) { raw |= GHOSTTY_MODS_CAPS.rawValue }
         return ghostty_input_mods_e(rawValue: raw)
     }
@@ -1198,19 +1220,29 @@ final class GhosttySurfaceView: NSView {
 // MARK: - Ghostty enum sugar
 
 private extension ghostty_input_mouse_state_e {
-    static var PRESS: Self { GHOSTTY_MOUSE_PRESS }
-    static var RELEASE: Self { GHOSTTY_MOUSE_RELEASE }
+    static var PRESS: Self {
+        GHOSTTY_MOUSE_PRESS
+    }
+
+    static var RELEASE: Self {
+        GHOSTTY_MOUSE_RELEASE
+    }
 }
 
 private extension ghostty_input_mouse_button_e {
-    static var LEFT: Self { GHOSTTY_MOUSE_LEFT }
-    static var RIGHT: Self { GHOSTTY_MOUSE_RIGHT }
+    static var LEFT: Self {
+        GHOSTTY_MOUSE_LEFT
+    }
+
+    static var RIGHT: Self {
+        GHOSTTY_MOUSE_RIGHT
+    }
 }
 
 // MARK: - NSTextInputClient (IME / 中日韩 composition)
 
 extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
-    func insertText(_ string: Any, replacementRange: NSRange) {
+    func insertText(_ string: Any, replacementRange _: NSRange) {
         let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
         // Commit ends composition. If we're inside keyDown's IME batching
         // window the actual byte send is deferred until after the preedit
@@ -1225,7 +1257,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         }
     }
 
-    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+    func setMarkedText(_ string: Any, selectedRange _: NSRange, replacementRange _: NSRange) {
         markedText = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
         // Inside keyDown we defer the libghostty sync until handleEvent
         // returns; outside (rare — layout change mid-compose) we sync
@@ -1242,7 +1274,9 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         }
     }
 
-    func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+    func selectedRange() -> NSRange {
+        NSRange(location: NSNotFound, length: 0)
+    }
 
     func markedRange() -> NSRange {
         markedText.isEmpty
@@ -1250,13 +1284,19 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
             : NSRange(location: 0, length: markedText.utf16.count)
     }
 
-    func hasMarkedText() -> Bool { !markedText.isEmpty }
+    func hasMarkedText() -> Bool {
+        !markedText.isEmpty
+    }
 
-    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? { nil }
+    func attributedSubstring(forProposedRange _: NSRange, actualRange _: NSRangePointer?) -> NSAttributedString? {
+        nil
+    }
 
-    func characterIndex(for point: NSPoint) -> Int { NSNotFound }
+    func characterIndex(for _: NSPoint) -> Int {
+        NSNotFound
+    }
 
-    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+    func firstRect(forCharacterRange _: NSRange, actualRange _: NSRangePointer?) -> NSRect {
         // Anchor the IME candidate window at the real cursor cell so 中日韩
         // composition reads naturally. libghostty hands us the rect in
         // surface-local top-left coords; AppKit's NSView is bottom-left,
@@ -1275,5 +1315,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         return window.convertToScreen(windowRect)
     }
 
-    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+        []
+    }
 }

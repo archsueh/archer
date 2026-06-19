@@ -2,11 +2,16 @@ import AppKit
 import SwiftUI
 
 struct WindowDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { DragHandleView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func makeNSView(context _: Context) -> NSView {
+        DragHandleView()
+    }
+
+    func updateNSView(_: NSView, context _: Context) {}
 
     private final class DragHandleView: NSView {
-        override var mouseDownCanMoveWindow: Bool { false }
+        override var mouseDownCanMoveWindow: Bool {
+            false
+        }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
             guard bounds.contains(point), let type = NSApp.currentEvent?.type else { return nil }

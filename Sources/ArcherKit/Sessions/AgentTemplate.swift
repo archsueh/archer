@@ -69,7 +69,9 @@ struct AgentTemplate: Identifiable, Hashable {
     /// call sites that need to distinguish shells from agents (the Ask-
     /// <agent> right-click, the "based on" Picker, etc.) — once presets
     /// exist there are many shell templates, not one.
-    var isShell: Bool { initialCommand == nil }
+    var isShell: Bool {
+        initialCommand == nil
+    }
 
     init(
         id: String,
@@ -196,7 +198,8 @@ struct AgentTemplate: Identifiable, Hashable {
             var trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
             if trimmed.hasPrefix("export"),
-               let separator = trimmed.dropFirst("export".count).first, separator.isWhitespace {
+               let separator = trimmed.dropFirst("export".count).first, separator.isWhitespace
+            {
                 trimmed = String(trimmed.dropFirst("export".count)).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             guard let eq = trimmed.firstIndex(of: "=") else { continue }
@@ -204,7 +207,8 @@ struct AgentTemplate: Identifiable, Hashable {
             guard isValidEnvKey(key) else { continue }
             var value = trimmed[trimmed.index(after: eq)...].trimmingCharacters(in: .whitespacesAndNewlines)
             if value.count >= 2, let first = value.first, value.last == first,
-               first == "\"" || first == "'" {
+               first == "\"" || first == "'"
+            {
                 value = String(value.dropFirst().dropLast())
             }
             result[key] = value
@@ -485,7 +489,7 @@ extension AgentTemplate {
         let presets = model.terminalPresets
             .filter {
                 !$0.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && !model.hiddenPresets.contains($0.id)
+                    && !model.hiddenPresets.contains($0.id)
             }
             .map(AgentTemplate.fromTerminalPreset)
         let agents = ordered(model: model).filter {
@@ -620,7 +624,7 @@ struct CustomAgentData: Hashable, Identifiable {
 /// — presets aren't agents, they don't run a binary, they don't have hooks /
 /// env / options; conflating them would put "Terminal at /foo" into the
 /// "Custom Agents" mental model where it doesn't belong.
-struct TerminalPreset: Hashable, Identifiable, Sendable {
+struct TerminalPreset: Hashable, Identifiable {
     /// Slug — must be unique across builtin agents, custom agents, and other
     /// presets. Generated as `preset-N` on creation; user-editable from
     /// Settings is deferred (id stays stable, title carries the rename).

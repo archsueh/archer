@@ -309,7 +309,6 @@ struct SidebarWorkspaceRow: View {
     /// style — because the narrow column has no subtitle to convey
     /// branch identity. Full mode skips the stripe; the branch glyph in
     /// `subtitleRow` already carries the same signal.
-    @ViewBuilder
     private var rowBackground: some View {
         ZStack(alignment: .leading) {
             rowFill

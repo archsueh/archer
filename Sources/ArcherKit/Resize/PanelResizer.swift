@@ -1,10 +1,10 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
-// [archer] P2: draggable divider that resizes an adjacent panel. Place between a
-// panel and its hairline. Updates `width` live (clamped), persists via onCommit on
-// drag end. `edge` = which side of the resizer the panel sits on: .leading means the
-// panel is to the left (drag right grows it), .trailing means panel is to the right.
+/// [archer] P2: draggable divider that resizes an adjacent panel. Place between a
+/// panel and its hairline. Updates `width` live (clamped), persists via onCommit on
+/// drag end. `edge` = which side of the resizer the panel sits on: .leading means the
+/// panel is to the left (drag right grows it), .trailing means panel is to the right.
 public struct PanelResizer: View {
     @Binding var width: Double
     let range: ClosedRange<Double>
@@ -14,7 +14,7 @@ public struct PanelResizer: View {
     @State private var dragStart: Double?
 
     public init(width: Binding<Double>, range: ClosedRange<Double>, panelSide: Edge, onCommit: @escaping () -> Void = {}) {
-        self._width = width
+        _width = width
         self.range = range
         self.panelSide = panelSide
         self.onCommit = onCommit

@@ -38,7 +38,7 @@ final class GitStatusFetcher {
         }
     }
 
-    nonisolated private static func run(cwd: String) -> GitStatus {
+    private nonisolated static func run(cwd: String) -> GitStatus {
         // `--abbrev-ref HEAD` returns the branch name, or "HEAD" when detached.
         // Failure here usually means cwd isn't inside a repo — fall through to
         // empty so the footer hides cleanly.

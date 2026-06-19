@@ -5,8 +5,11 @@ import AppKit
 /// need libghostty or a real PTY. Records calls so tests can assert on them.
 @MainActor
 final class TestEngine: TerminalEngine {
-    let view: NSView = NSView()
-    var backgroundColor: NSColor { .black }
+    let view: NSView = .init()
+    var backgroundColor: NSColor {
+        .black
+    }
+
     var onPwdChange: ((String) -> Void)?
     var onTitleChange: ((String) -> Void)?
     var onFocus: (() -> Void)?
@@ -19,7 +22,9 @@ final class TestEngine: TerminalEngine {
     var onSearchSelected: ((Int) -> Void)?
     var onScrollPositionChange: ((_ offset: Int, _ total: Int, _ visible: Int) -> Void)?
     var onNewOutputWhileScrolledUp: (() -> Void)?
-    var foregroundPid: pid_t? { nil }
+    var foregroundPid: pid_t? {
+        nil
+    }
 
     private(set) var startedConfigs: [TerminalSessionConfig] = []
     private(set) var terminateCount = 0
@@ -35,7 +40,9 @@ final class TestEngine: TerminalEngine {
     var suspendsSizePropagation: Bool = false
     var grabsFocusOnMount: Bool = true
     private(set) var flushSizeCount: Int = 0
-    func flushSize() { flushSizeCount += 1 }
+    func flushSize() {
+        flushSizeCount += 1
+    }
 
     private(set) var performedActions: [String] = []
     @discardableResult

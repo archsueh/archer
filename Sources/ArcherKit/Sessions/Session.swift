@@ -53,7 +53,10 @@ final class Session: Identifiable {
     /// remote side can emit an OSC title marker that archer sees locally,
     /// while the persisted launch template remains `terminal`.
     var transientAgent: AgentTemplate?
-    var displayAgent: AgentTemplate { transientAgent ?? agent }
+    var displayAgent: AgentTemplate {
+        transientAgent ?? agent
+    }
+
     /// Runtime-only SSH destination (`user@host` or bare `host`) reported by
     /// the ssh wrapper via an OSC title marker, shown in the pane status bar.
     /// Not persisted (like `transientAgent`); cleared on command-finished.

@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 final class FileTreeModelTests: XCTestCase {
     private var root: URL!
@@ -18,7 +18,8 @@ final class FileTreeModelTests: XCTestCase {
     private func makeFile(_ rel: String, _ contents: String = "x") throws -> URL {
         let url = root.appendingPathComponent(rel)
         try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
         try Data(contents.utf8).write(to: url)
         return url
     }
@@ -52,10 +53,11 @@ final class FileTreeModelTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: moved, encoding: .utf8), "from-A")
         XCTAssertEqual(
             try String(contentsOf: b.appendingPathComponent("x.txt"), encoding: .utf8),
-            "existing-B")
+            "existing-B"
+        )
     }
 
-    // Tree order: directories first, then files, each localized-standard sorted.
+    /// Tree order: directories first, then files, each localized-standard sorted.
     func testChildrenSortsDirsFirstThenName() throws {
         try makeFile("root.txt")
         try makeFile("apple.txt")
@@ -66,7 +68,7 @@ final class FileTreeModelTests: XCTestCase {
         XCTAssertEqual(names, ["alpha", "Zebra", "apple.txt", "root.txt"])
     }
 
-    // Dropping onto the folder it already lives in is a no-op (no rename).
+    /// Dropping onto the folder it already lives in is a no-op (no rename).
     func testMoveIntoSameDirectoryIsNoop() throws {
         let model = FileTreeModel(rootURL: root)
         let x = try makeFile("A/x.txt")
@@ -76,7 +78,7 @@ final class FileTreeModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: x.path))
     }
 
-    // Folders move as a unit, contents intact.
+    /// Folders move as a unit, contents intact.
     func testMoveDirectoryIntoFolder() throws {
         let model = FileTreeModel(rootURL: root)
         try makeFile("A/sub/y.txt")
@@ -87,6 +89,7 @@ final class FileTreeModelTests: XCTestCase {
         // and appends a trailing slash, which the model's pre-move URL lacks.
         XCTAssertEqual(moved.path, b.appendingPathComponent("sub").path)
         XCTAssertTrue(
-            FileManager.default.fileExists(atPath: moved.appendingPathComponent("y.txt").path))
+            FileManager.default.fileExists(atPath: moved.appendingPathComponent("y.txt").path)
+        )
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
-// [archer] P2: resizable panel widths. Pure model — clamp + defaults + Codable
-// for persistence. UI drag handle lives in PanelResizer; persistence in Persistence.
+/// [archer] P2: resizable panel widths. Pure model — clamp + defaults + Codable
+/// for persistence. UI drag handle lives in PanelResizer; persistence in Persistence.
 public enum PanelKind: String, Codable, Sendable, CaseIterable {
     case sidebar
     case rightPanel
@@ -16,8 +16,8 @@ public struct PanelWidths: Codable, Sendable, Equatable {
         self.rightPanel = rightPanel
     }
 
-    public static let sidebarRange: ClosedRange<Double> = 160...420
-    public static let rightRange: ClosedRange<Double> = 220...560
+    public static let sidebarRange: ClosedRange<Double> = 160 ... 420
+    public static let rightRange: ClosedRange<Double> = 220 ... 560
 
     public static func clamp(_ value: Double, to range: ClosedRange<Double>) -> Double {
         min(max(value, range.lowerBound), range.upperBound)

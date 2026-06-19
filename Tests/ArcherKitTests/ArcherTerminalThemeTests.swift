@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 @MainActor
 final class ArcherTerminalThemeTests: XCTestCase {

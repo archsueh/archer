@@ -4,7 +4,7 @@ import SwiftUI
 /// Fits a 280px-wide sidebar, matching the design of FilePanelView and DiffPanelView.
 public struct FanboxDownloaderView: View {
     @ObservedObject private var queueManager = DownloadQueueManager.shared
-    // [archer] begin: review manager
+    /// [archer] begin: review manager
     @ObservedObject private var reviewManager = ClassificationReviewManager.shared
     // [archer] end: review manager
     @State private var inputIds: String = ""
@@ -22,20 +22,20 @@ public struct FanboxDownloaderView: View {
         VStack(spacing: 0) {
             header
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            
+
             inputSection
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            
+
             // [archer] begin: pending review section
             if !reviewManager.pendingMoves.isEmpty {
                 pendingClassificationSection
                 Rectangle().fill(Theme.chromeHairline).frame(height: 1)
             }
             // [archer] end: pending review section
-            
+
             queueHeader
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            
+
             jobListView
         }
         .frame(width: CGFloat(width))
@@ -49,9 +49,9 @@ public struct FanboxDownloaderView: View {
             Text(L10n.string("Fanbox Downloader"))
                 .font(Theme.display(12, weight: .medium))
                 .foregroundStyle(Theme.chromeForeground)
-            
+
             Spacer()
-            
+
             Text("\(queueManager.activeJobs.count) jobs")
                 .font(Theme.mono(10))
                 .foregroundStyle(Theme.chromeMuted)
@@ -65,7 +65,7 @@ public struct FanboxDownloaderView: View {
             Text("POST IDS")
                 .font(Theme.display(10, weight: .bold))
                 .foregroundStyle(Theme.chromeMuted)
-            
+
             TextField("Paste IDs (comma/space separated)", text: $inputIds)
                 .font(Theme.mono(10.5))
                 .foregroundStyle(Theme.chromeForeground)
@@ -73,7 +73,7 @@ public struct FanboxDownloaderView: View {
                 .padding(Theme.space2)
                 .background(Theme.chromeHairline.opacity(0.12))
                 .bracketBorder()
-            
+
             HStack {
                 Spacer()
                 BracketButton("DOWNLOAD") {
@@ -136,14 +136,14 @@ public struct FanboxDownloaderView: View {
             .components(separatedBy: .whitespacesAndNewlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        
+
         guard !rawIds.isEmpty else { return }
-        
+
         inputIds = ""
         queueManager.downloadPosts(postIds: rawIds, targetDir: rootURL, onFinished: onFinished)
     }
 
-    // [archer] begin: pending classification section view
+    /// [archer] begin: pending classification section view
     private var pendingClassificationSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -158,11 +158,11 @@ public struct FanboxDownloaderView: View {
                     .buttonStyle(.plain)
                     .font(Theme.mono(9))
                     .foregroundStyle(Theme.gitInsertion)
-                    
+
                     Text("·")
                         .font(Theme.mono(9))
                         .foregroundStyle(Theme.chromeMuted)
-                    
+
                     Button("Decline All") {
                         reviewManager.declineAll()
                     }
@@ -174,7 +174,7 @@ public struct FanboxDownloaderView: View {
             .padding(.horizontal, Theme.space3)
             .padding(.vertical, 6)
             .background(Theme.chromeHairline.opacity(0.3))
-            
+
             ScrollView {
                 LazyVStack(spacing: 1) {
                     ForEach(reviewManager.pendingMoves) { move in
@@ -189,7 +189,7 @@ public struct FanboxDownloaderView: View {
     // [archer] end: pending classification section view
 }
 
-// [archer] begin: PendingMoveRow
+/// [archer] begin: PendingMoveRow
 private struct PendingMoveRow: View {
     let move: PendingMove
     @ObservedObject var reviewManager: ClassificationReviewManager
@@ -202,27 +202,27 @@ private struct PendingMoveRow: View {
                 Image(systemName: "questionmark.folder")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.chromeMuted)
-                
+
                 Text(move.source.lastPathComponent)
                     .font(Theme.mono(10.5, weight: .medium))
                     .foregroundStyle(Theme.chromeForeground)
                     .lineLimit(1)
-                
+
                 Spacer()
             }
-            
+
             HStack(spacing: 6) {
                 Text("Move to:")
                     .font(Theme.mono(9))
                     .foregroundStyle(Theme.chromeMuted)
-                
+
                 Text(move.rule.folder)
                     .font(Theme.mono(9, weight: .semibold))
                     .foregroundStyle(Theme.chromeForeground)
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 HStack(spacing: 8) {
                     Button("Approve") {
                         reviewManager.approve(move, onFinished: onFinished)
@@ -230,7 +230,7 @@ private struct PendingMoveRow: View {
                     .buttonStyle(.plain)
                     .font(Theme.mono(9.5, weight: .bold))
                     .foregroundStyle(Theme.gitInsertion)
-                    
+
                     Button("Decline") {
                         reviewManager.decline(move)
                     }
@@ -246,6 +246,7 @@ private struct PendingMoveRow: View {
         .onHover { hovered = $0 }
     }
 }
+
 // [archer] end: PendingMoveRow
 
 // MARK: - Job Row
@@ -258,13 +259,13 @@ private struct JobRow: View {
         HStack(spacing: 8) {
             statusIcon(job.status)
                 .frame(width: 14)
-            
+
             VStack(alignment: .leading, spacing: 1) {
                 Text(job.title)
                     .font(Theme.mono(11, weight: .medium))
                     .foregroundStyle(Theme.chromeForeground)
                     .lineLimit(1)
-                
+
                 Text(statusDetail)
                     .font(Theme.mono(9))
                     .foregroundStyle(statusColor)

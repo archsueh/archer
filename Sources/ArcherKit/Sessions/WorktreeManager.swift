@@ -6,12 +6,12 @@ import Foundation
 /// here: failed worktree creation must surface a real message to the user,
 /// and a big repo's first worktree can legitimately take several seconds.
 enum WorktreeManager {
-    enum BranchMode: Equatable, Sendable {
+    enum BranchMode: Equatable {
         case existing(branch: String)
         case newBranch(name: String, base: String?)
     }
 
-    struct GitError: Swift.Error, CustomStringConvertible, Equatable, Sendable {
+    struct GitError: Swift.Error, CustomStringConvertible, Equatable {
         var stderr: String
         var exitCode: Int32
         var description: String {
@@ -20,7 +20,7 @@ enum WorktreeManager {
         }
     }
 
-    struct Info: Equatable, Sendable {
+    struct Info: Equatable {
         var path: URL
         var branch: String?
     }
@@ -31,10 +31,10 @@ enum WorktreeManager {
     static func add(repoPath: URL, path: URL, mode: BranchMode) -> Result<Void, GitError> {
         var args = ["-C", repoPath.path, "worktree", "add"]
         switch mode {
-        case .existing(let branch):
+        case let .existing(branch):
             args.append(path.path)
             args.append(branch)
-        case .newBranch(let name, let base):
+        case let .newBranch(name, base):
             args.append("-b")
             args.append(name)
             args.append(path.path)
@@ -110,7 +110,7 @@ enum WorktreeManager {
     /// OSC 7 cwd and may be a nested folder or an unrelated directory after
     /// `cd`. Worktree create/reconcile/remove paths need the repo root.
     static func repoRoot(near cwd: URL) -> URL? {
-        guard case .success(let output) = runGit([
+        guard case let .success(output) = runGit([
             "-C", cwd.path,
             "--no-optional-locks",
             "rev-parse",

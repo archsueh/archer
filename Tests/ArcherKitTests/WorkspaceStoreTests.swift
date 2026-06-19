@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 @MainActor
 final class WorkspaceStoreTests: XCTestCase {
@@ -218,7 +218,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertTrue(store.workspaces.filter { $0.worktreeParentId == source.id }.isEmpty)
         store.reconcile(source: source, diskWorktrees: [
             WorktreeManager.Info(path: source.workingDirectory, branch: "main"),
-            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/source-feat-x"), branch: "feat-x")
+            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/source-feat-x"), branch: "feat-x"),
         ])
         XCTAssertTrue(
             store.workspaces.filter { $0.worktreeParentId == source.id }.isEmpty,
@@ -237,7 +237,7 @@ final class WorkspaceStoreTests: XCTestCase {
         )
         XCTAssertEqual(store.workspaces.filter { $0.worktreeParentId == source.id }.count, 1)
         store.reconcile(source: source, diskWorktrees: [
-            WorktreeManager.Info(path: source.workingDirectory, branch: "main")
+            WorktreeManager.Info(path: source.workingDirectory, branch: "main"),
         ])
         XCTAssertTrue(store.workspaces.filter { $0.worktreeParentId == source.id }.isEmpty)
     }
@@ -270,10 +270,10 @@ final class WorkspaceStoreTests: XCTestCase {
             workingDirectory: URL(fileURLWithPath: "/tmp/projectA-feat"),
             worktreeParent: source, worktreeBranch: "feat"
         )
-        wt.workingDirectory = URL(fileURLWithPath: "/tmp/elsewhere")  // cd drift
+        wt.workingDirectory = URL(fileURLWithPath: "/tmp/elsewhere") // cd drift
         store.reconcile(source: source, diskWorktrees: [
             WorktreeManager.Info(path: source.workingDirectory, branch: "main"),
-            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/projectA-feat"), branch: "feat")
+            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/projectA-feat"), branch: "feat"),
         ])
         XCTAssertTrue(store.workspaces.contains { $0.id == wt.id },
                       "drifted-cwd worktree must not be treated as a zombie")
@@ -298,7 +298,7 @@ final class WorkspaceStoreTests: XCTestCase {
 
         store.reconcile(source: source, sourceRoot: projectA, diskWorktrees: [
             WorktreeManager.Info(path: projectA, branch: "main"),
-            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/projectA-feat"), branch: "feat")
+            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/projectA-feat"), branch: "feat"),
         ])
 
         let surviving = store.workspaces.filter { $0.worktreeParentId == source.id }
@@ -316,7 +316,7 @@ final class WorkspaceStoreTests: XCTestCase {
         )
         store.reconcile(source: source, diskWorktrees: [
             WorktreeManager.Info(path: source.workingDirectory, branch: "main"),
-            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/source-feat"), branch: "feat")
+            WorktreeManager.Info(path: URL(fileURLWithPath: "/tmp/source-feat"), branch: "feat"),
         ])
         let after = store.workspaces.filter { $0.worktreeParentId == source.id }
         XCTAssertEqual(after.count, 1)
@@ -516,7 +516,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertFalse(ids.contains(unrelated.id))
     }
 
-    func testMoveWorkspaceMovesWorktreeFamilyTogether() {
+    func testMoveWorkspaceMovesWorktreeFamilyTogether() throws {
         // Compact mode renders store.workspaces directly, so source + child
         // worktrees must remain contiguous after a drag reorder.
         let store = makeStore()
@@ -532,12 +532,12 @@ final class WorkspaceStoreTests: XCTestCase {
         )
         let unrelated = store.addWorkspace(workingDirectory: projectB)
 
-        let from = store.workspaces.firstIndex { $0.id == source.id }!
-        let to = store.workspaces.firstIndex { $0.id == unrelated.id }!
+        let from = try XCTUnwrap(store.workspaces.firstIndex { $0.id == source.id })
+        let to = try XCTUnwrap(store.workspaces.firstIndex { $0.id == unrelated.id })
         store.moveWorkspace(from: from, to: to)
 
         XCTAssertEqual(store.workspaces.map(\.id), [
-            home.id, unrelated.id, source.id, wtA.id, wtB.id
+            home.id, unrelated.id, source.id, wtA.id, wtB.id,
         ])
     }
 
@@ -625,7 +625,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(ws.distinctAgents.map(\.id), [AgentTemplate.claudeCode.id])
 
         store.flushPersistence()
-        guard case .pane(let persistedPane)? = persistence.saved?.workspaces.last?.root.kind else {
+        guard case let .pane(persistedPane)? = persistence.saved?.workspaces.last?.root.kind else {
             return XCTFail("expected single-pane persisted workspace")
         }
         XCTAssertEqual(persistedPane.tabs.first?.agentId, AgentTemplate.terminal.id)
@@ -774,7 +774,7 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(session.environment.nvmDirectory, "/Users/mac/.nvm")
     }
 
-    func testWorkspaceFailureAggregatesAcrossPanes() {
+    func testWorkspaceFailureAggregatesAcrossPanes() throws {
         let store = makeStore()
         let ws = store.addWorkspace(workingDirectory: projectA)
         let pane = firstPane(ws)
@@ -782,7 +782,7 @@ final class WorkspaceStoreTests: XCTestCase {
         // one to verify the DFS picks it up regardless of focus.
         store.splitPane(pane, orientation: .horizontal, in: ws)
         let firstTab = pane.tabs[0]
-        let secondPaneTab = ws.root.allPanes.last!.tabs[0]
+        let secondPaneTab = try XCTUnwrap(ws.root.allPanes.last?.tabs[0])
         XCTAssertFalse(ws.hasCommandFailure)
         engine(secondPaneTab).emitCommandFinished(exit: 1, duration: 0.1)
         XCTAssertTrue(ws.hasCommandFailure)
@@ -806,15 +806,15 @@ final class WorkspaceStoreTests: XCTestCase {
         store.focusPane(pane1, in: a)
         XCTAssertEqual(a.activePaneId, pane1.id)
 
-        let b = store.addWorkspace(workingDirectory: projectB)  // activates B
+        let b = store.addWorkspace(workingDirectory: projectB) // activates B
         XCTAssertEqual(store.activeWorkspaceId, b.id)
-        store.activateWorkspace(a)                              // switch back to A
+        store.activateWorkspace(a) // switch back to A
 
         XCTAssertEqual(store.activeWorkspaceId, a.id)
         XCTAssertEqual(a.activePaneId, pane1.id, "active pane must survive a workspace round-trip")
     }
 
-    func testFailureSurfacesEvenWhenAttentionFiresFirstInDFS() {
+    func testFailureSurfacesEvenWhenAttentionFiresFirstInDFS() throws {
         // Regression: `sidebarReadout`'s walk used to short-circuit on attention,
         // leaving `hasCommandFailure` false when a sibling pane held a non-zero
         // exit. The walk now runs to completion so each field is independent.
@@ -823,7 +823,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let pane = firstPane(ws)
         store.splitPane(pane, orientation: .horizontal, in: ws)
         let firstPaneTab = pane.tabs[0]
-        let secondPaneTab = ws.root.allPanes.last!.tabs[0]
+        let secondPaneTab = try XCTUnwrap(ws.root.allPanes.last?.tabs[0])
         firstPaneTab.activityState = .attention
         engine(secondPaneTab).emitCommandFinished(exit: 1, duration: 0.1)
         XCTAssertEqual(ws.activityState, .attention)
@@ -942,10 +942,10 @@ final class WorkspaceStoreTests: XCTestCase {
         let c = store.addTab(in: ws)
         XCTAssertEqual(pane.activeTabId, c.id)
 
-        store.cycleTab(in: ws, direction: 1)  // c → a (wrap)
+        store.cycleTab(in: ws, direction: 1) // c → a (wrap)
         XCTAssertEqual(pane.activeTabId, a.id)
 
-        store.cycleTab(in: ws, direction: 1)  // a → b
+        store.cycleTab(in: ws, direction: 1) // a → b
         XCTAssertEqual(pane.activeTabId, b.id)
     }
 
@@ -957,7 +957,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let b = store.addTab(in: ws)
         store.activateTab(a, in: ws)
 
-        store.cycleTab(in: ws, direction: -1)  // a → b (wrap backward)
+        store.cycleTab(in: ws, direction: -1) // a → b (wrap backward)
         XCTAssertEqual(pane.activeTabId, b.id)
     }
 
@@ -1014,52 +1014,52 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(new?.tabs.count, 1)
     }
 
-    func testSplitPaneInheritsActiveTabAgentAndCwd() {
+    func testSplitPaneInheritsActiveTabAgentAndCwd() throws {
         let store = makeStore()
         let ws = store.addWorkspace(workingDirectory: projectA)
         let pane = firstPane(ws)
         store.addTab(in: ws, template: .claudeCode)
-        engine(pane.tabs.last!).emitPwd("/tmp/projectA/sub")
+        try engine(XCTUnwrap(pane.tabs.last)).emitPwd("/tmp/projectA/sub")
         let new = store.splitPane(pane, orientation: .vertical, in: ws)
         let newSession = new?.tabs.first
         XCTAssertEqual(newSession?.agent.id, "claude-code")
         XCTAssertEqual((newSession?.engine as? TestEngine)?.startedConfigs.last?.workingDirectory, "/tmp/projectA/sub")
     }
 
-    func testClosePaneCollapsesSiblingUp() {
+    func testClosePaneCollapsesSiblingUp() throws {
         let store = makeStore()
         let ws = store.workspaces[0]
         let pane = firstPane(ws)
-        let new = store.splitPane(pane, orientation: .horizontal, in: ws)!
+        let new = try XCTUnwrap(store.splitPane(pane, orientation: .horizontal, in: ws))
         XCTAssertEqual(ws.root.allPanes.count, 2)
         store.closePane(new, in: ws)
         XCTAssertEqual(ws.root.allPanes.count, 1)
         XCTAssertEqual(ws.root.allPanes.first?.id, pane.id)
     }
 
-    func testClosingLastTabInSecondPaneCollapsesSplit() {
+    func testClosingLastTabInSecondPaneCollapsesSplit() throws {
         let store = makeStore()
         let ws = store.workspaces[0]
         let pane = firstPane(ws)
-        let new = store.splitPane(pane, orientation: .horizontal, in: ws)!
+        let new = try XCTUnwrap(store.splitPane(pane, orientation: .horizontal, in: ws))
         // Close the lone tab in `new`. Should collapse the split, leaving `pane` alone.
         store.closeTab(new.tabs[0], in: ws)
         XCTAssertEqual(ws.root.allPanes.count, 1)
         XCTAssertEqual(ws.root.allPanes.first?.id, pane.id)
     }
 
-    func testFocusPaneSwitchesActivePane() {
+    func testFocusPaneSwitchesActivePane() throws {
         let store = makeStore()
         let ws = store.workspaces[0]
         let pane = firstPane(ws)
-        let new = store.splitPane(pane, orientation: .horizontal, in: ws)!
+        let new = try XCTUnwrap(store.splitPane(pane, orientation: .horizontal, in: ws))
         store.focusPane(pane, in: ws)
         XCTAssertEqual(ws.activePaneId, pane.id)
         store.focusPane(new, in: ws)
         XCTAssertEqual(ws.activePaneId, new.id)
     }
 
-    func testCrossPaneMoveOfRootSoleTabKeepsWorkspaceAlive() {
+    func testCrossPaneMoveOfRootSoleTabKeepsWorkspaceAlive() throws {
         // Regression: after splitPane, the root PaneNode kept the original
         // pane's id; the wrapper for that pane (now `firstChild`) reused the
         // same id. Closing the now-empty source pane via id-equality would
@@ -1068,7 +1068,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.workspaces[0]
         let original = firstPane(ws)
         let originalSession = original.tabs[0]
-        let new = store.splitPane(original, orientation: .horizontal, in: ws)!
+        let new = try XCTUnwrap(store.splitPane(original, orientation: .horizontal, in: ws))
         XCTAssertEqual(ws.root.allPanes.count, 2)
         store.moveTab(originalSession, to: new, at: new.tabs.count, in: ws)
         XCTAssertFalse(store.workspaces.isEmpty)
@@ -1077,13 +1077,13 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(engine(originalSession).terminateCount, 0)
     }
 
-    func testCrossPaneMoveSyncsWorkspaceWorkingDirectory() {
+    func testCrossPaneMoveSyncsWorkspaceWorkingDirectory() throws {
         let store = makeStore()
         let ws = store.addWorkspace(workingDirectory: projectA)
         let source = firstPane(ws)
         let session = source.tabs[0]
         engine(session).emitPwd("/tmp/projectA/sub")
-        let dest = store.splitPane(source, orientation: .horizontal, in: ws)!
+        let dest = try XCTUnwrap(store.splitPane(source, orientation: .horizontal, in: ws))
         // splitPane spawns a new session in dest; switch active away first so
         // the move into dest is the thing that has to sync the cwd.
         store.focusPane(source, in: ws)
@@ -1115,7 +1115,7 @@ final class WorkspaceStoreTests: XCTestCase {
                         ))
                     ),
                     activePaneId: paneId
-                )
+                ),
             ],
             activeWorkspaceId: wsId
         )
@@ -1149,7 +1149,7 @@ final class WorkspaceStoreTests: XCTestCase {
                         ))
                     ),
                     activePaneId: paneId
-                )
+                ),
             ],
             activeWorkspaceId: wsId
         )
@@ -1180,7 +1180,7 @@ final class WorkspaceStoreTests: XCTestCase {
                         )
                     ),
                     activePaneId: secondPaneId
-                )
+                ),
             ],
             activeWorkspaceId: wsId
         )
@@ -1188,7 +1188,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.workspaces[0]
         XCTAssertEqual(ws.root.allPanes.count, 2)
         XCTAssertEqual(ws.activePaneId, secondPaneId)
-        if case .split(_, _, _, let fraction) = ws.root.content {
+        if case let .split(_, _, _, fraction) = ws.root.content {
             XCTAssertEqual(fraction, 0.6, accuracy: 0.0001)
         } else {
             XCTFail("expected split content at root")
@@ -1275,7 +1275,7 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     func testOnBecameEmptyFiresWhenLastWorkspaceCloses() {
-        let store = makeStore()   // starts with one workspace
+        let store = makeStore() // starts with one workspace
         var fired = 0
         store.onBecameEmpty = { fired += 1 }
         let extra = store.addWorkspace(workingDirectory: projectA)
@@ -1287,14 +1287,14 @@ final class WorkspaceStoreTests: XCTestCase {
 
     // MARK: - Cross-window tab drag
 
-    func testHandleTabDropMovesTabBetweenPanesInSameWindow() {
+    func testHandleTabDropMovesTabBetweenPanesInSameWindow() throws {
         // The same-window path through `handleTabDrop` still works after the
         // cross-window branch was added.
         let store = makeStore()
         let ws = store.workspaces[0]
         let source = firstPane(ws)
         let session = source.tabs[0]
-        let dest = store.splitPane(source, orientation: .horizontal, in: ws)!
+        let dest = try XCTUnwrap(store.splitPane(source, orientation: .horizontal, in: ws))
         let ok = store.handleTabDrop(droppedId: session.id, to: dest, at: dest.tabs.count, in: ws)
         XCTAssertTrue(ok)
         XCTAssertTrue(dest.tabs.contains { $0 === session })
@@ -1542,34 +1542,35 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.addWorkspace(workingDirectory: projectA)
         let paneA = firstPane(ws)
         let tabA = paneA.tabs[0]
-        
+
         // Add a second tab so paneA still has a tab after we move tabA
         let tabB = store.addTab(in: ws, pane: paneA)
-        
+
         // Verify paneA has both tabs
         XCTAssertEqual(paneA.tabs.count, 2)
         XCTAssertEqual(paneA.activeTabId, tabB.id)
-        
+
         // Split paneA with existing tabA (move tabA to a new pane on the left / first position)
         store.splitPaneWithExistingTab(paneA, orientation: .horizontal, tabId: tabA.id, position: .first, in: ws)
-        
+
         // Now the split tree should have two child panes: one containing tabA, and one containing tabB (which is paneA)
-        guard case .split(let orientation, let first, let second, let fraction) = ws.root.content else {
+        guard case let .split(orientation, first, second, fraction) = ws.root.content else {
             return XCTFail("root should be split")
         }
-        
+
         XCTAssertEqual(orientation, .horizontal)
         XCTAssertEqual(fraction, 0.5)
-        
-        guard case .pane(let paneFirst) = first.content,
-              case .pane(let paneSecond) = second.content else {
+
+        guard case let .pane(paneFirst) = first.content,
+              case let .pane(paneSecond) = second.content
+        else {
             return XCTFail("split children should be panes")
         }
-        
+
         XCTAssertEqual(paneFirst.tabs.map(\.id), [tabA.id])
         XCTAssertEqual(paneSecond.id, paneA.id)
         XCTAssertEqual(paneSecond.tabs.map(\.id), [tabB.id])
-        
+
         // The newly created pane (paneFirst) should be active
         XCTAssertEqual(ws.activePaneId, paneFirst.id)
     }
@@ -1580,8 +1581,8 @@ private extension PersistedPaneNode {
     /// without re-implementing the pane-tree walker.
     var allTabs: [PersistedTab] {
         switch kind {
-        case .pane(let p): return p.tabs
-        case .split(_, let a, let b, _): return a.allTabs + b.allTabs
+        case let .pane(p): return p.tabs
+        case let .split(_, a, b, _): return a.allTabs + b.allTabs
         }
     }
 }

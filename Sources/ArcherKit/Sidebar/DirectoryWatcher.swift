@@ -20,7 +20,8 @@ final class DirectoryWatcher {
         let fd = open(key.path, O_EVTONLY)
         guard fd >= 0 else { return }
         let src = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd, eventMask: [.write, .delete, .rename], queue: .main)
+            fileDescriptor: fd, eventMask: [.write, .delete, .rename], queue: .main
+        )
         src.setEventHandler { [weak self] in self?.schedule(key) }
         src.setCancelHandler { close(fd) }
         src.resume()
@@ -39,13 +40,17 @@ final class DirectoryWatcher {
     /// Tear down every watch. MUST be called before dropping the watcher — a
     /// `@MainActor` deinit runs nonisolated in Swift 6 and kqueue fds leak.
     func cancel() {
-        for src in watches.values { src.cancel() }
+        for src in watches.values {
+            src.cancel()
+        }
         watches.removeAll()
-        for work in pending.values { work.cancel() }
+        for work in pending.values {
+            work.cancel()
+        }
         pending.removeAll()
     }
 
-    // Coalesce bursts (a multi-file copy fires many NOTE_WRITEs) into one refresh.
+    /// Coalesce bursts (a multi-file copy fires many NOTE_WRITEs) into one refresh.
     private func schedule(_ dir: URL) {
         pending[dir]?.cancel()
         let work = DispatchWorkItem { [weak self] in

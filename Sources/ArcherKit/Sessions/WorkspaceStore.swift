@@ -38,7 +38,7 @@ func normalizedTitle(_ raw: String) -> String? {
 
 /// Three-state sidebar visibility. `next` cycles full → compact → hidden →
 /// full so each toggle hides more and eventually wraps around.
-enum SidebarMode: String, Codable, Equatable, Sendable {
+enum SidebarMode: String, Codable, Equatable {
     case full
     case compact
     case hidden
@@ -72,7 +72,7 @@ final class WorkspaceStore {
     var diffPanelMode: SidebarMode = .hidden // [archer] right-side diff panel
     var downloaderPanelMode: SidebarMode = .hidden // [archer] right-side downloader panel
     var usageStripVisible: Bool = false // [archer] top Claude-usage strip
-    var panelWidths: PanelWidths = PanelWidths() // [archer]
+    var panelWidths: PanelWidths = .init() // [archer]
     /// Fired when the last workspace closes. `ArcherWindowController` wires
     /// this to close its window — a window with zero workspaces is empty.
     var onBecameEmpty: (() -> Void)?
@@ -259,10 +259,12 @@ final class WorkspaceStore {
         // existing worktrees) — compact-mode sidebar walks `workspaces`
         // in array order, so this visual grouping is load-bearing there.
         if let parent = worktreeParent,
-           let parentIdx = workspaces.firstIndex(where: { $0 === parent }) {
+           let parentIdx = workspaces.firstIndex(where: { $0 === parent })
+        {
             var insertAt = parentIdx + 1
             while insertAt < workspaces.count
-                  && workspaces[insertAt].worktreeParentId == parent.id {
+                && workspaces[insertAt].worktreeParentId == parent.id
+            {
                 insertAt += 1
             }
             workspaces.insert(workspace, at: insertAt)
@@ -283,14 +285,14 @@ final class WorkspaceStore {
         request: CreateWorktreeSheet.Request
     ) async -> CreateWorktreeSheet.CreateOutcome {
         switch request.kind {
-        case .create(let mode, let path, let branchForDisplay):
+        case let .create(mode, path, branchForDisplay):
             guard let repoPath = WorktreeManager.repoRoot(near: source.workingDirectory) else {
                 return .failure("not inside a git repository")
             }
             let result = await Task.detached(priority: .userInitiated) {
                 WorktreeManager.add(repoPath: repoPath, path: path, mode: mode)
             }.value
-            if case .failure(let err) = result {
+            if case let .failure(err) = result {
                 return .failure(err.description)
             }
             addWorkspace(
@@ -300,7 +302,7 @@ final class WorkspaceStore {
                 template: request.template
             )
             return .success
-        case .adopt(let worktrees):
+        case let .adopt(worktrees):
             // Pure sidebar materialization — no git command, the
             // directories already exist on disk. One workspace per
             // picked worktree, inserted after the source in array
@@ -383,7 +385,9 @@ final class WorkspaceStore {
                 }
             }
         }
-        for worktree in request.worktrees { closeWorkspace(worktree) }
+        for worktree in request.worktrees {
+            closeWorkspace(worktree)
+        }
         closeWorkspace(request.source)
         pendingCloseSourceRequest = nil
         return nil
@@ -422,14 +426,17 @@ final class WorkspaceStore {
             for input in inputs {
                 group.addTask {
                     guard let repoRoot = WorktreeManager.repoRoot(near: input.cwd),
-                          case .success(let infos) = WorktreeManager.list(repoPath: repoRoot) else {
+                          case let .success(infos) = WorktreeManager.list(repoPath: repoRoot)
+                    else {
                         return nil
                     }
                     return (input.index, input.sourceId, repoRoot, infos)
                 }
             }
             var collected: [(index: Int, sourceId: UUID, repoRoot: URL, infos: [WorktreeManager.Info])] = []
-            for await result in group { if let result { collected.append(result) } }
+            for await result in group {
+                if let result { collected.append(result) }
+            }
             return collected.sorted { $0.index < $1.index }
         }
 
@@ -505,7 +512,7 @@ final class WorkspaceStore {
             // value would delete an outdated branch and leave the
             // truly-checked-out one orphaned.
             let realBranch: String? = {
-                guard case .success(let infos) = WorktreeManager.list(repoPath: repoPath),
+                guard case let .success(infos) = WorktreeManager.list(repoPath: repoPath),
                       let match = infos.first(where: {
                           $0.path.standardizedFileURL.path == normalizedPath
                       })
@@ -525,7 +532,7 @@ final class WorkspaceStore {
             }
             return removed
         }.value
-        if case .failure(let err) = result {
+        if case let .failure(err) = result {
             return err.description
         }
         pruneRecentlyClosed(under: workspace)
@@ -589,8 +596,8 @@ final class WorkspaceStore {
     /// destination index, others shift.
     func moveWorkspace(from sourceIndex: Int, to destIndex: Int) {
         guard sourceIndex != destIndex,
-              (0..<workspaces.count).contains(sourceIndex),
-              (0..<workspaces.count).contains(destIndex) else { return }
+              (0 ..< workspaces.count).contains(sourceIndex),
+              (0 ..< workspaces.count).contains(destIndex) else { return }
         let source = workspaces[sourceIndex]
         let rootId = source.worktreeParentId ?? source.id
         let movingIndices = workspaces.indices.filter { idx in
@@ -621,7 +628,7 @@ final class WorkspaceStore {
         init(keeping: Workspace, others: [Workspace]) {
             self.keeping = keeping
             self.others = others
-            self.worktreeOthers = others.filter { $0.worktreeParentId != nil }
+            worktreeOthers = others.filter { $0.worktreeParentId != nil }
         }
     }
 
@@ -649,7 +656,9 @@ final class WorkspaceStore {
             pendingCloseOthersRequest = BulkRemovalRequest(keeping: workspace, others: others)
             return
         }
-        for ws in others { closeWorkspace(ws) }
+        for ws in others {
+            closeWorkspace(ws)
+        }
     }
 
     /// Performs the deferred bulk close from the confirm sheet.
@@ -666,7 +675,9 @@ final class WorkspaceStore {
                 }
             }
         }
-        for ws in request.others { closeWorkspace(ws) }
+        for ws in request.others {
+            closeWorkspace(ws)
+        }
         pendingCloseOthersRequest = nil
         return nil
     }
@@ -721,8 +732,8 @@ final class WorkspaceStore {
 
     func moveTab(from sourceIndex: Int, to destIndex: Int, in pane: Pane) {
         guard sourceIndex != destIndex,
-              (0..<pane.tabs.count).contains(sourceIndex),
-              (0..<pane.tabs.count).contains(destIndex) else { return }
+              (0 ..< pane.tabs.count).contains(sourceIndex),
+              (0 ..< pane.tabs.count).contains(destIndex) else { return }
         let tab = pane.tabs.remove(at: sourceIndex)
         pane.tabs.insert(tab, at: destIndex)
         scheduleSave()
@@ -787,7 +798,8 @@ final class WorkspaceStore {
     @discardableResult
     func handleTabDrop(droppedId: UUID, to destPane: Pane, at destIndex: Int, in workspace: Workspace) -> Bool {
         if let sourcePane = workspace.root.pane(containingSessionId: droppedId),
-           let session = sourcePane.tabs.first(where: { $0.id == droppedId }) {
+           let session = sourcePane.tabs.first(where: { $0.id == droppedId })
+        {
             if sourcePane.id == destPane.id {
                 guard let from = sourcePane.tabs.firstIndex(where: { $0.id == droppedId }) else { return false }
                 let to = min(max(destIndex, 0), sourcePane.tabs.count - 1)
@@ -838,7 +850,9 @@ final class WorkspaceStore {
     func closeOtherTabs(keeping session: Session, in workspace: Workspace) {
         guard let pane = pane(containing: session, in: workspace) else { return }
         let toClose = pane.tabs.filter { $0.id != session.id }
-        for tab in toClose { closeTab(tab, in: workspace) }
+        for tab in toClose {
+            closeTab(tab, in: workspace)
+        }
     }
 
     func closeTabsToRight(of session: Session, in workspace: Workspace) {
@@ -846,7 +860,9 @@ final class WorkspaceStore {
               let idx = pane.tabs.firstIndex(where: { $0.id == session.id }) else { return }
         // Snapshot direct refs — `closeTab` mutates `pane.tabs` mid-iteration.
         let toClose = Array(pane.tabs[(idx + 1)...])
-        for tab in toClose { closeTab(tab, in: workspace) }
+        for tab in toClose {
+            closeTab(tab, in: workspace)
+        }
     }
 
     func closeTab(_ session: Session, in workspace: Workspace) {
@@ -989,7 +1005,9 @@ final class WorkspaceStore {
         // documented known issue). After the animation settles we push
         // one final size sync.
         let engines = workspace.root.allPanes.flatMap { $0.tabs }.map(\.engine)
-        for engine in engines { engine.suspendsSizePropagation = true }
+        for engine in engines {
+            engine.suspendsSizePropagation = true
+        }
 
         workspace.activePaneId = paneId
         workspace.zoomedPaneId = workspace.isZoomed(paneId) ? nil : paneId
@@ -1021,7 +1039,7 @@ final class WorkspaceStore {
     @discardableResult
     func splitPane(_ pane: Pane, orientation: SplitOrientation, in workspace: Workspace) -> Pane? {
         guard let leafNode = workspace.root.paneNode(paneId: pane.id) else { return nil }
-        guard case .pane(let existing) = leafNode.content else { return nil }
+        guard case let .pane(existing) = leafNode.content else { return nil }
         let template = existing.activeTab?.agent ?? .terminal
         let cwd = existing.activeTab?.currentDirectory ?? workspace.workingDirectory
         let newSession = spawnSession(template: template, initialCwd: cwd)
@@ -1039,17 +1057,18 @@ final class WorkspaceStore {
         return newPane
     }
 
-    // [archer]
+    /// [archer]
     enum SplitPosition {
         case first
         case second
     }
 
-    // [archer]
+    /// [archer]
     func splitPaneWithExistingTab(_ pane: Pane, orientation: SplitOrientation, tabId: UUID, position: SplitPosition, in workspace: Workspace) {
         var sessionToMove: Session? = nil
         if let sourcePane = workspace.root.pane(containingSessionId: tabId),
-           let sessionIndex = sourcePane.tabs.firstIndex(where: { $0.id == tabId }) {
+           let sessionIndex = sourcePane.tabs.firstIndex(where: { $0.id == tabId })
+        {
             let session = sourcePane.tabs[sessionIndex]
             detachSession(session, from: sourcePane, at: sessionIndex, in: workspace)
             sessionToMove = session
@@ -1061,16 +1080,16 @@ final class WorkspaceStore {
                 }
             }
         }
-        
+
         guard let session = sessionToMove else { return }
-        
+
         wireSessionCallbacks(engine: session.engine, session: session, workspace: workspace)
-        
+
         guard let leafNode = workspace.root.paneNode(paneId: pane.id) else { return }
-        guard case .pane(let existing) = leafNode.content else { return }
-        
+        guard case let .pane(existing) = leafNode.content else { return }
+
         let newPane = Pane(tabs: [session], activeTabId: session.id)
-        
+
         let firstChild: PaneNode
         let secondChild: PaneNode
         if position == .first {
@@ -1080,10 +1099,10 @@ final class WorkspaceStore {
             firstChild = PaneNode(pane: existing)
             secondChild = PaneNode(pane: newPane)
         }
-        
+
         leafNode.content = .split(orientation: orientation, first: firstChild, second: secondChild, fraction: 0.5)
         workspace.activePaneId = newPane.id
-        
+
         if workspace.zoomedPaneId != nil { workspace.zoomedPaneId = nil }
         scheduleSave()
     }
@@ -1096,12 +1115,14 @@ final class WorkspaceStore {
         // Worktree last-pane cascade — route through the confirm sheet
         // before any engines get terminated, so a sheet cancel leaves
         // the user's work intact.
-        if leafNode === workspace.root && workspace.worktreeParentId != nil {
+        if leafNode === workspace.root, workspace.worktreeParentId != nil {
             requestCloseWorkspace(workspace)
             return
         }
         if workspace.zoomedPaneId == pane.id { workspace.zoomedPaneId = nil }
-        for tab in pane.tabs { tab.engine.terminate() }
+        for tab in pane.tabs {
+            tab.engine.terminate()
+        }
         // Object identity, not id equality. After `splitPane`, the workspace
         // root keeps its original id but its content becomes a `.split`, while
         // a freshly-constructed child `PaneNode(pane: existing)` reuses the
@@ -1117,7 +1138,8 @@ final class WorkspaceStore {
         if workspace.activePaneId == pane.id {
             workspace.activePaneId = info.sibling.firstPane?.id
             if let session = workspace.activeSession,
-               workspace.workingDirectory != session.currentDirectory {
+               workspace.workingDirectory != session.currentDirectory
+            {
                 workspace.workingDirectory = session.currentDirectory
             }
         }
@@ -1147,7 +1169,7 @@ final class WorkspaceStore {
     /// direct child (used by drag-to-resize).
     func setSplitFraction(_ fraction: Double, parentOf pane: Pane, in workspace: Workspace) {
         guard let info = workspace.root.parentInfo(forPane: pane.id) else { return }
-        guard case .split(let orient, let first, let second, let current) = info.parent.content else { return }
+        guard case let .split(orient, first, second, current) = info.parent.content else { return }
         let clamped = min(max(fraction, 0.1), 0.9)
         guard abs(clamped - current) > .ulpOfOne else { return }
         info.parent.content = .split(orientation: orient, first: first, second: second, fraction: clamped)
@@ -1216,7 +1238,7 @@ final class WorkspaceStore {
     /// Unknown sessionIds (race: tab closed mid-flight) drop silently;
     /// other UI keeps rendering.
     func applyToolCallEvent(
-        agent: AgentTemplate,
+        agent _: AgentTemplate,
         toolName: String,
         identifier: String,
         event: HookToolEvent,
@@ -1282,7 +1304,9 @@ final class WorkspaceStore {
                 }
             }
         }
-        for watcher in gitWatchers.values { watcher.cancel() }
+        for watcher in gitWatchers.values {
+            watcher.cancel()
+        }
         gitWatchers.removeAll()
     }
 
@@ -1333,7 +1357,7 @@ final class WorkspaceStore {
 
     private func restorePane(_ persisted: PersistedPaneNode, fm: FileManager) -> PaneNode? {
         switch persisted.kind {
-        case .pane(let p):
+        case let .pane(p):
             let pane = Pane(id: p.id)
             for tab in p.tabs {
                 let agent = AgentTemplate.all.first { $0.id == tab.agentId } ?? .terminal
@@ -1350,7 +1374,7 @@ final class WorkspaceStore {
                 ? p.activeTabId
                 : pane.tabs.first?.id
             return PaneNode(pane: pane)
-        case .split(let orientation, let first, let second, let fraction):
+        case let .split(orientation, first, second, fraction):
             guard let firstChild = restorePane(first, fm: fm),
                   let secondChild = restorePane(second, fm: fm) else { return nil }
             return PaneNode(
@@ -1549,8 +1573,6 @@ final class WorkspaceStore {
         }
     }
 
-
-
     private func installGitWatcher(for session: Session) {
         let watcher = GitWatcher { [weak self, weak session] in
             guard let self, let session else { return }
@@ -1603,16 +1625,16 @@ final class WorkspaceStore {
 // [archer]
 import ObjectiveC
 
-nonisolated(unsafe) public var dragCleanupKey: UInt8 = 0
+public nonisolated(unsafe) var dragCleanupKey: UInt8 = 0
 
 public final class DragCleanupTracker: NSObject {
     private let onDeinit: @Sendable @MainActor () -> Void
-    
+
     public init(onDeinit: @escaping @Sendable @MainActor () -> Void) {
         self.onDeinit = onDeinit
         super.init()
     }
-    
+
     deinit {
         let action = onDeinit
         DispatchQueue.main.async {
@@ -1620,4 +1642,3 @@ public final class DragCleanupTracker: NSObject {
         }
     }
 }
-

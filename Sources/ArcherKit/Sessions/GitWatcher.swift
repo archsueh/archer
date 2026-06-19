@@ -23,6 +23,7 @@ final class GitWatcher {
     init(onChange: @escaping () -> Void) {
         self.onChange = onChange
     }
+
     // No deinit cleanup — `@MainActor` deinits run nonisolated in Swift 6, and
     // the project convention (see CLAUDE.md "Don't try to deinit-free…") is
     // to require explicit teardown. Callers MUST invoke `cancel()` before
@@ -32,7 +33,7 @@ final class GitWatcher {
     /// `watches` returns early. The rebuild path (tearDown then re-watch)
     /// intentionally falls through because `watches` is empty there.
     func watch(cwd: URL) {
-        if watchedCwd == cwd && !watches.isEmpty { return }
+        if watchedCwd == cwd, !watches.isEmpty { return }
         tearDownSources()
         watchedCwd = cwd
         guard let gitDir = Self.findGitDir(near: cwd) else { return }
@@ -51,7 +52,9 @@ final class GitWatcher {
     /// rebuild path so a NOTE_DELETE event can both swap fds AND let the
     /// debounced refresh it just scheduled fire.
     private func tearDownSources() {
-        for w in watches { w.source.cancel() }
+        for w in watches {
+            w.source.cancel()
+        }
         watches.removeAll()
     }
 
@@ -112,7 +115,8 @@ final class GitWatcher {
                 if isDir.boolValue { return candidate }
                 if let contents = try? String(contentsOf: candidate, encoding: .utf8),
                    let line = contents.split(whereSeparator: \.isNewline)
-                       .first(where: { $0.hasPrefix("gitdir: ") }) {
+                   .first(where: { $0.hasPrefix("gitdir: ") })
+                {
                     let raw = String(line.dropFirst("gitdir: ".count))
                         .trimmingCharacters(in: .whitespaces)
                     // Submodule `.git` files commonly carry a relative path

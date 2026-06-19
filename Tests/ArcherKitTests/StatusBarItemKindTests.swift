@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 final class StatusBarItemKindTests: XCTestCase {
     func testDefaultOrderCoversAllCases() {

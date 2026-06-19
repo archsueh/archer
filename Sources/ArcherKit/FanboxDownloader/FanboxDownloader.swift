@@ -1,12 +1,13 @@
 import Foundation
 
-// [archer] Fanbox response JSON models
+/// [archer] Fanbox response JSON models
 private struct FanboxResponse: Decodable {
     struct Body: Decodable {
         let title: String
         let type: String
         let body: InnerBody?
     }
+
     struct InnerBody: Decodable {
         let text: String?
         let images: [FanboxImage]?
@@ -14,17 +15,20 @@ private struct FanboxResponse: Decodable {
         let imageMap: [String: FanboxImage]?
         let fileMap: [String: FanboxFile]?
     }
+
     struct FanboxImage: Decodable {
         let id: String?
         let `extension`: String?
         let originalUrl: String
     }
+
     struct FanboxFile: Decodable {
         let id: String?
         let name: String
         let `extension`: String?
         let url: String
     }
+
     let body: Body?
 }
 
@@ -70,12 +74,12 @@ public enum Downloader {
 
                 let decoder = JSONDecoder()
                 let decodedResponse = try decoder.decode(FanboxResponse.self, from: data)
-                
+
                 if let body = decodedResponse.body {
                     postTitle = body.title
-                    
+
                     var filesToDownload: [(url: URL, name: String)] = []
-                    
+
                     if let innerBody = body.body {
                         // 1. Files
                         if let files = innerBody.files {
@@ -109,23 +113,23 @@ public enum Downloader {
                                 }
                             }
                         }
-                        
+
                         // Save post text if present
                         if let text = innerBody.text, !text.isEmpty {
                             let textURL = postDirectory.appendingPathComponent("post_text.md")
                             try text.write(to: textURL, atomically: true, encoding: .utf8)
-                            
+
                             let processedURL = try processFile(textURL, baseDir: directory, fileManager: fileManager)
                             downloadedFiles.append(processedURL)
                         }
                     }
-                    
+
                     // Download all gathered files/images
                     for item in filesToDownload {
                         let tempDest = postDirectory.appendingPathComponent(item.name)
                         do {
                             try await downloadFile(from: item.url, to: tempDest)
-                            
+
                             let processedURL = try processFile(tempDest, baseDir: directory, fileManager: fileManager)
                             downloadedFiles.append(processedURL)
                         } catch {
@@ -141,7 +145,7 @@ public enum Downloader {
             if downloadedFiles.isEmpty {
                 let sampleURL = postDirectory.appendingPathComponent("\(postId).txt")
                 try "placeholder: \(postId)".write(to: sampleURL, atomically: true, encoding: .utf8)
-                
+
                 let processedURL = try processFile(sampleURL, baseDir: directory, fileManager: fileManager)
                 downloadedFiles.append(processedURL)
             }

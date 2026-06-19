@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 final class VersionTests: XCTestCase {
     func testStripLeadingV() {
@@ -23,5 +23,4 @@ final class VersionTests: XCTestCase {
         XCTAssertEqual(Version.compare("1.0", "1.0.1"), .orderedAscending)
         XCTAssertEqual(Version.compare("1.0.1", "1.0"), .orderedDescending)
     }
-
 }

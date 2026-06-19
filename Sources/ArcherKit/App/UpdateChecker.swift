@@ -23,6 +23,7 @@ enum UpdateChecker {
                 case browserDownloadUrl = "browser_download_url"
             }
         }
+
         enum CodingKeys: String, CodingKey {
             case tagName = "tag_name"
             case htmlUrl = "html_url"

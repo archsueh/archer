@@ -1,13 +1,16 @@
 import Foundation
 
 public struct ClassifyRule: Hashable, Sendable, Codable, Identifiable {
-    public var id: String { `extension` }
+    public var id: String {
+        `extension`
+    }
+
     public let `extension`: String
     public let folder: String
     public let priority: Int
 
     public init(extension: String, folder: String, priority: Int) {
-        self.`extension` = `extension`.lowercased()
+        self.extension = `extension`.lowercased()
         self.folder = folder
         self.priority = priority
     }
@@ -40,14 +43,16 @@ public enum Classifier {
 
     public static func loadRules() -> [ClassifyRule] {
         guard let parsed = ArcherSettings.loadParsed(),
-              let classify = parsed["classify"] as? [[String: Any]] else {
+              let classify = parsed["classify"] as? [[String: Any]]
+        else {
             return builtInRules
         }
         var rules: [ClassifyRule] = []
         for dict in classify {
             if let ext = dict["extension"] as? String,
                let folder = dict["folder"] as? String,
-               let priority = dict["priority"] as? Int {
+               let priority = dict["priority"] as? Int
+            {
                 rules.append(ClassifyRule(extension: ext, folder: folder, priority: priority))
             }
         }
@@ -60,7 +65,7 @@ public enum Classifier {
             return [
                 "extension": rule.extension,
                 "folder": rule.folder,
-                "priority": rule.priority
+                "priority": rule.priority,
             ]
         }
         parsed["classify"] = rawRules

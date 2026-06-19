@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 // MARK: - Collapsible Sidebar
 
@@ -15,7 +15,7 @@ struct ArcherCollapsibleSidebar<Sidebar: View, Detail: View>: View {
         @ViewBuilder sidebar: () -> Sidebar,
         @ViewBuilder detail: () -> Detail
     ) {
-        self._layout = layout
+        _layout = layout
         self.detailMinWidth = detailMinWidth
         self.sidebar = sidebar()
         self.detail = detail()
@@ -88,13 +88,15 @@ struct ArcherPersistentSidebarSplitView<Sidebar: View, Detail: View>: NSViewRepr
         @ViewBuilder sidebar: () -> Sidebar,
         @ViewBuilder detail: () -> Detail
     ) {
-        self._layout = layout
+        _layout = layout
         self.detailMinWidth = detailMinWidth
         self.sidebar = sidebar()
         self.detail = detail()
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
     func makeNSView(context: Context) -> NSSplitView {
         let splitView = NSSplitView()
@@ -201,16 +203,18 @@ struct ArcherPersistentSidebarSplitView<Sidebar: View, Detail: View>: NSViewRepr
             }
         }
 
-        func splitView(_ splitView: NSSplitView,
+        func splitView(_: NSSplitView,
                        constrainMinCoordinate proposedMinimum: CGFloat,
-                       ofSubviewAt dividerIndex: Int) -> CGFloat {
+                       ofSubviewAt _: Int) -> CGFloat
+        {
             guard let layout else { return proposedMinimum }
             return max(proposedMinimum, layout.wrappedValue.minSidebarWidth)
         }
 
         func splitView(_ splitView: NSSplitView,
                        constrainMaxCoordinate proposedMaximum: CGFloat,
-                       ofSubviewAt dividerIndex: Int) -> CGFloat {
+                       ofSubviewAt _: Int) -> CGFloat
+        {
             return min(proposedMaximum, splitView.bounds.width - detailMinWidth)
         }
 
@@ -256,7 +260,7 @@ struct ArcherCollapseToolbarButton: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(isActive ? Theme.chromeForeground
-                                   : Theme.chromeForeground.opacity(isEnabled ? 0.82 : 0.32))
+            : Theme.chromeForeground.opacity(isEnabled ? 0.82 : 0.32))
         .disabled(!isEnabled)
         .help(help)
         .accessibilityLabel(Text(help))

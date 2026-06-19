@@ -3,7 +3,7 @@ import Foundation
 
 /// Reads the Claude Code OAuth access token from the macOS Keychain via
 /// `security find-generic-password`. Lifted from TokenChecker.
-struct KeychainTokenSource: Sendable {
+struct KeychainTokenSource {
     static let serviceName = "Claude Code-credentials"
 
     func readAccessToken() async throws -> String {
@@ -49,7 +49,7 @@ private struct KeychainPayload: Decodable {
 
 /// Hits Anthropic's OAuth usage endpoint. Routes through a detected local proxy
 /// and blocks redirects so the Bearer token can't leak. Lifted from TokenChecker.
-struct AnthropicUsageAPIClient: Sendable {
+struct AnthropicUsageAPIClient {
     static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
     func fetch(accessToken: String) async throws -> AnthropicUsageDTO {
@@ -92,21 +92,23 @@ struct AnthropicUsageAPIClient: Sendable {
 
 private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     static let shared = NoRedirectDelegate()
-    func urlSession(_ s: URLSession, task: URLSessionTask,
-                    willPerformHTTPRedirection r: HTTPURLResponse, newRequest: URLRequest,
-                    completionHandler: @escaping (URLRequest?) -> Void) {
+    func urlSession(_: URLSession, task _: URLSessionTask,
+                    willPerformHTTPRedirection _: HTTPURLResponse, newRequest _: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void)
+    {
         completionHandler(nil)
     }
 }
 
-struct AnthropicUsageDTO: Decodable, Sendable {
+struct AnthropicUsageDTO: Decodable {
     let fiveHour: BucketDTO?
     let sevenDay: BucketDTO?
     let sevenDaySonnet: BucketDTO?
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour", sevenDay = "seven_day", sevenDaySonnet = "seven_day_sonnet"
     }
-    struct BucketDTO: Decodable, Sendable {
+
+    struct BucketDTO: Decodable {
         let utilization: Double?
         let resetsAt: String?
         enum CodingKeys: String, CodingKey { case utilization, resetsAt = "resets_at" }
@@ -117,7 +119,7 @@ extension AnthropicUsageDTO.BucketDTO {
     func toRateLimit() -> RateLimit? {
         guard let utilization, let resetsAt,
               let date = ISO8601DateFormatter.usageStandard.date(from: resetsAt)
-                ?? ISO8601DateFormatter.usageFractional.date(from: resetsAt) else { return nil }
+              ?? ISO8601DateFormatter.usageFractional.date(from: resetsAt) else { return nil }
         return RateLimit(utilization: utilization / 100.0, resetsAt: date)
     }
 }
@@ -126,13 +128,14 @@ extension ISO8601DateFormatter {
     nonisolated(unsafe) static let usageStandard: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
     }()
+
     nonisolated(unsafe) static let usageFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
     }()
 }
 
 /// Keychain token → Anthropic usage endpoint → ServiceUsage.
-struct ClaudeUsageProvider: Sendable {
+struct ClaudeUsageProvider {
     let keychain = KeychainTokenSource()
     let api = AnthropicUsageAPIClient()
 
@@ -142,6 +145,7 @@ struct ClaudeUsageProvider: Sendable {
         return ServiceUsage(
             fiveHour: dto.fiveHour?.toRateLimit(),
             weekly: dto.sevenDay?.toRateLimit(),
-            weeklySonnet: dto.sevenDaySonnet?.toRateLimit())
+            weeklySonnet: dto.sevenDaySonnet?.toRateLimit()
+        )
     }
 }

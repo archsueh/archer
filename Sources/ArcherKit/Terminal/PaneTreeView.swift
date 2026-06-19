@@ -13,7 +13,7 @@ struct PaneTreeView: View {
 
     var body: some View {
         switch node.content {
-        case .pane(let pane):
+        case let .pane(pane):
             PaneView(
                 pane: pane,
                 workspace: workspace,
@@ -43,7 +43,7 @@ private struct PaneView: View {
     /// produce two restore Tasks where the first un-suspends mid-second
     /// animation and the documented conda-scrollback-wipe regression returns.
     @State private var sigwinchSuspensionGeneration = 0
-    // [archer]
+    /// [archer]
     @State private var hoverRegion: DropRegion = .none
 
     var body: some View {
@@ -65,74 +65,74 @@ private struct PaneView: View {
                                 pane?.isAtBottom = false
                             }
                         )
-                            .id(active.id)
-                            .padding(8)
-                            .overlay(RightClickCatcher { unit in
-                                // Promote this pane to the workspace's active one —
-                                // RightClickCatcher swallows rightMouseDown before
-                                // libghostty sees it, so `engine.onFocus` never
-                                // fires. Without this, the menu would dismiss but
-                                // keystrokes + new-agent-tab spawns would still go
-                                // to whichever pane had focus before.
-                                store.activateTab(active, in: workspace)
-                                contextMenuAnchor = unit
-                                contextMenuOpen = true
-                            })
-                            .popover(
-                                isPresented: $contextMenuOpen,
-                                attachmentAnchor: .point(contextMenuAnchor),
-                                arrowEdge: .top
-                            ) {
-                                PaneContextMenu(
+                        .id(active.id)
+                        .padding(8)
+                        .overlay(RightClickCatcher { unit in
+                            // Promote this pane to the workspace's active one —
+                            // RightClickCatcher swallows rightMouseDown before
+                            // libghostty sees it, so `engine.onFocus` never
+                            // fires. Without this, the menu would dismiss but
+                            // keystrokes + new-agent-tab spawns would still go
+                            // to whichever pane had focus before.
+                            store.activateTab(active, in: workspace)
+                            contextMenuAnchor = unit
+                            contextMenuOpen = true
+                        })
+                        .popover(
+                            isPresented: $contextMenuOpen,
+                            attachmentAnchor: .point(contextMenuAnchor),
+                            arrowEdge: .top
+                        ) {
+                            PaneContextMenu(
+                                session: active,
+                                pane: pane,
+                                workspace: workspace,
+                                store: store,
+                                isPresented: $contextMenuOpen
+                            )
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            // Per-pane: multiple panes can search simultaneously,
+                            // each with their own needle and result count.
+                            if active.searchActive {
+                                PaneSearchBar(
                                     session: active,
-                                    pane: pane,
-                                    workspace: workspace,
-                                    store: store,
-                                    isPresented: $contextMenuOpen
+                                    onFocusGained: { store.activateTab(active, in: workspace) }
                                 )
+                                .padding(.top, Theme.space3)
+                                .padding(.trailing, Theme.space3)
                             }
-                            .overlay(alignment: .topTrailing) {
-                                // Per-pane: multiple panes can search simultaneously,
-                                // each with their own needle and result count.
-                                if active.searchActive {
-                                    PaneSearchBar(
+                        }
+                        .overlay(alignment: .bottom) {
+                            VStack(spacing: 0) {
+                                // Jump to Latest button — appears when scrolled up and new output arrived
+                                if !pane.isAtBottom {
+                                    Button(action: {
+                                        active.engine.performAction("scroll_to_bottom")
+                                        pane.isAtBottom = true
+                                    }) {
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .font(.system(size: 18, weight: .medium))
+                                            .foregroundStyle(Theme.activityRunning)
+                                            .shadow(radius: 2)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.bottom, Theme.space3 + 8)
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                }
+                                // ⌘L composer rises from the bottom like a chat box.
+                                // Per-pane / per-session, same as search.
+                                if active.composerActive {
+                                    PaneComposerBar(
                                         session: active,
+                                        store: store,
                                         onFocusGained: { store.activateTab(active, in: workspace) }
                                     )
-                                    .padding(.top, Theme.space3)
-                                    .padding(.trailing, Theme.space3)
+                                    .padding(.horizontal, Theme.space3)
+                                    .padding(.bottom, Theme.space3)
                                 }
                             }
-                            .overlay(alignment: .bottom) {
-                                VStack(spacing: 0) {
-                                    // Jump to Latest button — appears when scrolled up and new output arrived
-                                    if !pane.isAtBottom {
-                                        Button(action: {
-                                            active.engine.performAction("scroll_to_bottom")
-                                            pane.isAtBottom = true
-                                        }) {
-                                            Image(systemName: "arrow.down.circle.fill")
-                                                .font(.system(size: 18, weight: .medium))
-                                                .foregroundStyle(Theme.activityRunning)
-                                                .shadow(radius: 2)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .padding(.bottom, Theme.space3 + 8)
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                    }
-                                    // ⌘L composer rises from the bottom like a chat box.
-                                    // Per-pane / per-session, same as search.
-                                    if active.composerActive {
-                                        PaneComposerBar(
-                                            session: active,
-                                            store: store,
-                                            onFocusGained: { store.activateTab(active, in: workspace) }
-                                        )
-                                        .padding(.horizontal, Theme.space3)
-                                        .padding(.bottom, Theme.space3)
-                                    }
-                                }
-                            }
+                        }
                         // Always present now that it hosts the compose button — a
                         // stable bottom affordance, not gated on git / env / zoom data.
                         Rectangle().fill(Theme.chromeHairline).frame(height: 1)
@@ -177,13 +177,15 @@ private struct PaneView: View {
             // generation token so a rapid second toggle doesn't have its
             // in-flight animation prematurely un-suspended by a stale Task.
             let engines = pane.tabs.map(\.engine)
-            for engine in engines { engine.suspendsSizePropagation = true }
+            for engine in engines {
+                engine.suspendsSizePropagation = true
+            }
 
             sigwinchSuspensionGeneration &+= 1
             let token = sigwinchSuspensionGeneration
 
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 250_000_000)  // covers Theme.chromeTransition
+                try? await Task.sleep(nanoseconds: 250_000_000) // covers Theme.chromeTransition
                 guard token == sigwinchSuspensionGeneration else { return }
                 for engine in engines {
                     engine.suspendsSizePropagation = false
@@ -197,7 +199,7 @@ private struct PaneView: View {
 /// One configurable slot of the pane status bar. Order + visibility are
 /// controlled by Settings → Status Bar (`ArcherSettingsModel.statusBarItems`
 /// + `.hiddenStatusBarItems`). Adding a new kind: append a case here,
-enum StatusBarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
+enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     /// Tool-call activity pill, shown for agents that feed archer their
     /// tool calls (`AgentTemplate.reportsToolCalls` — Claude + Pi).
     /// Special-positioned on the left of the bar (not inside the
@@ -417,7 +419,7 @@ private struct PaneStatusBar: View {
     @ViewBuilder
     private func segment(for item: StatusBarItemKind) -> some View {
         switch item {
-        case .toolCallActivity: EmptyView()  // rendered separately on the left
+        case .toolCallActivity: EmptyView() // rendered separately on the left
         case .pendingTurn: pendingTurnSegment
         case .pythonVenv: pythonSegment
         case .nodeVersion: nodeSegment
@@ -581,13 +583,13 @@ private struct FlowLayout: Layout {
     var spacing: CGFloat = 8
     var rowSpacing: CGFloat = 4
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         let plan = plan(width: width, subviews: subviews)
         return CGSize(width: proposal.width ?? plan.contentWidth, height: plan.height)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
         let plan = plan(width: bounds.width, subviews: subviews)
         for (i, p) in plan.positions.enumerated() {
             subviews[i].place(at: CGPoint(x: bounds.minX + p.x, y: bounds.minY + p.y), proposal: .unspecified)
@@ -620,8 +622,8 @@ private struct FlowLayout: Layout {
             let startX: CGFloat
             switch alignment {
             case .trailing: startX = max(0, width - rowContent)
-            case .center:   startX = max(0, (width - rowContent) / 2)
-            default:        startX = 0
+            case .center: startX = max(0, (width - rowContent) / 2)
+            default: startX = 0
             }
             var x = startX
             for i in row {
@@ -1178,7 +1180,8 @@ private final class ComposerNSTextView: NSTextView {
         let pb = NSPasteboard.general
         if pb.availableType(from: [.fileURL, .png, .tiff]) != nil,
            let text = ArcherShellIntegration.readTerminalPasteText(from: pb),
-           !text.isEmpty {
+           !text.isEmpty
+        {
             insertText(text, replacementRange: selectedRange())
             return
         }
@@ -1233,23 +1236,27 @@ private struct ComposerTextView: NSViewRepresentable {
         return scroll
     }
 
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
+    func updateNSView(_ scroll: NSScrollView, context _: Context) {
         guard let tv = scroll.documentView as? NSTextView else { return }
         if tv.string != text { tv.string = text }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         let parent: ComposerTextView
-        init(_ parent: ComposerTextView) { self.parent = parent }
+        init(_ parent: ComposerTextView) {
+            self.parent = parent
+        }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
             parent.text = tv.string
         }
 
-        func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        func textView(_: NSTextView, doCommandBy selector: Selector) -> Bool {
             switch selector {
             case #selector(NSResponder.insertNewline(_:)):
                 // Shift+Return → newline (let the text view handle it);
@@ -1259,7 +1266,7 @@ private struct ComposerTextView: NSViewRepresentable {
                 }
                 parent.onSend()
                 return true
-            case #selector(NSResponder.cancelOperation(_:)):  // Esc
+            case #selector(NSResponder.cancelOperation(_:)): // Esc
                 parent.onCancel()
                 return true
             default:
@@ -1282,7 +1289,7 @@ private struct SplitContainer: View {
     private static let maxFraction: Double = 0.9
 
     var body: some View {
-        guard case .split(let orientation, let first, let second, let storedFraction) = node.content else {
+        guard case let .split(orientation, first, second, storedFraction) = node.content else {
             return AnyView(EmptyView())
         }
         // Pane zoom = "push the fraction on every split along the path to
@@ -1379,7 +1386,7 @@ private struct SplitContainer: View {
     private func dragGesture(orientation: SplitOrientation, total: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                guard case .split(let orient, let f, let s, let current) = node.content else { return }
+                guard case let .split(orient, f, s, current) = node.content else { return }
                 if dragStartFraction == nil { dragStartFraction = current }
                 let translation = orientation == .horizontal ? value.translation.width : value.translation.height
                 let delta = total > 0 ? Double(translation) / Double(total) : 0
@@ -1416,8 +1423,8 @@ private struct DividerHandle: View {
     }
 }
 
-// [archer]
-enum DropRegion: String, Hashable, Sendable {
+/// [archer]
+enum DropRegion: String, Hashable {
     case none
     case left
     case right
@@ -1426,7 +1433,7 @@ enum DropRegion: String, Hashable, Sendable {
     case center
 }
 
-// [archer]
+/// [archer]
 struct PaneDropDelegate: DropDelegate {
     let pane: Pane
     let workspace: Workspace
@@ -1434,7 +1441,7 @@ struct PaneDropDelegate: DropDelegate {
     let geometry: GeometryProxy
     @Binding var hoverRegion: DropRegion
 
-    func validateDrop(info: DropInfo) -> Bool {
+    func validateDrop(info _: DropInfo) -> Bool {
         guard let draggingTabId = store.draggingTabId else { return false }
         // Cannot split a pane with its only tab
         if pane.tabs.contains(where: { $0.id == draggingTabId }) && pane.tabs.count == 1 {
@@ -1447,7 +1454,7 @@ struct PaneDropDelegate: DropDelegate {
         updateRegion(at: info.location)
     }
 
-    func dropExited(info: DropInfo) {
+    func dropExited(info _: DropInfo) {
         hoverRegion = .none
     }
 
@@ -1456,7 +1463,7 @@ struct PaneDropDelegate: DropDelegate {
         return DropProposal(operation: .move)
     }
 
-    func performDrop(info: DropInfo) -> Bool {
+    func performDrop(info _: DropInfo) -> Bool {
         defer {
             hoverRegion = .none
             store.draggingTabId = nil
@@ -1510,7 +1517,7 @@ struct PaneDropDelegate: DropDelegate {
     }
 }
 
-// [archer]
+/// [archer]
 struct PaneDropIndicatorOverlay: View {
     let region: DropRegion
 
@@ -1544,4 +1551,3 @@ struct PaneDropIndicatorOverlay: View {
         }
     }
 }
-

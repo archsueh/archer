@@ -1,7 +1,7 @@
 import AppKit
+@testable import ArcherKit
 import GhosttyKit
 import XCTest
-@testable import ArcherKit
 
 @MainActor
 final class TerminalKeyRoutingTests: XCTestCase {

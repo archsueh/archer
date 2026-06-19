@@ -29,6 +29,7 @@ struct CreateWorktreeSheet: View {
             /// picked entry.
             case adopt(worktrees: [WorktreeManager.Info])
         }
+
         let kind: Kind
         let template: AgentTemplate
     }
@@ -79,6 +80,7 @@ struct CreateWorktreeSheet: View {
         let info: WorktreeManager.Info
         let key: String
     }
+
     /// Stable git root for the source workspace. `Workspace.workingDirectory`
     /// follows the active shell cwd, so it may be a nested folder by the time
     /// the user opens this sheet.
@@ -151,7 +153,7 @@ struct CreateWorktreeSheet: View {
                 let queryCwd = root ?? cwd
                 async let infos: [WorktreeManager.Info] = {
                     guard let root,
-                          case .success(let result) = WorktreeManager.list(repoPath: root)
+                          case let .success(result) = WorktreeManager.list(repoPath: root)
                     else { return [] }
                     return result
                 }()
@@ -342,7 +344,6 @@ struct CreateWorktreeSheet: View {
         !adoptableRows.isEmpty
     }
 
-    @ViewBuilder
     private var branchField: some View {
         // Only rendered for `.newBranch` / `.existing` — `form` dispatches
         // `.adopt` to `adoptForm`. `if/else if` over the relevant cases
@@ -476,7 +477,6 @@ struct CreateWorktreeSheet: View {
             .foregroundStyle(Theme.chromeMuted.opacity(0.85))
     }
 
-    @ViewBuilder
     private func editRow(label: String, text: Binding<String>, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             fieldLabel(label)
@@ -536,7 +536,7 @@ struct CreateWorktreeSheet: View {
         switch startFromChoice {
         case .head:
             return nil
-        case .branch(let branch):
+        case let .branch(branch):
             return branch
         case .custom:
             let trimmed = customStartRef.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -557,7 +557,7 @@ struct CreateWorktreeSheet: View {
         switch branchMode {
         case .newBranch: return normalizedNewBranchName
         case .existing: return existingBranch
-        case .adopt: return ""  // adopt mode doesn't drive path preview
+        case .adopt: return "" // adopt mode doesn't drive path preview
         }
     }
 
@@ -636,7 +636,7 @@ struct CreateWorktreeSheet: View {
             switch outcome {
             case .success:
                 dismiss()
-            case .failure(let message):
+            case let .failure(message):
                 isWorking = false
                 errorMessage = message
             }

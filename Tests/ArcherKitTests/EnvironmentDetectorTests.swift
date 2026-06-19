@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 final class EnvironmentDetectorTests: XCTestCase {
     private var tempDir: URL!
@@ -86,7 +86,7 @@ final class EnvironmentDetectorTests: XCTestCase {
     func testNvmBinExtractsVersionFromPath() {
         let env = [
             "NVM_BIN": "/Users/mac/.nvm/versions/node/v25.1.0/bin",
-            "NVM_DIR": "/Users/mac/.nvm"
+            "NVM_DIR": "/Users/mac/.nvm",
         ]
         let result = EnvironmentDetector.extract(shellEnv: env, cwd: tempDir)
         XCTAssertEqual(result.nodeVersion, "v25.1.0")
@@ -130,7 +130,7 @@ final class EnvironmentDetectorTests: XCTestCase {
         // VIRTUAL_ENV is more specific (a real path) and wins.
         let env = [
             "VIRTUAL_ENV": "/Users/mac/.venv",
-            "CONDA_DEFAULT_ENV": "base"
+            "CONDA_DEFAULT_ENV": "base",
         ]
         XCTAssertEqual(EnvironmentDetector.extract(shellEnv: env, cwd: tempDir).pythonVenv, ".venv")
     }

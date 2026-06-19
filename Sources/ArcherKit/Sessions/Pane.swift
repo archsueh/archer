@@ -17,5 +17,7 @@ final class Pane: Identifiable {
         self.activeTabId = activeTabId
     }
 
-    var activeTab: Session? { tabs.first { $0.id == activeTabId } }
+    var activeTab: Session? {
+        tabs.first { $0.id == activeTabId }
+    }
 }

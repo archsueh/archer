@@ -18,7 +18,7 @@ public struct DiffPanelView: View {
         VStack(spacing: 0) {
             header
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            
+
             Group {
                 if model.isLoading && model.modifiedFiles.isEmpty {
                     loadingView
@@ -50,19 +50,19 @@ public struct DiffPanelView: View {
                     }
                 }
             }
-            
+
             Text(showingDetail ? "DIFF" : "CHANGES")
                 .font(Theme.display(12, weight: .medium))
                 .foregroundStyle(Theme.chromeForeground)
-            
+
             Spacer()
-            
+
             if !showingDetail {
                 Text("\(model.modifiedFiles.count) files")
                     .font(Theme.mono(10))
                     .foregroundStyle(Theme.chromeMuted)
             }
-            
+
             HoverableIconButton(systemName: "arrow.clockwise", fontSize: 11, size: 24, help: "Refresh") {
                 model.refresh()
             }
@@ -124,9 +124,9 @@ public struct DiffPanelView: View {
             .padding(.horizontal, Theme.space3)
             .padding(.vertical, 6)
             .background(Theme.chromeHairline.opacity(0.3))
-            
+
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            
+
             if model.activeDiffLines.isEmpty {
                 VStack {
                     Spacer()
@@ -184,7 +184,7 @@ private struct FileListRow: View {
         HStack(spacing: 8) {
             statusIndicator(file.status)
                 .frame(width: 14)
-            
+
             VStack(alignment: .leading, spacing: 1) {
                 Text(file.url.lastPathComponent)
                     .font(Theme.mono(11, weight: .medium))
@@ -237,7 +237,7 @@ private struct DiffLineRow: View {
             }
             .font(Theme.mono(8.5))
             .foregroundStyle(Theme.chromeMuted.opacity(0.5))
-            
+
             // Code Content
             Text(line.content)
                 .font(Theme.mono(10))

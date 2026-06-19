@@ -66,7 +66,7 @@ struct UpdatePromptView: View {
     @ViewBuilder
     private var content: some View {
         switch outcome {
-        case .newer(_, _, let notes) where !notes.isEmpty:
+        case let .newer(_, _, notes) where !notes.isEmpty:
             VStack(alignment: .leading, spacing: 10) {
                 Text("release-notes")
                     .font(Theme.mono(10, weight: .medium))
@@ -91,7 +91,7 @@ struct UpdatePromptView: View {
     @ViewBuilder
     private var actions: some View {
         switch outcome {
-        case .newer(_, let url, _):
+        case let .newer(_, url, _):
             BracketButton("later", action: onClose)
             BracketButton("update") {
                 onDownload(url)
@@ -114,8 +114,8 @@ struct UpdatePromptView: View {
 
     private var headlineText: String {
         switch outcome {
-        case .newer(let latest, _, _): return latest
-        case .upToDate(let current): return current
+        case let .newer(latest, _, _): return latest
+        case let .upToDate(current): return current
         case .failed: return "couldn't reach github"
         }
     }
@@ -124,7 +124,7 @@ struct UpdatePromptView: View {
         switch outcome {
         case .newer: return "current \(currentVersion)"
         case .upToDate: return "you're on the latest release."
-        case .failed(let reason): return reason
+        case let .failed(reason): return reason
         }
     }
 }
@@ -133,8 +133,14 @@ struct UpdatePromptView: View {
 final class UpdatePromptWindowController: NSWindowController {
     static let shared = UpdatePromptWindowController()
 
-    private init() { super.init(window: nil) }
-    required init?(coder: NSCoder) { fatalError() }
+    private init() {
+        super.init(window: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError()
+    }
 
     static func present(outcome: UpdateChecker.Outcome, currentVersion: String) {
         let controller = shared
@@ -168,7 +174,7 @@ final class UpdatePromptWindowController: NSWindowController {
             new.styleMask = [.titled, .closable]
             new.isReleasedWhenClosed = false
             new.appearance = Theme.windowAppearance
-            self.window = new
+            window = new
         }
     }
 }

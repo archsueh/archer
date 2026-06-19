@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 /// SSOT for the file-tree panel. Replaces the per-row `@State` children cache in
 /// `SidebarFileTree`: a single owner lets a move update both the source and the

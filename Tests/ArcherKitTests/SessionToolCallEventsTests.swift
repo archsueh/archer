@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 /// Tests for `Session`'s tool-call event surface — the rolling 200-cap
 /// buffer + Pre/Post matching + 60s orphan stalling that the activity
@@ -28,7 +28,7 @@ final class SessionToolCallEventsTests: XCTestCase {
 
     func testRecordToolCallStartCapsAt200() {
         let session = makeSession()
-        for i in 0..<250 {
+        for i in 0 ..< 250 {
             session.recordToolCallStart(toolName: "Bash", identifier: "cmd-\(i)")
         }
         XCTAssertEqual(session.toolCallEvents.count, Session.toolCallEventsCap)
@@ -122,7 +122,7 @@ final class SessionToolCallEventsTests: XCTestCase {
         // Old Claude (or any caller that doesn't pipe tool_use_id) — the
         // Post still resolves the oldest matching Pre via fallback.
         let session = makeSession()
-        session.recordToolCallStart(toolName: "Bash", identifier: "ls")  // toolUseId defaults to nil
+        session.recordToolCallStart(toolName: "Bash", identifier: "ls") // toolUseId defaults to nil
         session.recordToolCallEnd(toolName: "Bash", identifier: "ls", success: true)
         XCTAssertEqual(session.toolCallEvents.count, 1)
         XCTAssertEqual(session.toolCallEvents[0].state, .success)
@@ -141,7 +141,7 @@ final class SessionToolCallEventsTests: XCTestCase {
             toolName: "Bash",
             identifier: "slow-build",
             startedAt: startedLongAgo,
-            completedAt: startedLongAgo.addingTimeInterval(60),  // stall time
+            completedAt: startedLongAgo.addingTimeInterval(60), // stall time
             state: .stalled
         ))
 
@@ -207,7 +207,7 @@ final class SessionToolCallEventsTests: XCTestCase {
             toolUseId: nil,
             toolName: "Bash",
             identifier: "fast",
-            startedAt: Date(timeIntervalSinceNow: -5),  // 5s ago — well under 60s
+            startedAt: Date(timeIntervalSinceNow: -5), // 5s ago — well under 60s
             completedAt: nil,
             state: .running
         ))
@@ -236,7 +236,7 @@ final class SessionToolCallEventsTests: XCTestCase {
             toolUseId: nil, toolName: "Read", identifier: "done",
             startedAt: Date(timeIntervalSinceNow: -100),
             completedAt: Date(),
-            state: .success  // Already resolved — not touched
+            state: .success // Already resolved — not touched
         ))
 
         let anyRunning = session.checkStalledToolCallEvents()
@@ -254,9 +254,9 @@ final class SessionToolCallEventsTests: XCTestCase {
     /// session × hundreds of past sessions. This test pins the invariant
     /// by encoding a session with events and confirming the round-tripped
     /// disk shape excludes them.
-    func testToolCallEventsDoNotPersistToDisk() throws {
+    func testToolCallEventsDoNotPersistToDisk() {
         let session = makeSession()
-        for i in 0..<5 {
+        for i in 0 ..< 5 {
             session.recordToolCallStart(toolName: "Bash", identifier: "cmd-\(i)")
         }
         XCTAssertEqual(session.toolCallEvents.count, 5)

@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 /// Pins the notification trigger logic in `WorkspaceStore`: a session entering
 /// attention or a command failing fires a banner-worthy `onSessionAlert`; an

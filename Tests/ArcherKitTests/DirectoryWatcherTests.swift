@@ -1,5 +1,5 @@
-import XCTest
 @testable import ArcherKit
+import XCTest
 
 @MainActor
 final class DirectoryWatcherTests: XCTestCase {
@@ -28,7 +28,7 @@ final class DirectoryWatcherTests: XCTestCase {
         wait(for: [exp], timeout: 3.0)
     }
 
-    // After remove(), changes no longer fire.
+    /// After remove(), changes no longer fire.
     func testRemoveStopsFiring() throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

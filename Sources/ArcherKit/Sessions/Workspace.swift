@@ -22,15 +22,20 @@ final class Workspace: Identifiable {
     var zoomedPaneId: UUID?
 
     /// Is `paneId` the currently zoomed pane?
-    func isZoomed(_ paneId: UUID) -> Bool { zoomedPaneId == paneId }
+    func isZoomed(_ paneId: UUID) -> Bool {
+        zoomedPaneId == paneId
+    }
 
     /// True when ⌘⇧E / the zoom button has something to do — either there
     /// are multiple panes to choose between, or the workspace is already
     /// zoomed (so toggling un-zooms).
-    var canZoom: Bool { root.hasMultiplePanes || zoomedPaneId != nil }
+    var canZoom: Bool {
+        root.hasMultiplePanes || zoomedPaneId != nil
+    }
+
     /// Empty / whitespace input via `renameWorkspace` clears this back to
     /// `nil` so the sidebar label resumes tracking the cwd.
-    var customTitle: String? = nil
+    var customTitle: String?
 
     /// Set by `SidebarView` once it has brought this workspace's row into the
     /// view hierarchy (the ⌘⇧R flow, parked on
@@ -44,11 +49,11 @@ final class Workspace: Identifiable {
     /// has this id. Sidebar groups worktrees under their source via a
     /// disclosure triangle. Set at creation and never changes for the
     /// workspace's lifetime — re-parenting a worktree is not a supported op.
-    var worktreeParentId: UUID? = nil
+    var worktreeParentId: UUID?
     /// Branch the worktree was created on, shown next to its sidebar row.
     /// Captured at creation; the pane status bar still owns the live branch
     /// readout if the user checks out something else inside the worktree.
-    var worktreeBranch: String? = nil
+    var worktreeBranch: String?
     /// Disk root of this worktree, captured at creation. Distinct from
     /// `workingDirectory` because the latter follows OSC 7 cwd reports —
     /// `cd ~/Downloads` inside a worktree tab drifts `workingDirectory`
@@ -56,7 +61,7 @@ final class Workspace: Identifiable {
     /// `git worktree add` produced. The close / reconcile paths must use
     /// this, not `workingDirectory`, so `git worktree remove` doesn't
     /// target the wrong path.
-    var worktreePath: URL? = nil
+    var worktreePath: URL?
 
     /// Single source of truth for "where the worktree actually lives on
     /// disk." For worktree workspaces `worktreePath` wins (pinned at
@@ -64,7 +69,9 @@ final class Workspace: Identifiable {
     /// existed fall through to `workingDirectory` and behave as before.
     /// Use this everywhere `git worktree remove` / `reconcile` /
     /// confirm-sheet subtitle needs the disk root.
-    var diskPath: URL { worktreePath ?? workingDirectory }
+    var diskPath: URL {
+        worktreePath ?? workingDirectory
+    }
 
     var title: String {
         if let custom = customTitle, !custom.isEmpty { return custom }
@@ -81,7 +88,9 @@ final class Workspace: Identifiable {
         return root.firstPane
     }
 
-    var activeSession: Session? { activePane?.activeTab }
+    var activeSession: Session? {
+        activePane?.activeTab
+    }
 
     /// Distinct non-terminal agents and aggregated activity, computed in a
     /// single tree walk. Sidebar reads all three per render. The walk runs
@@ -111,18 +120,26 @@ final class Workspace: Identifiable {
         return (agents, state, hasFailure)
     }
 
-    var distinctAgents: [AgentTemplate] { sidebarReadout.agents }
-    var activityState: SessionActivityState { sidebarReadout.state }
+    var distinctAgents: [AgentTemplate] {
+        sidebarReadout.agents
+    }
+
+    var activityState: SessionActivityState {
+        sidebarReadout.state
+    }
+
     /// True when any tab's last command exited non-zero. Sidebar uses this
     /// (with attention > failure > running > idle precedence) so a
     /// background-pane failure surfaces at the workspace level too.
-    var hasCommandFailure: Bool { sidebarReadout.hasCommandFailure }
+    var hasCommandFailure: Bool {
+        sidebarReadout.hasCommandFailure
+    }
 
     private func walk(_ node: PaneNode, visit: (Pane) -> Void, shouldStop: () -> Bool) {
         switch node.content {
-        case .pane(let p):
+        case let .pane(p):
             visit(p)
-        case .split(_, let a, let b, _):
+        case let .split(_, a, b, _):
             walk(a, visit: visit, shouldStop: shouldStop)
             if shouldStop() { return }
             walk(b, visit: visit, shouldStop: shouldStop)
@@ -133,6 +150,6 @@ final class Workspace: Identifiable {
         self.id = id
         self.workingDirectory = workingDirectory
         self.root = root
-        self.activePaneId = root.firstPane?.id
+        activePaneId = root.firstPane?.id
     }
 }

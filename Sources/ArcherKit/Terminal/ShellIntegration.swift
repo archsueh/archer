@@ -193,18 +193,14 @@ enum ArcherShellIntegration {
 
     /// Path to the generated Claude Code hooks JSON. Passed to `claude` via
     /// `--settings <path>` by the wrapper script when `ARCHER_SURFACE_ID` is set.
-    static let claudeHooksPath: String = {
-        hooksDirectory.appendingPathComponent("claude.json").path
-    }()
+    static let claudeHooksPath: String = hooksDirectory.appendingPathComponent("claude.json").path
 
     /// Path to the archer-managed Gemini system-defaults file. Surfaced to
     /// gemini-cli via `GEMINI_CLI_SYSTEM_SETTINGS_PATH`. Hook arrays merge
     /// with CONCAT semantics across tiers (verified in google-gemini/gemini-cli
     /// `settingsSchema.ts`), so this layers on top of user hooks instead of
     /// replacing them — non-intrusive.
-    static let geminiDefaultsPath: String = {
-        hooksDirectory.appendingPathComponent("gemini-defaults.json").path
-    }()
+    static let geminiDefaultsPath: String = hooksDirectory.appendingPathComponent("gemini-defaults.json").path
 
     /// Path to the archer-managed Copilot hooks file. Copilot CLI auto-loads
     /// every `~/.copilot/hooks/*.json` and merges events across files, so a
@@ -215,10 +211,8 @@ enum ArcherShellIntegration {
     /// home. We don't honor `COPILOT_HOME` from the user's shell here —
     /// archer.app runs out-of-process, can't see interactive shell env — so
     /// users who customise `COPILOT_HOME` would drop the file themselves.
-    static let copilotHooksPath: String = {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".copilot/hooks/archer.json").path
-    }()
+    static let copilotHooksPath: String = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".copilot/hooks/archer.json").path
 
     /// XDG plugin directory OpenCode auto-loads at startup. Honors
     /// `XDG_CONFIG_HOME` when set (the OpenCode launch is a child of the same
@@ -268,7 +262,7 @@ enum ArcherShellIntegration {
         // `archerBinDirectory` is the App Support `archer/bin` dir (already created).
         let dest = (archerBinDirectory as NSString).appendingPathComponent("ArcherHook")
         do {
-            try? fm.removeItem(atPath: dest)  // throws when absent — copyItem just needs a clear dest
+            try? fm.removeItem(atPath: dest) // throws when absent — copyItem just needs a clear dest
             try fm.copyItem(atPath: bundled, toPath: dest)
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest)
             return dest
@@ -505,11 +499,11 @@ enum ArcherShellIntegration {
             slug: "claude",
             hookCmd: hookCmd,
             events: [
-                "SessionStart":      .running,
-                "UserPromptSubmit":  .running,
-                "Stop":              .attention,
-                "Notification":      .attention,
-                "SessionEnd":        .ended,
+                "SessionStart": .running,
+                "UserPromptSubmit": .running,
+                "Stop": .attention,
+                "Notification": .attention,
+                "SessionEnd": .ended,
             ],
             passthroughEvents: ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
         )
@@ -557,7 +551,8 @@ enum ArcherShellIntegration {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: hooksDirectory.path)
         else { return }
         for name in names
-        where name.hasPrefix("claude-") && name.hasSuffix(".json") && !liveFiles.contains(name) {
+            where name.hasPrefix("claude-") && name.hasSuffix(".json") && !liveFiles.contains(name)
+        {
             try? FileManager.default.removeItem(at: hooksDirectory.appendingPathComponent(name))
         }
     }
@@ -570,10 +565,10 @@ enum ArcherShellIntegration {
     static func geminiDefaultsObject(hookCmd: String) -> [String: Any] {
         hooksObject(slug: "gemini", hookCmd: hookCmd, events: [
             "SessionStart": .running,
-            "BeforeAgent":  .running,
-            "AfterAgent":   .attention,
+            "BeforeAgent": .running,
+            "AfterAgent": .attention,
             "Notification": .attention,
-            "SessionEnd":   .ended,
+            "SessionEnd": .ended,
         ])
     }
 
@@ -587,17 +582,17 @@ enum ArcherShellIntegration {
     /// it back to decide whether the file is ours to overwrite.
     static func copilotHooksObject(hookCmd: String) -> [String: Any] {
         let events: [(String, HookEvent)] = [
-            ("sessionStart",        .running),
+            ("sessionStart", .running),
             ("userPromptSubmitted", .running),
-            ("agentStop",           .attention),
-            ("notification",        .attention),
-            ("sessionEnd",          .ended),
+            ("agentStop", .attention),
+            ("notification", .attention),
+            ("sessionEnd", .ended),
         ]
         var hooks: [String: Any] = [:]
         let quotedCmd = quote(hookCmd)
         for (event, state) in events {
             hooks[event] = [
-                ["type": "command", "bash": "\(quotedCmd) copilot \(state.rawValue)", "timeoutSec": 5]
+                ["type": "command", "bash": "\(quotedCmd) copilot \(state.rawValue)", "timeoutSec": 5],
             ]
         }
         return ["version": 1, "_archerManaged": managedFileMarker, "hooks": hooks]
@@ -669,7 +664,8 @@ enum ArcherShellIntegration {
     private static func writeManagedFile(at path: String, contents: String) {
         let url = URL(fileURLWithPath: path)
         if let existing = try? String(contentsOf: url, encoding: .utf8),
-           !existing.contains(managedFileMarker) {
+           !existing.contains(managedFileMarker)
+        {
             return
         }
         try? contents.write(to: url, atomically: true, encoding: .utf8)
@@ -687,7 +683,8 @@ enum ArcherShellIntegration {
         let url = URL(fileURLWithPath: path)
         if let data = try? Data(contentsOf: url),
            let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           (parsed["_archerManaged"] as? String) != managedFileMarker {
+           (parsed["_archerManaged"] as? String) != managedFileMarker
+        {
             return
         }
         writeJSON(at: path, object: object)
@@ -1299,31 +1296,31 @@ enum ArcherShellIntegration {
     /// before the first prompt prints. ARCHER_AGENT_LAUNCHED guards against
     /// re-entry from subshells the agent itself may spawn.
     static let agentLaunchBlock = """
-        if [[ -n "$ARCHER_AGENT" && -z "$ARCHER_AGENT_LAUNCHED" ]]; then
-            export ARCHER_AGENT_LAUNCHED=1
-            _archer_cmd="$ARCHER_AGENT"
-            _archer_agent_bin="${_archer_cmd%% *}"
-            unset ARCHER_AGENT
-            # `eval` lets ARCHER_AGENT carry multi-word commands (e.g. an
-            # editor + file path); single-word agent commands like `claude`
-            # behave identically.
-            eval "$_archer_cmd"
-            _archer_status=$?
-            # The agent ran in the foreground, so reaching here means it exited
-            # — or never really started: a user alias (e.g. `alias pi=...`) can
-            # shadow the PATH wrapper before its `ended` ping fires, stranding
-            # the eagerly-promoted tab icon on the agent. Revert to a plain
-            # shell. Idempotent — a wrapper that already pinged `ended` makes
-            # this a no-op (`applyHookEvent` dedups same-value writes).
-            if [[ -n "$ARCHER_SURFACE_ID" && -n "$ARCHER_HOOK_BIN" ]]; then
-                "$ARCHER_HOOK_BIN" "$_archer_agent_bin" ended 2>/dev/null
-            fi
-            # Restore the agent's exit code — the revert ping clobbered `$?`,
-            # but the first prompt (and theme hooks / `_archer_title_pwd` that
-            # read `$?`) should see the agent's real status, not our hook call's.
-            ( exit $_archer_status )
+    if [[ -n "$ARCHER_AGENT" && -z "$ARCHER_AGENT_LAUNCHED" ]]; then
+        export ARCHER_AGENT_LAUNCHED=1
+        _archer_cmd="$ARCHER_AGENT"
+        _archer_agent_bin="${_archer_cmd%% *}"
+        unset ARCHER_AGENT
+        # `eval` lets ARCHER_AGENT carry multi-word commands (e.g. an
+        # editor + file path); single-word agent commands like `claude`
+        # behave identically.
+        eval "$_archer_cmd"
+        _archer_status=$?
+        # The agent ran in the foreground, so reaching here means it exited
+        # — or never really started: a user alias (e.g. `alias pi=...`) can
+        # shadow the PATH wrapper before its `ended` ping fires, stranding
+        # the eagerly-promoted tab icon on the agent. Revert to a plain
+        # shell. Idempotent — a wrapper that already pinged `ended` makes
+        # this a no-op (`applyHookEvent` dedups same-value writes).
+        if [[ -n "$ARCHER_SURFACE_ID" && -n "$ARCHER_HOOK_BIN" ]]; then
+            "$ARCHER_HOOK_BIN" "$_archer_agent_bin" ended 2>/dev/null
         fi
-        """
+        # Restore the agent's exit code — the revert ping clobbered `$?`,
+        # but the first prompt (and theme hooks / `_archer_title_pwd` that
+        # read `$?`) should see the agent's real status, not our hook call's.
+        ( exit $_archer_status )
+    fi
+    """
 
     /// Two layers of memoization in this hook avoid heavy per-prompt work:
     /// (a) `node --version` is the dominant cost (~50-200ms for V8 cold-start
@@ -1334,37 +1331,37 @@ enum ArcherShellIntegration {
     ///     differs from the previous send. Most prompts have steady env, so
     ///     this turns the hook into a no-op the vast majority of the time.
     static let envStatusBlock = """
-        _archer_env_status() {
-            [[ -n "$ARCHER_SURFACE_ID" && -n "$ARCHER_HOOK_BIN" && -x "$ARCHER_HOOK_BIN" ]] || return 0
-            local _archer_node_path=""
-            command -v node >/dev/null 2>&1 && _archer_node_path="$(command -v node)"
-            local _archer_node_key="${_archer_node_path}|${NVM_BIN:-}"
-            if [[ "$_archer_node_key" != "$_ARCHER_NODE_KEY_LAST" ]]; then
-                _ARCHER_NODE_VERSION_LAST=""
-                [[ -n "$_archer_node_path" ]] && _ARCHER_NODE_VERSION_LAST="$("$_archer_node_path" --version 2>/dev/null)"
-                _ARCHER_NODE_KEY_LAST="$_archer_node_key"
-            fi
-            # Accept both lowercase and uppercase forms — curl / git / requests
-            # respect lowercase; some tools (and many corp setups) export
-            # uppercase only. Fall through to uppercase when lowercase is unset.
-            local _archer_https_proxy="${https_proxy:-${HTTPS_PROXY:-}}"
-            local _archer_http_proxy="${http_proxy:-${HTTP_PROXY:-}}"
-            local _archer_all_proxy="${all_proxy:-${ALL_PROXY:-}}"
-            local _archer_env_now="${VIRTUAL_ENV:-}|${CONDA_DEFAULT_ENV:-}|${NVM_BIN:-}|${NVM_DIR:-}|$_ARCHER_NODE_VERSION_LAST|$_archer_https_proxy|$_archer_http_proxy|$_archer_all_proxy"
-            [[ "$_archer_env_now" == "$_ARCHER_ENV_LAST" ]] && return 0
-            # Only advance the dedup cache when the IPC actually succeeded —
-            # if archer-hook returns non-zero (archer restarting, socket gone
-            # before the hook server bound), the next prompt will retry
-            # instead of staying frozen at the unsent value.
-            "$ARCHER_HOOK_BIN" env "${VIRTUAL_ENV:-}" "${CONDA_DEFAULT_ENV:-}" "${NVM_BIN:-}" "${NVM_DIR:-}" "$_ARCHER_NODE_VERSION_LAST" "$_archer_https_proxy" "$_archer_http_proxy" "$_archer_all_proxy" 2>/dev/null \
-                && _ARCHER_ENV_LAST="$_archer_env_now"
-            # Mask our internal IPC status so user precmd hooks downstream in
-            # zsh's precmd_functions chain don't see `$?=1` and bleed it into
-            # their prompt rendering. The dedup logic is internal — its
-            # success/failure must not leak into the rest of the shell.
-            return 0
-        }
-        """
+    _archer_env_status() {
+        [[ -n "$ARCHER_SURFACE_ID" && -n "$ARCHER_HOOK_BIN" && -x "$ARCHER_HOOK_BIN" ]] || return 0
+        local _archer_node_path=""
+        command -v node >/dev/null 2>&1 && _archer_node_path="$(command -v node)"
+        local _archer_node_key="${_archer_node_path}|${NVM_BIN:-}"
+        if [[ "$_archer_node_key" != "$_ARCHER_NODE_KEY_LAST" ]]; then
+            _ARCHER_NODE_VERSION_LAST=""
+            [[ -n "$_archer_node_path" ]] && _ARCHER_NODE_VERSION_LAST="$("$_archer_node_path" --version 2>/dev/null)"
+            _ARCHER_NODE_KEY_LAST="$_archer_node_key"
+        fi
+        # Accept both lowercase and uppercase forms — curl / git / requests
+        # respect lowercase; some tools (and many corp setups) export
+        # uppercase only. Fall through to uppercase when lowercase is unset.
+        local _archer_https_proxy="${https_proxy:-${HTTPS_PROXY:-}}"
+        local _archer_http_proxy="${http_proxy:-${HTTP_PROXY:-}}"
+        local _archer_all_proxy="${all_proxy:-${ALL_PROXY:-}}"
+        local _archer_env_now="${VIRTUAL_ENV:-}|${CONDA_DEFAULT_ENV:-}|${NVM_BIN:-}|${NVM_DIR:-}|$_ARCHER_NODE_VERSION_LAST|$_archer_https_proxy|$_archer_http_proxy|$_archer_all_proxy"
+        [[ "$_archer_env_now" == "$_ARCHER_ENV_LAST" ]] && return 0
+        # Only advance the dedup cache when the IPC actually succeeded —
+        # if archer-hook returns non-zero (archer restarting, socket gone
+        # before the hook server bound), the next prompt will retry
+        # instead of staying frozen at the unsent value.
+        "$ARCHER_HOOK_BIN" env "${VIRTUAL_ENV:-}" "${CONDA_DEFAULT_ENV:-}" "${NVM_BIN:-}" "${NVM_DIR:-}" "$_ARCHER_NODE_VERSION_LAST" "$_archer_https_proxy" "$_archer_http_proxy" "$_archer_all_proxy" 2>/dev/null \
+            && _ARCHER_ENV_LAST="$_archer_env_now"
+        # Mask our internal IPC status so user precmd hooks downstream in
+        # zsh's precmd_functions chain don't see `$?=1` and bleed it into
+        # their prompt rendering. The dedup logic is internal — its
+        # success/failure must not leak into the rest of the shell.
+        return 0
+    }
+    """
 
     /// FinalTerm / OSC 133 prompt+command boundary markers. libghostty parses
     /// these and fires `GHOSTTY_ACTION_COMMAND_FINISHED` on `D` (per-tab
@@ -1374,35 +1371,35 @@ enum ArcherShellIntegration {
     /// `B` marker into PROMPT on every redraw because Starship / p10k-style
     /// themes rebuild PROMPT each `precmd` and would otherwise drop our suffix.
     private static let osc133Block = #"""
-        __archer_133_first=1
-        __archer_133_precmd() {
-            local last=$?
-            if (( ! __archer_133_first )); then
-                printf '\e]133;D;%s\a' "$last"
-            fi
-            __archer_133_first=0
-            # `cl=line` is ghostty's required marker metadata — without it
-            # libghostty silently ignores the prompt sentinel and features
-            # that depend on it (`cursor-click-to-move`, jump-to-prompt)
-            # stay dormant. `\a` (BEL) terminator matches ghostty's own
-            # zsh shell-integration script exactly.
-            printf '\e]133;A;cl=line\a'
-            # Wrap the OSC 133 B marker in zsh's zero-width brackets (%{ ... %}).
-            # Without them zsh counts every byte of the escape sequence (ESC, ],
-            # `133;B`, BEL) toward the PROMPT's visible width, miscalculates the
-            # wrap column by ~8 cells, and ZLE redraws the input on the wrong
-            # row the moment a long input wraps — wiping the first visible line.
-            [[ "$PROMPT" != *$'\e]133;B\a'* ]] && PROMPT="${PROMPT}"$'%{\e]133;B\a%}'
-            _archer_env_status
-            # Same masking concern as `_archer_env_status` itself: the archer
-            # hooks must not leak `$?` into user prompts that downstream
-            # precmd hooks may sample.
-            return 0
-        }
-        __archer_133_preexec() { printf '\e]133;C\a' }
-        add-zsh-hook precmd __archer_133_precmd
-        add-zsh-hook preexec __archer_133_preexec
-        """#
+    __archer_133_first=1
+    __archer_133_precmd() {
+        local last=$?
+        if (( ! __archer_133_first )); then
+            printf '\e]133;D;%s\a' "$last"
+        fi
+        __archer_133_first=0
+        # `cl=line` is ghostty's required marker metadata — without it
+        # libghostty silently ignores the prompt sentinel and features
+        # that depend on it (`cursor-click-to-move`, jump-to-prompt)
+        # stay dormant. `\a` (BEL) terminator matches ghostty's own
+        # zsh shell-integration script exactly.
+        printf '\e]133;A;cl=line\a'
+        # Wrap the OSC 133 B marker in zsh's zero-width brackets (%{ ... %}).
+        # Without them zsh counts every byte of the escape sequence (ESC, ],
+        # `133;B`, BEL) toward the PROMPT's visible width, miscalculates the
+        # wrap column by ~8 cells, and ZLE redraws the input on the wrong
+        # row the moment a long input wraps — wiping the first visible line.
+        [[ "$PROMPT" != *$'\e]133;B\a'* ]] && PROMPT="${PROMPT}"$'%{\e]133;B\a%}'
+        _archer_env_status
+        # Same masking concern as `_archer_env_status` itself: the archer
+        # hooks must not leak `$?` into user prompts that downstream
+        # precmd hooks may sample.
+        return 0
+    }
+    __archer_133_preexec() { printf '\e]133;C\a' }
+    add-zsh-hook precmd __archer_133_precmd
+    add-zsh-hook preexec __archer_133_preexec
+    """#
 
     private static func writeFile(at path: String, contents: String, executable: Bool = false) {
         try? contents.write(toFile: path, atomically: true, encoding: .utf8)

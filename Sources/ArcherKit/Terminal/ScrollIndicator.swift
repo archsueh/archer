@@ -28,6 +28,7 @@ final class ScrollIndicator: NSView {
     private var isHovered = false {
         didSet { updateKnobAppearance() }
     }
+
     /// Fired during knob drag with the desired position 0…1 (0 = bottom = latest,
     /// 1 = top = oldest). Owner translates this into a scroll command.
     var onDragKnobTo: ((Double) -> Void)?
@@ -47,8 +48,13 @@ final class ScrollIndicator: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil))
     }
 
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
-    override func mouseExited(with event: NSEvent) { isHovered = false }
+    override func mouseEntered(with _: NSEvent) {
+        isHovered = true
+    }
+
+    override func mouseExited(with _: NSEvent) {
+        isHovered = false
+    }
 
     private func updateKnobAppearance() {
         let alpha: CGFloat
@@ -77,7 +83,8 @@ final class ScrollIndicator: NSView {
         return Self.knobWidthIdle
     }
 
-    required init?(coder: NSCoder) {
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
         fatalError("init(coder:) is not used")
     }
 
@@ -175,12 +182,12 @@ final class ScrollIndicator: NSView {
         let newPosition = knobMaxY > 0 ? clampedY / knobMaxY : 0
         // Apply locally first so the knob tracks the cursor 1:1; the scroll
         // command and its eventual SCROLLBAR action_cb arrive a frame later.
-        self.position = Double(newPosition)
+        position = Double(newPosition)
         updateKnobFrame()
         onDragKnobTo?(Double(newPosition))
     }
 
-    override func mouseUp(with event: NSEvent) {
+    override func mouseUp(with _: NSEvent) {
         dragOffsetWithinKnob = nil
         updateKnobAppearance()
         flash()
