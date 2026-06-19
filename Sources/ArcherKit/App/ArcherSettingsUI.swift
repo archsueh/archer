@@ -15,6 +15,14 @@ final class ArcherSettingsModel {
     /// observe the same instance and react to user edits without a reload.
     static let shared = ArcherSettingsModel()
 
+    static let autoThemeSelection = "__archer-auto-theme"
+
+    var autoLightTheme: String = "rose-pine-dawn"
+    var autoDarkTheme: String = "rose-pine"
+    var currentHour: Int = Calendar.current.component(.hour, from: Date())
+    private var timeTimer: Timer?
+    private var lastAppliedTheme: String?
+
     var fontFamily: String = ""
     /// `nil` = not overridden — let libghostty fall back to ghostty's own
     /// config (or its default). Writing a default 13 unconditionally would
@@ -101,12 +109,34 @@ final class ArcherSettingsModel {
     var notifyOnAttention: Bool = true
     var notifyOnFailure: Bool = true
     var notifyOnCompleted: Bool = true // [archer] sound/banner when an agent finishes
+    var notificationSound: String = "Submarine" // [archer] sound name
     var autoClassifyRequiresReview: Bool = true // [archer]
     var classificationRules: [ClassifyRule] = [] // [archer]
 
     private var saveWork: DispatchWorkItem?
 
-    init() { load() }
+    init() {
+        load()
+        setupTimeTimer()
+    }
+
+    private func setupTimeTimer() {
+        timeTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateCurrentHour()
+            }
+        }
+    }
+
+    func updateCurrentHour() {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if currentHour != hour {
+            currentHour = hour
+            if terminalThemeSelection == Self.autoThemeSelection {
+                save()
+            }
+        }
+    }
 
     func load() {
         let parsed = ArcherSettings.loadParsed() ?? [:]
@@ -120,12 +150,27 @@ final class ArcherSettingsModel {
             fontSize = Int(d)
         }
         cursorStyle = (terminal["cursor-style"] as? String) ?? "block"
+        autoLightTheme = (terminal["autoLightTheme"] as? String) ?? "rose-pine-dawn"
+        autoDarkTheme = (terminal["autoDarkTheme"] as? String) ?? "rose-pine"
+
         let themeState = Self.themeSelection(
             for: terminal["theme"] as? String,
             in: terminalThemeChoices
         )
         terminalThemeSelection = themeState.selection
         customTerminalThemeRawValue = themeState.customRawValue
+
+        let loadedTheme = Self.persistedThemeValue(
+            selection: terminalThemeSelection,
+            customRawValue: customTerminalThemeRawValue,
+            in: terminalThemeChoices
+        )
+        if loadedTheme == Self.autoThemeSelection {
+            let isDay = currentHour >= 6 && currentHour < 18
+            lastAppliedTheme = isDay ? autoLightTheme : autoDarkTheme
+        } else {
+            lastAppliedTheme = loadedTheme
+        }
 
         let agents = parsed["agents"] as? [String: Any] ?? [:]
         agentOrder = (agents["order"] as? [String]) ?? []
@@ -145,6 +190,7 @@ final class ArcherSettingsModel {
         notifyOnAttention = (notifications["attention"] as? Bool) ?? true
         notifyOnFailure = (notifications["failure"] as? Bool) ?? true
         notifyOnCompleted = (notifications["completed"] as? Bool) ?? true // [archer]
+        notificationSound = (notifications["sound"] as? String) ?? "Submarine" // [archer]
         autoClassifyRequiresReview = parsed["autoClassifyRequiresReview"] as? Bool ?? true // [archer]
         classificationRules = Classifier.loadRules() // [archer]
 
@@ -262,6 +308,8 @@ final class ArcherSettingsModel {
             customRawValue: customTerminalThemeRawValue,
             in: terminalThemeChoices
         )
+        terminal["autoLightTheme"] = autoLightTheme == "rose-pine-dawn" ? nil : autoLightTheme
+        terminal["autoDarkTheme"] = autoDarkTheme == "rose-pine" ? nil : autoDarkTheme
         parsed["terminal"] = terminal
 
         let nonEmptyOptions = agentOptions.filter { !$0.value.isEmpty }
@@ -318,6 +366,7 @@ final class ArcherSettingsModel {
         notifications["attention"] = notifyOnAttention ? nil : false
         notifications["failure"] = notifyOnFailure ? nil : false
         notifications["completed"] = notifyOnCompleted ? nil : false // [archer]
+        notifications["sound"] = notificationSound == "Submarine" ? nil : notificationSound // [archer]
         if notifications.isEmpty {
             parsed.removeValue(forKey: "notifications")
         } else {
@@ -367,7 +416,17 @@ final class ArcherSettingsModel {
         // refresh — font and cursor changes also flow through `reloadConfig`
         // so libghostty picks up the new values, but they don't change
         // chrome tokens, so skip the window-appearance pass for them.
-        let themeChanged = (previousTerminal["theme"] as? String) != (terminal["theme"] as? String)
+        let currThemeRaw = terminal["theme"] as? String
+        let resolvedTheme: String?
+        if currThemeRaw == Self.autoThemeSelection {
+            let isDay = currentHour >= 6 && currentHour < 18
+            resolvedTheme = isDay ? autoLightTheme : autoDarkTheme
+        } else {
+            resolvedTheme = currThemeRaw
+        }
+        let themeChanged = (resolvedTheme != lastAppliedTheme)
+        lastAppliedTheme = resolvedTheme
+
         let terminalChanged = !NSDictionary(dictionary: previousTerminal).isEqual(to: terminal)
         if terminalChanged {
             LibghosttyApp.shared.reloadConfig()
@@ -390,7 +449,12 @@ final class ArcherSettingsModel {
     static let customThemeSelection = "__archer-custom-theme"
 
     var selectedTerminalTheme: ArcherTerminalTheme? {
-        terminalThemeChoices.first { $0.id == terminalThemeSelection }
+        if terminalThemeSelection == Self.autoThemeSelection {
+            let isDay = currentHour >= 6 && currentHour < 18
+            let activeId = isDay ? autoLightTheme : autoDarkTheme
+            return terminalThemeChoices.first { $0.id == activeId }
+        }
+        return terminalThemeChoices.first { $0.id == terminalThemeSelection }
     }
 
     var customTerminalThemeLabel: String? {
@@ -416,6 +480,9 @@ final class ArcherSettingsModel {
               !rawTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return (defaultThemeSelection, nil)
         }
+        if rawTheme == autoThemeSelection {
+            return (autoThemeSelection, nil)
+        }
         if let theme = ArcherTerminalTheme.theme(for: rawTheme, in: themes) {
             return (theme.id, nil)
         }
@@ -429,6 +496,9 @@ final class ArcherSettingsModel {
     ) -> String? {
         if selection == defaultThemeSelection {
             return nil
+        }
+        if selection == autoThemeSelection {
+            return autoThemeSelection
         }
         if selection == customThemeSelection {
             let raw = customRawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -530,10 +600,9 @@ struct ArcherSettingsView: View {
     // [archer] end: new rule inputs
 
     var body: some View {
-        // The autosave `.onChange` observers are split across two statements
-        // via an intermediate `let`: a single chain this long (16 modifiers)
-        // overruns the Swift type-checker's budget ("unable to type-check in
-        // reasonable time"). Each half stays comfortably under the limit.
+        // The autosave `.onChange` observers are split across three statements
+        // via intermediate constants: a single chain this long overruns the
+        // Swift type-checker's budget. Each block stays comfortably under the limit.
         let core = HStack(spacing: 0) {
             sidebar
             Rectangle().fill(Theme.chromeHairline).frame(width: 1)
@@ -551,7 +620,7 @@ struct ArcherSettingsView: View {
         .onChange(of: model.agentOptions) { _, _ in model.scheduleSave() }
         .onChange(of: model.defaultAgentId) { _, _ in model.scheduleSave() }
 
-        return core
+        let core2 = core
             .onChange(of: model.customAgents) { _, _ in model.scheduleSave() }
             .onChange(of: model.resumeConversations) { _, _ in model.scheduleSave() }
             .onChange(of: model.sshRemoteAgentDetection) { _, _ in model.scheduleSave() }
@@ -560,15 +629,20 @@ struct ArcherSettingsView: View {
             .onChange(of: model.hiddenPresets) { _, _ in model.scheduleSave() }
             .onChange(of: model.statusBarItems) { _, _ in model.scheduleSave() }
             .onChange(of: model.hiddenStatusBarItems) { _, _ in model.scheduleSave() }
+
+        return core2
             .onChange(of: model.hiddenToolCallAgents) { _, _ in model.scheduleSave() }
             .onChange(of: model.notificationsEnabled) { _, _ in model.scheduleSave() }
             .onChange(of: model.notifyOnAttention) { _, _ in model.scheduleSave() }
             .onChange(of: model.notifyOnFailure) { _, _ in model.scheduleSave() }
             .onChange(of: model.notifyOnCompleted) { _, _ in model.scheduleSave() } // [archer]
+            .onChange(of: model.notificationSound) { _, _ in model.scheduleSave() } // [archer]
             // [archer] begin: auto-classify settings change observers
             .onChange(of: model.autoClassifyRequiresReview) { _, _ in model.scheduleSave() }
             .onChange(of: model.classificationRules) { _, _ in model.scheduleSave() }
             // [archer] end: auto-classify settings change observers
+            .onChange(of: model.autoLightTheme) { _, _ in model.flushSave() }
+            .onChange(of: model.autoDarkTheme) { _, _ in model.flushSave() }
     }
 
     private var sidebar: some View {
@@ -649,6 +723,30 @@ struct ArcherSettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsRow(label: "theme") {
                 themeControl
+            }
+            if model.terminalThemeSelection == ArcherSettingsModel.autoThemeSelection {
+                SettingsHairline()
+                SettingsRow(label: "  ▸ daytime (light)") {
+                    Picker("", selection: $model.autoLightTheme) {
+                        ForEach(model.terminalThemeChoices) { theme in
+                            Text(theme.title).tag(theme.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 220)
+                }
+                SettingsHairline()
+                SettingsRow(label: "  ▸ nighttime (dark)") {
+                    Picker("", selection: $model.autoDarkTheme) {
+                        ForEach(model.terminalThemeChoices) { theme in
+                            Text(theme.title).tag(theme.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 220)
+                }
             }
             SettingsHairline()
             SettingsRow(label: "font-family") {
@@ -758,6 +856,19 @@ struct ArcherSettingsView: View {
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .disabled(!model.notificationsEnabled)
+            }
+            SettingsRow(label: "alert sound") { // [archer]
+                Picker("", selection: $model.notificationSound) {
+                    ForEach(["Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"], id: \.self) { sound in
+                        Text(sound).tag(sound)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .disabled(!model.notificationsEnabled)
+                .onChange(of: model.notificationSound) { _, newValue in
+                    NSSound(named: NSSound.Name(newValue))?.play()
+                }
             }
         }
     }
@@ -928,6 +1039,7 @@ struct ArcherSettingsView: View {
     private var themeControl: some View {
         Picker("", selection: $model.terminalThemeSelection) {
             Text("Default").tag(ArcherSettingsModel.defaultThemeSelection)
+            Text("Auto (Time-based)").tag(ArcherSettingsModel.autoThemeSelection)
             if let customLabel = model.customTerminalThemeLabel {
                 Text(customLabel).tag(ArcherSettingsModel.customThemeSelection)
             }
@@ -1028,7 +1140,9 @@ private struct AgentReorderList: View {
                     env: customBinding(id: template.id, \.env),
                     onToggleVisible: { toggle(template.id) },
                     onToggleExpanded: {
-                        expandedId = expandedId == template.id ? nil : template.id
+                        withAnimation(Theme.chromeTransition) {
+                            expandedId = expandedId == template.id ? nil : template.id
+                        }
                     },
                     onBeginDrag: { draggingId = template.id },
                     onDrop: { droppedId in
@@ -1191,7 +1305,10 @@ private struct AgentRow: View {
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
             .background(ReorderDropZone(row: template.id, isDragging: isDragging, decode: { $0 }, onDrop: onDrop))
-            if isExpanded { expandedForm }
+            if isExpanded {
+                expandedForm
+                    .transition(.opacity)
+            }
         }
         .opacity(isDragging ? 0.35 : 1.0)
     }
@@ -1408,7 +1525,9 @@ private struct TerminalPresetsList: View {
                     path: pathBinding(id: preset.id),
                     onToggleVisible: { toggleVisible(preset.id) },
                     onToggleExpanded: {
-                        expandedId = expandedId == preset.id ? nil : preset.id
+                        withAnimation(Theme.chromeTransition) {
+                            expandedId = expandedId == preset.id ? nil : preset.id
+                        }
                     },
                     onChooseFolder: { chooseFolder(forPresetId: preset.id) },
                     onDelete: { model.deleteTerminalPreset(id: preset.id) },
@@ -1590,7 +1709,10 @@ private struct TerminalPresetRow: View {
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
             .background(ReorderDropZone(row: id, isDragging: isDragging, decode: { $0 }, onDrop: onDrop))
-            if isExpanded { expandedForm }
+            if isExpanded {
+                expandedForm
+                    .transition(.opacity)
+            }
         }
         .opacity(isDragging ? 0.35 : 1.0)
     }

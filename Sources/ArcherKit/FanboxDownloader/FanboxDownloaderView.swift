@@ -10,10 +10,12 @@ public struct FanboxDownloaderView: View {
     @State private var inputIds: String = ""
     let rootURL: URL
     let onFinished: () -> Void
+    var width: Double
 
-    public init(rootURL: URL, onFinished: @escaping () -> Void = {}) {
+    public init(rootURL: URL, onFinished: @escaping () -> Void = {}, width: Double = 280) {
         self.rootURL = rootURL
         self.onFinished = onFinished
+        self.width = width
     }
 
     public var body: some View {
@@ -36,7 +38,7 @@ public struct FanboxDownloaderView: View {
             
             jobListView
         }
-        .frame(width: 280)
+        .frame(width: CGFloat(width))
         .background(Theme.chromeBackground)
     }
 

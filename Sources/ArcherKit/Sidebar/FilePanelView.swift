@@ -13,9 +13,11 @@ struct FilePanelView: View {
     @State private var currentDir: URL
     @State private var watcher: DirectoryWatcher?
     let rootURL: URL
+    var width: Double
 
-    init(rootURL: URL) {
+    init(rootURL: URL, width: Double = 280) {
         self.rootURL = rootURL
+        self.width = width
         _model = StateObject(wrappedValue: FileTreeModel(rootURL: rootURL))
         _currentDir = State(initialValue: rootURL)
     }
@@ -29,7 +31,7 @@ struct FilePanelView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 280)
+        .frame(width: CGFloat(width))
         .background(Theme.chromeBackground)
         .onAppear {
             let w = DirectoryWatcher { dir in model.refresh(dir) }

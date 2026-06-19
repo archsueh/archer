@@ -72,6 +72,7 @@ final class WorkspaceStore {
     var diffPanelMode: SidebarMode = .hidden // [archer] right-side diff panel
     var downloaderPanelMode: SidebarMode = .hidden // [archer] right-side downloader panel
     var usageStripVisible: Bool = false // [archer] top Claude-usage strip
+    var panelWidths: PanelWidths = PanelWidths() // [archer]
     /// Fired when the last workspace closes. `ArcherWindowController` wires
     /// this to close its window — a window with zero workspaces is empty.
     var onBecameEmpty: (() -> Void)?
@@ -109,6 +110,11 @@ final class WorkspaceStore {
 
     func toggleUsageStrip() { // [archer]
         usageStripVisible.toggle()
+        scheduleSave()
+    }
+
+    func resizePanel(_ kind: PanelKind, to width: Double) { // [archer]
+        panelWidths.resize(kind, to: width)
         scheduleSave()
     }
 
@@ -1322,6 +1328,7 @@ final class WorkspaceStore {
         diffPanelMode = state.diffPanelMode ?? .hidden // [archer]
         downloaderPanelMode = state.downloaderPanelMode ?? .hidden // [archer]
         usageStripVisible = state.usageStripVisible ?? false
+        panelWidths = state.panelWidths ?? PanelWidths() // [archer]
     }
 
     private func restorePane(_ persisted: PersistedPaneNode, fm: FileManager) -> PaneNode? {
@@ -1587,7 +1594,8 @@ final class WorkspaceStore {
             filePanelMode: filePanelMode,
             diffPanelMode: diffPanelMode, // [archer]
             downloaderPanelMode: downloaderPanelMode, // [archer]
-            usageStripVisible: usageStripVisible
+            usageStripVisible: usageStripVisible,
+            panelWidths: panelWidths // [archer]
         )
     }
 }

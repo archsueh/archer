@@ -73,15 +73,23 @@ enum ArcherSettings {
               !terminal.isEmpty else { return }
         var lines: [String] = []
         if let rawTheme = terminal["theme"] as? String {
-            if let preset = ArcherTerminalTheme.preset(for: rawTheme) {
+            var actualTheme = rawTheme
+            if rawTheme == "__archer-auto-theme" {
+                let hour = Calendar.current.component(.hour, from: Date())
+                let isDay = hour >= 6 && hour < 18
+                let autoLightTheme = terminal["autoLightTheme"] as? String ?? "rose-pine-dawn"
+                let autoDarkTheme = terminal["autoDarkTheme"] as? String ?? "rose-pine"
+                actualTheme = isDay ? autoLightTheme : autoDarkTheme
+            }
+            if let preset = ArcherTerminalTheme.preset(for: actualTheme) {
                 lines.append(contentsOf: preset.lines)
-            } else if !rawTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if !actualTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 // Raw JSON users can still point at a custom Ghostty theme
                 // path or name. The Settings UI only writes bundled preset ids.
-                lines.append(contentsOf: formatGhosttyLines(key: "theme", value: rawTheme))
+                lines.append(contentsOf: formatGhosttyLines(key: "theme", value: actualTheme))
             }
         }
-        for key in terminal.keys.sorted() where key != "theme" {
+        for key in terminal.keys.sorted() where key != "theme" && key != "autoLightTheme" && key != "autoDarkTheme" {
             if let value = terminal[key] {
                 lines.append(contentsOf: formatGhosttyLines(key: key, value: value))
             }
@@ -116,7 +124,8 @@ enum ArcherSettings {
         // Click anywhere on the current zsh / bash prompt to jump the shell
         // cursor there. The shell wrapper emits OSC 133 prompt markers with
         // the `cl=line` metadata libghostty needs to recognise it.
-        let baseline = "cursor-click-to-move = true\n"
+        // Also align terminal/TUI background opacity with window glass theme.
+        let baseline = "cursor-click-to-move = true\nbackground-opacity = \(Theme.glassOpacity)\n"
         baseline.withCString { cstr in
             "archer-baseline".withCString { source in
                 ghostty_config_load_string(config, cstr, UInt(strlen(cstr)), source)

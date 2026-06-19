@@ -10,7 +10,10 @@ enum Theme {
     // MARK: Colors
 
     static var chromeBackground: Color { Color(nsColor: resolved.chromeBackgroundColor).opacity(glassOpacity) } // [archer]
-    static let glassOpacity: Double = 0.72 // [archer] chrome translucency over the HUD vibrancy
+    /// Single readout for translucent layers.
+    /// NOTE: if you want to tint the slider or resizer, use the
+    /// background colour at this opacity instead of changing the modifier.
+    nonisolated static let glassOpacity: Double = 0.72 // [archer] was 0.60 — unified to match rester
     static var chromeForeground: Color { Color(nsColor: resolved.foregroundColor) }
     static var chromeMuted: Color { resolved.chromeMuted }
     static var chromeFaint: Color { resolved.chromeFaint }
@@ -167,6 +170,8 @@ struct BracketButton: View {
     let title: String
     let action: () -> Void
 
+    @State private var isHovered = false
+
     init(_ title: String, action: @escaping () -> Void) {
         self.title = title
         self.action = action
@@ -179,9 +184,19 @@ struct BracketButton: View {
                 .foregroundStyle(Theme.chromeForeground)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
+                .background(isHovered ? Theme.chromeHover : Color.clear)
                 .bracketBorder()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BrutalistButtonStyle())
+        .onHover { isHovered = $0 }
+    }
+}
+
+struct BrutalistButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Theme.chromeActive : Color.clear)
+            .contentShape(Rectangle())
     }
 }
 

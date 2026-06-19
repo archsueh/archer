@@ -106,6 +106,43 @@ final class ArcherTerminalThemeTests: XCTestCase {
         XCTAssertEqual(fallback.path, "/Users/example/.config/ghostty/themes")
     }
 
+    func testSettingsThemeSelectionAutoTheme() {
+        let state = ArcherSettingsModel.themeSelection(for: "__archer-auto-theme")
+        XCTAssertEqual(state.selection, ArcherSettingsModel.autoThemeSelection)
+        XCTAssertNil(state.customRawValue)
+        XCTAssertEqual(
+            ArcherSettingsModel.persistedThemeValue(
+                selection: state.selection,
+                customRawValue: nil
+            ),
+            "__archer-auto-theme"
+        )
+    }
+
+    func testSelectedTerminalThemeUnderAutoTheme() {
+        let model = ArcherSettingsModel.shared
+        let originalSelection = model.terminalThemeSelection
+        let originalLight = model.autoLightTheme
+        let originalDark = model.autoDarkTheme
+        defer {
+            model.terminalThemeSelection = originalSelection
+            model.autoLightTheme = originalLight
+            model.autoDarkTheme = originalDark
+        }
+
+        model.terminalThemeSelection = ArcherSettingsModel.autoThemeSelection
+        model.autoLightTheme = "catppuccin-latte"
+        model.autoDarkTheme = "catppuccin-frappe"
+
+        // Simulate daytime
+        model.currentHour = 10
+        XCTAssertEqual(model.selectedTerminalTheme?.id, "catppuccin-latte")
+
+        // Simulate nighttime
+        model.currentHour = 22
+        XCTAssertEqual(model.selectedTerminalTheme?.id, "catppuccin-frappe")
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("archer-theme-test-\(UUID().uuidString)", isDirectory: true)

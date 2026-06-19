@@ -329,7 +329,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             // cue each time an agent finishes, not just background ones.
             guard settings.notificationsEnabled, settings.notifyOnCompleted
             else { return }
-            NSSound(named: NSSound.Name("Submarine"))?.play()
+            NSSound(named: NSSound.Name(settings.notificationSound))?.play()
         case .attention:
             guard settings.notificationsEnabled, settings.notifyOnAttention,
                   !visible else { return }
