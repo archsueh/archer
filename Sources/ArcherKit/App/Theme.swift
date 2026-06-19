@@ -138,6 +138,9 @@ enum Theme {
     /// drag-reorder commit). One source so timings can't drift across sites.
     static let chromeTransition: Animation = .easeInOut(duration: 0.2)
 
+// MARK: Motion — collapse animation reusable across collapsible panels
+static let collapseAnimation: Animation = .snappy(duration: 0.16, extraBounce: 0)
+
 }
 
 /// Linear interpolation between two NSColors in sRGB. Module-internal so

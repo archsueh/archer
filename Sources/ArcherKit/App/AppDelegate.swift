@@ -535,7 +535,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
                     modifiers: [.command, .option], tag: MenuTag.workspace(n))
         }
         let viewEntries: [MenuEntry] = [
-            selfRow("Toggle Sidebar", #selector(handleToggleSidebar), "s", modifiers: [.command, .control]),
+            selfRow("Toggle Sidebar", #selector(handleToggleSidebar), "s", modifiers: [.command, .shift]),
             .separator,
             selfRow("Increase Font Size", #selector(handleIncreaseFontSize), "="),
             selfRow("Decrease Font Size", #selector(handleDecreaseFontSize), "-"),
@@ -1003,7 +1003,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         }
     }
 
-    @objc private func handleOpenSettings() {
+    @objc func handleOpenSettings() {
         // Pass a live resolver, not a snapshot — the Settings window is a
         // singleton that outlives any one window; a captured store would
         // dangle once its window closed.

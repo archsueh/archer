@@ -46,7 +46,7 @@ public struct FanboxDownloaderView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
-            Text("FANBOX")
+            Text(L10n.string("Fanbox Downloader"))
                 .font(Theme.display(12, weight: .medium))
                 .foregroundStyle(Theme.chromeForeground)
             
