@@ -434,9 +434,29 @@ extension AgentTemplate {
         initialCommand: "kiro-cli"
     )
 
-    /// The 13 templates shipped with archer. User-defined custom agents are
+    /// Hermes Agent — Nous Research's AI terminal agent; binary `hermes`.
+    /// Bracket wrapper only: Hermes uses its own config system and doesn't
+    /// expose lifecycle hooks archer can map to attention, so the running/ended
+    /// dot comes from the wrapper.
+    ///
+    /// Prompt flag is `-p` (`--print`) for single-shot; no interactive prompt
+    /// flag exists, so "Ask Hermes" single-shots rather than seeding a live
+    /// session. Resume stays unwired: no id-capture path implemented.
+    /// The lobe-icon uses the Nous/Hermes brand mark. `tintHex: "7C3AED"`
+    /// (brand purple) drives the sidebar pip.
+    static let hermes = AgentTemplate(
+        id: "hermes",
+        title: "Hermes Agent",
+        symbol: "wand.and.stars",
+        iconAsset: "hermes",
+        tintHex: "7C3AED",
+        initialCommand: "hermes",
+        promptLaunchFlag: "-p"
+    )
+
+    /// The 14 templates shipped with archer. User-defined custom agents are
     /// merged on top via `all` at runtime.
-    static let builtin: [AgentTemplate] = [.terminal, .claudeCode, .codex, .gemini, .opencode, .amp, .cursor, .copilot, .grok, .antigravity, .kimi, .pi, .kiro]
+    static let builtin: [AgentTemplate] = [.terminal, .claudeCode, .codex, .gemini, .opencode, .amp, .cursor, .copilot, .grok, .antigravity, .kimi, .pi, .kiro, .hermes]
 
     /// All templates available right now — `builtin` plus the user's custom
     /// agents from Settings → Agents. MainActor-isolated because it

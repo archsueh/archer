@@ -569,6 +569,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             // counts as a prompt boundary.
             selfRow("Jump to Previous Prompt", #selector(handleJumpToPreviousPrompt), "\u{F700}"),
             selfRow("Jump to Next Prompt", #selector(handleJumpToNextPrompt), "\u{F701}"),
+            selfRow("Jump to Latest", #selector(handleJumpToLatest), "j"),
             .separator,
             selfRow("Split Right", #selector(handleSplitRight), "d"),
             selfRow("Split Down", #selector(handleSplitDown), "d", modifiers: [.command, .shift]),
@@ -581,6 +582,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             // ordinal; cycle wraps at the ends and doesn't need a digit key.
             selfRow("Next Tab", #selector(handleNextTab), "\t", modifiers: [.control]),
             selfRow("Previous Tab", #selector(handlePreviousTab), "\t", modifiers: [.control, .shift]),
+            .separator,
+            selfRow("Fold / Unfold Sidebar", #selector(handleToggleSidebarSections), "."),
             .separator,
         ]
             + tabSwitchRows
@@ -848,6 +851,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         let currentId = workspace.activePaneId ?? panes.first?.id
         let idx = panes.firstIndex(where: { $0.id == currentId }) ?? 0
         store.focusPane(panes[panes.cyclicIndex(from: idx, step: forward ? 1 : -1)], in: workspace)
+    }
+
+    @objc private func handleJumpToLatest() {
+        activeStore?.active?.activeSession?.engine.performAction("scroll_to_bottom")
+    }
+
+    @objc private func handleToggleSidebarSections() {
+        // Daily/fan-fold shortcut — route through the same toggle that
+        // View > Toggle Sidebar already uses, so compact/hidden and save
+        // semantics stay consistent.
+        handleToggleSidebar()
     }
 
     @objc private func handleCloseWorkspace() {
