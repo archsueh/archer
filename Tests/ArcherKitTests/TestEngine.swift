@@ -17,6 +17,8 @@ final class TestEngine: TerminalEngine {
     var onSearchEnd: (() -> Void)?
     var onSearchTotal: ((Int) -> Void)?
     var onSearchSelected: ((Int) -> Void)?
+    var onScrollPositionChange: ((_ offset: Int, _ total: Int, _ visible: Int) -> Void)?
+    var onNewOutputWhileScrolledUp: (() -> Void)?
     var foregroundPid: pid_t? { nil }
 
     private(set) var startedConfigs: [TerminalSessionConfig] = []
