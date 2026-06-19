@@ -196,6 +196,8 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertEqual(kimiConfig.environment["ARCHER_AGENT"], "kimi")
         let kiroConfig = AgentTemplate.kiro.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(kiroConfig.environment["ARCHER_AGENT"], "kiro-cli")
+        let hermesConfig = AgentTemplate.hermes.makeSessionConfig(resumeId: "abc-123")
+        XCTAssertEqual(hermesConfig.environment["ARCHER_AGENT"], "hermes")
     }
 
     func testSupportsResumeMatchesResumeFlag() {
@@ -206,6 +208,7 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertFalse(AgentTemplate.antigravity.supportsResume)
         XCTAssertFalse(AgentTemplate.kimi.supportsResume)
         XCTAssertFalse(AgentTemplate.kiro.supportsResume)
+        XCTAssertFalse(AgentTemplate.hermes.supportsResume)
         XCTAssertTrue(AgentTemplate.pi.supportsResume)
     }
 
@@ -234,6 +237,7 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertFalse(AgentTemplate.kimi.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.copilot.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.kiro.reportsToolCalls)
+        XCTAssertFalse(AgentTemplate.hermes.reportsToolCalls)
     }
 
     func testFromCustomInheritsReportsToolCallsFromBase() {
@@ -272,6 +276,11 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertEqual(config.environment["ARCHER_AGENT"], "kimi -p 'fix this error'")
     }
 
+    func testMakeSessionConfigFlagPromptForHermes() {
+        let config = AgentTemplate.hermes.makeSessionConfig(initialPrompt: "fix this error")
+        XCTAssertEqual(config.environment["ARCHER_AGENT"], "hermes -p 'fix this error'")
+    }
+
     func testMakeSessionConfigFlagPromptForPi() {
         let config = AgentTemplate.pi.makeSessionConfig(initialPrompt: "fix this error")
         XCTAssertEqual(config.environment["ARCHER_AGENT"], "pi -p 'fix this error'")
@@ -295,7 +304,7 @@ final class AgentTemplateTests: XCTestCase {
         for mono in ["opencode", "cursor", "githubcopilot", "grok", "kimi", "pi"] {
             XCTAssertTrue(AgentIcon.isMonochrome(mono), "\(mono) should be template-tinted")
         }
-        for color in ["claudecode", "codex", "gemini", "amp", "antigravity", "kiro"] {
+        for color in ["claudecode", "codex", "gemini", "amp", "antigravity", "kiro", "hermes"] {
             XCTAssertFalse(AgentIcon.isMonochrome(color), "\(color) is a color brand, render as-is")
         }
     }
