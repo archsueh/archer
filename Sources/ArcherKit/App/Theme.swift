@@ -196,6 +196,8 @@ struct BrutalistButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(configuration.isPressed ? Theme.chromeActive : Color.clear)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
             .contentShape(Rectangle())
     }
 }
