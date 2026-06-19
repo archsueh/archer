@@ -190,13 +190,41 @@ PLIST
 echo "==> Adhoc codesign (skips Gatekeeper kill on first launch)"
 # Adhoc signature ('-') is enough for personal-machine launches without a
 # Developer ID. Public distribution still needs a real cert + notarytool.
+# Adding --entitlements with "Unspecified: true" to avoid hardened runtime
+# sandbox authorization check failures that can stall the build on macOS 26+.
 # Sign inside-out: inner resource bundle first, then binaries, then the
 # .app — each layer wants its descendants already signed before signing
 # itself.
-codesign --force --sign - "${APP}/Contents/Resources/Archer_ArcherKit.bundle"
-codesign --force --sign - "${APP}/Contents/MacOS/${APP_NAME}"
-codesign --force --sign - "${APP}/Contents/MacOS/ArcherHook"
-codesign --force --sign - "${APP}" 2>&1 | tail -3
+ENTITLEMENTS="$(mktemp)/entitlements.plist"
+cat > "$ENTITLEMENTS" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <key>com.apple.security.get-task-allow</key>
+    <true/>
+    <key>com.apple.security.cs.debugger</key>
+    <true/>
+    <key>com.apple.security.cs.anti-tamper</key>
+    <false/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.app-launcher</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/Resources/Archer_ArcherKit.bundle"
+codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/MacOS/${APP_NAME}"
+codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/MacOS/ArcherHook"
+codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}" 2>&1 | tail -3
+rm -f "$ENTITLEMENTS"
 
 echo ""
 echo "✓ Built ${APP} (v${VERSION})"
