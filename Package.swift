@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Archer",
+    defaultLocalization: "zh-Hans",
     platforms: [
         // .v14 floor — `@Observable` macro requires Sonoma+. Dropping further
         // would mean reverting all session models to ObservableObject + @Published.

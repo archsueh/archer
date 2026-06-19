@@ -105,6 +105,8 @@ struct ContentView: View {
                     store.setSidebarMode(store.sidebarMode.next)
                 }
             }
+            AgentTemplatePicker(store: store)
+                .frame(maxWidth: .infinity, alignment: .leading)
             WindowDragHandle()
                 .overlay {
                     if ArcherSettingsModel.shared.showSearchPill {
@@ -120,7 +122,7 @@ struct ContentView: View {
                 systemName: "gauge.medium",
                 fontSize: 12,
                 size: 28,
-                help: "Usage strip"
+                help: L10n.string("Usage strip")
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.toggleUsageStrip()
@@ -130,7 +132,7 @@ struct ContentView: View {
                 systemName: "folder",
                 fontSize: 12,
                 size: 28,
-                help: "File panel"
+                help: L10n.string("File panel")
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setFilePanelMode(store.filePanelMode.next)
@@ -140,7 +142,7 @@ struct ContentView: View {
                 systemName: "arrow.triangle.pull",
                 fontSize: 12,
                 size: 28,
-                help: "Git Diff panel"
+                help: L10n.string("Git Diff panel")
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setDiffPanelMode(store.diffPanelMode.next)
@@ -150,7 +152,7 @@ struct ContentView: View {
                 systemName: "square.and.arrow.down",
                 fontSize: 12,
                 size: 28,
-                help: "Fanbox Downloader"
+                help: L10n.string("Fanbox Downloader")
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setDownloaderPanelMode(store.downloaderPanelMode.next)
@@ -160,7 +162,7 @@ struct ContentView: View {
                 systemName: "square.grid.2x2",
                 fontSize: 12,
                 size: 28,
-                help: "Agent Panel"
+                help: L10n.string("Agent Panel")
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setRightSidebarMode(store.rightSidebarMode.next)
@@ -218,4 +220,148 @@ struct ContentView: View {
         )
     }
 
+}
+
+// MARK: - Agent Template Picker (Topbar Dropdown)
+
+private struct AgentTemplatePicker: View {
+    let store: WorkspaceStore
+    @State private var isPresented = false
+
+    private var availableTemplates: [AgentTemplate] {
+        AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared)
+    }
+
+    private var currentTemplate: AgentTemplate? {
+        // Try to get the agent from the active session
+        if let session = store.active?.activeSession {
+            let displayAgent = session.displayAgent
+            if let template = availableTemplates.first(where: { $0.id == displayAgent.id }) {
+                return template
+            }
+        }
+        // Fall back to default launch template
+        return AgentTemplate.defaultLaunchTemplate(model: ArcherSettingsModel.shared)
+            ?? availableTemplates.first
+    }
+
+    var body: some View {
+        Menu {
+            // Current agent section
+            if let current = currentTemplate {
+                Section {
+                    AgentTemplateMenuRow(template: current, isCurrent: true) {
+                        // No-op for current - visual only
+                    }
+                }
+            }
+
+            Divider()
+
+            // Terminal presets
+            let presets = availableTemplates.filter { $0.isShell && $0.id != AgentTemplate.terminal.id }
+            if !presets.isEmpty {
+                Section {
+                    ForEach(presets) { template in
+                        AgentTemplateMenuRow(template: template, isCurrent: currentTemplate?.id == template.id) {
+                            switchToTemplate(template)
+                        }
+                    }
+                } header: {
+                    Text(L10n.string("Topbar.section.terminals"))
+                        .font(Theme.mono(10, weight: .semibold))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+            }
+
+            // Agents
+            let agents = availableTemplates.filter { !$0.isShell }
+            if !agents.isEmpty {
+                Section {
+                    ForEach(agents) { template in
+                        AgentTemplateMenuRow(template: template, isCurrent: currentTemplate?.id == template.id) {
+                            switchToTemplate(template)
+                        }
+                    }
+                } header: {
+                    Text(L10n.string("Topbar.section.agents"))
+                        .font(Theme.mono(10, weight: .semibold))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+            }
+
+            Divider()
+
+            // Manage agents
+            Button {
+                NSApp.sendAction(#selector(AppDelegate.handleOpenSettings), to: nil, from: nil)
+            } label: {
+                Label(L10n.string("Topbar.manage.agents"), systemImage: "gear")
+            }
+        } label: {
+            HStack(spacing: 6) {
+                if let current = currentTemplate {
+                    AgentIconView(asset: current.iconAsset, fallbackSymbol: current.symbol, size: 14)
+                } else {
+                    Image(systemName: AgentTemplate.terminal.symbol)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                Text(currentTemplate?.title ?? "Agent")
+                    .font(Theme.mono(11, weight: .medium))
+                    .foregroundStyle(Theme.chromeForeground)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(Theme.chromeForeground.opacity(0.5))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Theme.chromeBackground)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Theme.chromeHairline, lineWidth: 1)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(L10n.string("Topbar.switch.agent"))
+    }
+
+    private func switchToTemplate(_ template: AgentTemplate) {
+        // Update the global default agent for new tabs
+        ArcherSettingsModel.shared.defaultAgentId = template.id
+        ArcherSettingsModel.shared.scheduleSave()
+    }
+}
+
+private struct AgentTemplateMenuRow: View {
+    let template: AgentTemplate
+    let isCurrent: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 14)
+                Text(template.title)
+                    .font(Theme.mono(11))
+                    .foregroundStyle(isCurrent ? Theme.chromeForeground : Theme.chromeForeground.opacity(0.85))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+                if isCurrent {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.gitInsertion)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .disabled(isCurrent)
+    }
 }
