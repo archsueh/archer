@@ -92,8 +92,6 @@ struct ContentView: View {
                     store.setSidebarMode(store.sidebarMode.next)
                 }
             }
-            AgentTemplatePicker(store: store)
-                .frame(maxWidth: .infinity, alignment: .leading)
             WindowDragHandle()
                 .overlay {
                     if ArcherSettingsModel.shared.showSearchPill {
@@ -123,26 +121,6 @@ struct ContentView: View {
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setFilePanelMode(store.filePanelMode.next)
-                }
-            }
-            HoverableIconButton( // [archer]
-                systemName: "arrow.triangle.pull",
-                fontSize: 12,
-                size: 28,
-                help: L10n.string("Git Diff panel")
-            ) {
-                withAnimation(Theme.chromeTransition) {
-                    store.setDiffPanelMode(store.diffPanelMode.next)
-                }
-            }
-            HoverableIconButton(
-                systemName: "square.grid.2x2",
-                fontSize: 12,
-                size: 28,
-                help: L10n.string("Agent Panel")
-            ) {
-                withAnimation(Theme.chromeTransition) {
-                    store.setRightSidebarMode(store.rightSidebarMode.next)
                 }
             }
             InboxBell()
