@@ -1,326 +1,536 @@
 {
-  "version" : "1.0",
-  "sourceLanguage" : "en",
-  "strings" : {
-    "New workspace" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "新建工作区"
+  "sourceLanguage": "en",
+  "strings": {
+    "+": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+"
+          }
+        }
       }
     },
-    "Open in Finder" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "在 Finder 中打开"
+    "Add terminal preset": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加终端预设"
+          }
+        }
       }
     },
-    "Developer" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "开发者"
+    "Agent Panel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 面板"
+          }
+        }
       }
     },
-    "Archer" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "Archer"
+    "Agent is processing…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 正在处理…"
+          }
+        }
       }
     },
-    "Memory" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "记忆"
+    "Archer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archer"
+          }
+        }
       }
     },
-    "no notifications" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "暂无通知"
+    "Compact sidebar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紧凑侧边栏"
+          }
+        }
       }
     },
-    "Notifications" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "通知"
+    "Copy": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制"
+          }
+        }
       }
     },
-    "Agent is processing…" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "Agent 正在处理…"
+    "Developer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开发者"
+          }
+        }
       }
     },
-    "Copy" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "复制"
+    "Fanbox Downloader": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fanbox 下载器"
+          }
+        }
       }
     },
-    "Unset" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "未设置"
+    "File panel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件面板"
+          }
+        }
       }
     },
-    "type prompt or command here" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "在此输入提示词或命令"
+    "Git Diff panel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Git Diff 面板"
+          }
+        }
       }
     },
-    "waiting" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "等待中"
+    "Hide sidebar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏侧边栏"
+          }
+        }
       }
     },
-    "waiting for tool calls" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "等待工具调用"
+    "Memory": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆"
+          }
+        }
       }
     },
-    "No uncommitted changes" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "无未提交变更"
+    "New workspace": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建工作区"
+          }
+        }
       }
     },
-    "No diff content" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "无差异内容"
+    "No diff content": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无差异内容"
+          }
+        }
       }
     },
-    "loading…" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "加载中…"
+    "No uncommitted changes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无未提交变更"
+          }
+        }
       }
     },
-    "search workspace, tab, agent…" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "搜索工作区、标签、Agent…"
+    "Notifications": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知"
+          }
+        }
       }
     },
-    "usage-strip" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "用量条"
+    "Open in Finder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Finder 中打开"
+          }
+        }
       }
     },
-    "Usage strip" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "用量条"
+    "README ready": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "README 就绪"
+          }
+        }
       }
     },
-    "Git Diff panel" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "Git Diff 面板"
+    "Show proxy env (click text to copy)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示代理环境变量（点击文本复制）"
+          }
+        }
       }
     },
-    "File panel" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "文件面板"
+    "Show sidebar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示侧边栏"
+          }
+        }
       }
     },
-    "Agent Panel" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "Agent 面板"
+    "Sidebar.section.favorites": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收藏"
+          }
+        }
       }
     },
-    "Fanbox Downloader" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "Fanbox 下载器"
+    "Sidebar.section.tools": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具"
+          }
+        }
       }
     },
-    "Compact sidebar" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "紧凑侧边栏"
+    "Sidebar.section.workspaces": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区"
+          }
+        }
       }
     },
-    "Hide sidebar" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "隐藏侧边栏"
+    "Topbar.manage.agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理 Agent…"
+          }
+        }
       }
     },
-    "Show sidebar" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "显示侧边栏"
+    "Topbar.section.agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        }
       }
     },
-    "+" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "+"
+    "Topbar.section.terminals": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端预设"
+          }
+        }
       }
     },
-    "Add terminal preset" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "添加终端预设"
+    "Topbar.switch.agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换 Agent/模板"
+          }
+        }
       }
     },
-    "choose" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "选择"
+    "Unset": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未设置"
+          }
+        }
       }
     },
-    "open in new tab" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "在新标签页中打开"
+    "Usage strip": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量条"
+          }
+        }
       }
     },
-    "Show proxy env (click text to copy)" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "显示代理环境变量（点击文本复制）"
+    "agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        }
       }
     },
-    "unset \\(name)" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "取消设置 \\(name)"
+    "choose": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择"
+          }
+        }
       }
     },
-    "README ready" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "README 就绪"
+    "claude-model-params-needs-auth": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要先登录以查看模型用量"
+          }
+        }
       }
     },
-    "no agents running" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "没有运行的 Agent"
+    "done": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
+          }
+        }
       }
     },
-    "agents" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "Agent"
+    "last-refresh-attempt-failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取用量数据时发生错误"
+          }
+        }
       }
     },
-    "release-notes" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "更新说明"
+    "later": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后"
+          }
+        }
       }
     },
-    "update" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "更新"
+    "loading…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加载中…"
+          }
+        }
       }
     },
-    "later" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "稍后"
+    "no agents running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有运行的 Agent"
+          }
+        }
       }
     },
-    "done" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "完成"
+    "no notifications": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无通知"
+          }
+        }
       }
     },
-    "params-fallback" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "未捕获模型钩子"
+    "open in new tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在新标签页中打开"
+          }
+        }
       }
     },
-    "claude-model-params-needs-auth" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "需要先登录以查看模型用量"
+    "params-fallback": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未捕获模型钩子"
+          }
+        }
       }
     },
-    "session-params-stale" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "该会话用量信息已失效"
+    "processed-completion-tokens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出 Token"
+          }
+        }
       }
     },
-    "usage-values-missing" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "暂无用量数据"
+    "processed-prompt-tokens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入 Token"
+          }
+        }
       }
     },
-    "last-refresh-attempt-failed" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "获取用量数据时发生错误"
+    "release-notes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新说明"
+          }
+        }
       }
     },
-    "processed-prompt-tokens" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "输入 Token"
+    "search workspace, tab, agent…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索工作区、标签、Agent…"
+          }
+        }
       }
     },
-    "processed-completion-tokens" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "输出 Token"
+    "session-params-stale": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该会话用量信息已失效"
+          }
+        }
       }
     },
-    "Sidebar.section.favorites" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "收藏"
+    "type prompt or command here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此输入提示词或命令"
+          }
+        }
       }
     },
-    "Sidebar.section.workspaces" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "工作区"
+    "unset \\(name)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消设置 \\(name)"
+          }
+        }
       }
     },
-    "Sidebar.section.tools" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "工具"
+    "update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新"
+          }
+        }
       }
     },
-    "Topbar.section.terminals" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "终端预设"
+    "usage-strip": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量条"
+          }
+        }
       }
     },
-    "Topbar.section.agents" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "Agent"
+    "usage-values-missing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无用量数据"
+          }
+        }
       }
     },
-    "Topbar.manage.agents" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "管理 Agent…"
+    "waiting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待中"
+          }
+        }
       }
     },
-    "Topbar.switch.agent" : {
-      "stringUnit" : {
-        "state" : "translated",
-        "value" : "切换 Agent/模板"
+    "waiting for tool calls": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待工具调用"
+          }
+        }
       }
     }
   },
-  "developmentRegion" : "en",
-  "targetLocale" : "zh-Hans"
+  "version": "1.0"
 }
