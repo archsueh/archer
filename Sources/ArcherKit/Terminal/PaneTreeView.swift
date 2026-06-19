@@ -54,7 +54,17 @@ private struct PaneView: View {
             if let active = pane.activeTab {
                 ZStack {
                     VStack(spacing: 0) {
-                        TerminalView(engine: active.engine, grabsFocusOnMount: isFocused)
+                        TerminalView(
+                            engine: active.engine,
+                            grabsFocusOnMount: isFocused,
+                            onScrollPositionChange: { [weak pane] offset, total, visible in
+                                pane?.savedScrollOffset = CGFloat(offset)
+                                pane?.isAtBottom = (total - offset - visible <= 1)
+                            },
+                            onNewOutputWhileScrolledUp: { [weak pane] in
+                                pane?.isAtBottom = false
+                            }
+                        )
                             .id(active.id)
                             .padding(8)
                             .overlay(RightClickCatcher { unit in
@@ -94,16 +104,33 @@ private struct PaneView: View {
                                 }
                             }
                             .overlay(alignment: .bottom) {
-                                // ⌘L composer rises from the bottom like a chat box.
-                                // Per-pane / per-session, same as search.
-                                if active.composerActive {
-                                    PaneComposerBar(
-                                        session: active,
-                                        store: store,
-                                        onFocusGained: { store.activateTab(active, in: workspace) }
-                                    )
-                                    .padding(.horizontal, Theme.space3)
-                                    .padding(.bottom, Theme.space3)
+                                VStack(spacing: 0) {
+                                    // Jump to Latest button — appears when scrolled up and new output arrived
+                                    if !pane.isAtBottom {
+                                        Button(action: {
+                                            active.engine.performAction("scroll_to_bottom")
+                                            pane.isAtBottom = true
+                                        }) {
+                                            Image(systemName: "arrow.down.circle.fill")
+                                                .font(.system(size: 18, weight: .medium))
+                                                .foregroundStyle(Theme.activityRunning)
+                                                .shadow(radius: 2)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(.bottom, Theme.space3 + 8)
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                    }
+                                    // ⌘L composer rises from the bottom like a chat box.
+                                    // Per-pane / per-session, same as search.
+                                    if active.composerActive {
+                                        PaneComposerBar(
+                                            session: active,
+                                            store: store,
+                                            onFocusGained: { store.activateTab(active, in: workspace) }
+                                        )
+                                        .padding(.horizontal, Theme.space3)
+                                        .padding(.bottom, Theme.space3)
+                                    }
                                 }
                             }
                         // Always present now that it hosts the compose button — a
@@ -170,8 +197,6 @@ private struct PaneView: View {
 /// One configurable slot of the pane status bar. Order + visibility are
 /// controlled by Settings → Status Bar (`ArcherSettingsModel.statusBarItems`
 /// + `.hiddenStatusBarItems`). Adding a new kind: append a case here,
-/// add the rendering branch in `PaneStatusBar.segment(for:)`, and add the
-/// data-presence branch in `paneStatusBarHasData`.
 enum StatusBarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
     /// Tool-call activity pill, shown for agents that feed archer their
     /// tool calls (`AgentTemplate.reportsToolCalls` — Claude + Pi).
@@ -181,6 +206,9 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
     /// visibility; reordering this kind has no visible effect because
     /// rendering bypasses `visibleItems`.
     case toolCallActivity = "tool-call-activity"
+    /// Pending turn indicator — shows when agent is processing (activityState == .running)
+    /// and composer is not active. Not user-configurable; always visible when relevant.
+    case pendingTurn = "pending-turn"
     case pythonVenv = "python-venv"
     case nodeVersion = "node-version"
     case proxy
@@ -191,6 +219,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
     var displayName: String {
         switch self {
         case .toolCallActivity: return "Tool calls"
+        case .pendingTurn: return "Pending turn"
         case .pythonVenv: return "Python venv"
         case .nodeVersion: return "Node version"
         case .proxy: return "Proxy"
@@ -207,12 +236,13 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
     var symbol: String? {
         switch self {
         case .toolCallActivity: return nil
+        case .pendingTurn: return "hourglass"
         case .pythonVenv: return "p.circle.fill"
         case .nodeVersion: return "n.circle.fill"
         case .proxy: return "network"
-        case .remoteLogin: return "person.fill"
-        case .gitBranch: return "arrow.triangle.branch"
-        case .gitDiff: return "line.3.horizontal.button.angledtop.vertical.right"
+        case .remoteLogin: return "server.rack"
+        case .gitBranch: return "chevron.left.forwardslash.chevron.right"
+        case .gitDiff: return "arrow.up.arrow.down"
         }
     }
 
@@ -220,7 +250,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
     /// touched Settings → Status Bar. Tool-call activity goes first so a
     /// fresh Settings → Status Bar list renders it at the top.
     static let defaultOrder: [StatusBarItemKind] = [
-        .toolCallActivity, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitBranch, .gitDiff,
+        .toolCallActivity, .pendingTurn, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitBranch, .gitDiff,
     ]
 }
 
@@ -240,6 +270,7 @@ func paneStatusBarHasData(session: Session) -> Bool {
         // gate already lives in the loop predicate.
         switch item {
         case .toolCallActivity: if sessionWantsToolCallActivity(session) { return true }
+        case .pendingTurn: if session.activityState == .running && !session.composerActive { return true }
         case .pythonVenv: if session.environment.pythonVenv != nil { return true }
         case .nodeVersion: if session.environment.nodeVersion != nil { return true }
         case .proxy: if session.environment.proxy != nil { return true }
@@ -387,12 +418,38 @@ private struct PaneStatusBar: View {
     private func segment(for item: StatusBarItemKind) -> some View {
         switch item {
         case .toolCallActivity: EmptyView()  // rendered separately on the left
+        case .pendingTurn: pendingTurnSegment
         case .pythonVenv: pythonSegment
         case .nodeVersion: nodeSegment
         case .proxy: proxySegment
         case .remoteLogin: remoteLoginSegment
         case .gitBranch: branchSegment
         case .gitDiff: diffSegment
+        }
+    }
+
+    @ViewBuilder
+    private var pendingTurnSegment: some View {
+        if session.activityState == .running && !session.composerActive {
+            StatusSegment(systemImage: "hourglass") {
+                PendingTurnIcon()
+            }
+            .help("Agent is processing…")
+        }
+    }
+
+    private struct PendingTurnIcon: View {
+        @State private var rotation: Double = 0
+        var body: some View {
+            Image(systemName: "hourglass")
+                .font(.system(size: 10, weight: .medium))
+                .rotationEffect(.degrees(rotation))
+                .foregroundStyle(Theme.activityRunning)
+                .onAppear {
+                    withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
+                        rotation = 360
+                    }
+                }
         }
     }
 

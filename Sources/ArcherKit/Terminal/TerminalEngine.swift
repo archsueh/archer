@@ -70,6 +70,13 @@ protocol TerminalEngine: AnyObject {
     /// don't fire this — libghostty's "press any key to close" message
     /// stays so the user can read crash output before dismissing.
     var onProcessExitedCleanly: (() -> Void)? { get set }
+    /// Fires when the terminal viewport position changes. `offset` is lines from top,
+    /// `total` is total scrollback lines, `visible` is viewport height in lines.
+    /// Allows the SwiftUI layer to persist/restore scroll position per pane.
+    var onScrollPositionChange: ((_ offset: Int, _ total: Int, _ visible: Int) -> Void)? { get set }
+    /// Fires when the terminal receives new output while viewport is not at bottom.
+    /// Used to show "Jump to Latest" affordance.
+    var onNewOutputWhileScrolledUp: (() -> Void)? { get set }
     func start(config: TerminalSessionConfig)
     func terminate()
     /// When true, AppKit `setFrameSize` callbacks skip `ghostty_surface_set_size`.
