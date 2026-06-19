@@ -106,7 +106,21 @@ fi
 # fonts/icons via its standard resourcePath lookup.
 RES_BUNDLE="${APP}/Contents/Resources/Archer_ArcherKit.bundle"
 mkdir -p "${RES_BUNDLE}/Contents/Resources"
-mv "${RES_BUNDLE}"/*.ttf "${RES_BUNDLE}"/*.png "${RES_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+pushd "${RES_BUNDLE}" >/dev/null
+# Move *all* bundle contents, including localizations (e.g. *.lproj), into
+# Contents/Resources/. A narrower glob leaves stray files in the bundle root
+# and triggers `unsealed contents present in the bundle root`.
+shopt -s dotglob nullglob
+for entry in *; do
+  case "$entry" in
+    Contents) continue ;;
+    *) mv -f "$entry" "Contents/Resources/" ;;
+  esac
+done
+shopt -u dotglob nullglob
+popd >/dev/null
+# Include xcstrings resources as well (localizations).
+find "${APP}/Contents/Resources" -maxdepth 1 -type d -name "*.lproj" -exec rm -rf {} + 2>/dev/null || true
 cat > "${RES_BUNDLE}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

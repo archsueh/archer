@@ -217,7 +217,6 @@ private struct DeveloperTreeRow: View {
             if a.isDirectory != b.isDirectory { return a.isDirectory && !b.isDirectory }
             return a.url.lastPathComponent.localizedStandardCompare(b.url.lastPathComponent) == .orderedAscending
         }
-        withAnimation(.easeOut(duration: 0.12)) { expandedDirs.insert(item.url.standardizedFileURL) }
     }
 
     private func toggle() {
