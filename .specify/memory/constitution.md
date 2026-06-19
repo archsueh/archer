@@ -17,6 +17,10 @@ All upstream modifications to SwiftUI defaults or external integrations must be 
 ### V. Mono & Sans-Serif Typographic Order
 The typographic system uses exactly two fonts: `Onest` (for sans-serif display text, labels, and settings) and `JetBrains Mono` (for terminal contents, terminal logs, and `[bracket-button]` interactive controls).
 
+### VI. Project Independence
+Archer must maintain absolute project independence. In the future, this project will diverge significantly from Kooky (or Sailor). Avoid referencing, copying, or aligning design patterns back to Kooky unless explicitly instructed. All new features, sidebars, command palettes, and visual chrome designs must build on Archer's own identity as a premium developer cockpit, emphasizing distinctive, high-end visual design and motion dynamics.
+
+
 ## Architecture & Modularity
 - SwiftUI views and themes must be separated into modular subfolders under the `ArcherKit` target.
 - UI elements must sit on flat grid layers with zero elevation shadows. Borders are rendered as 1pt hairline strokes using the `.bracketBorder()` modifier.
