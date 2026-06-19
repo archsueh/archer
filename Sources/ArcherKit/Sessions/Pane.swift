@@ -1,14 +1,15 @@
 import Foundation
 
-/// One leaf region of a workspace's split tree. Owns its own tab list and
-/// active-tab pointer — splitting a workspace creates more `Pane`s, each with
-/// an independent tab strip rendered above its content.
 @MainActor
 @Observable
 final class Pane: Identifiable {
     let id: UUID
     var tabs: [Session]
     var activeTabId: UUID?
+
+    // [archer] per-pane scroll memory — survives tab switches
+    var savedScrollOffset: CGFloat?
+    var isAtBottom: Bool = true
 
     init(id: UUID = UUID(), tabs: [Session] = [], activeTabId: UUID? = nil) {
         self.id = id

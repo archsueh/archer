@@ -113,6 +113,7 @@ struct AgentOverviewSidebar: View {
     /// `.full` or `.compact` — `.hidden` never renders (`ContentView` gates it),
     /// mirroring the left sidebar's three collapse modes.
     let mode: SidebarMode
+    var width: Double = 230
 
     var body: some View {
         Group {
@@ -154,7 +155,7 @@ struct AgentOverviewSidebar: View {
             }
             Spacer(minLength: 0)
         }
-        .frame(width: 230)
+        .frame(width: CGFloat(width))
     }
 
     private var empty: some View {

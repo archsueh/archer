@@ -16,29 +16,65 @@ struct ContentView: View {
                 if store.sidebarMode != .hidden {
                     SidebarView(store: store)
                     Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                        .overlay {
+                            if store.sidebarMode == .full {
+                                PanelResizer(
+                                    width: Binding(
+                                        get: { store.panelWidths.sidebar },
+                                        set: { store.resizePanel(.sidebar, to: $0) }
+                                    ),
+                                    range: PanelWidths.sidebarRange,
+                                    panelSide: .leading
+                                )
+                            }
+                        }
                 }
                 mainPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if store.rightSidebarMode != .hidden {
                     Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                    AgentOverviewSidebar(mode: store.rightSidebarMode)
+                        .overlay {
+                            if firstActiveRightPanel == .rightSidebar {
+                                rightResizer
+                            }
+                        }
+                    AgentOverviewSidebar(mode: store.rightSidebarMode, width: store.panelWidths.rightPanel)
                 }
                 if store.filePanelMode != .hidden { // [archer]
                     Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                        .overlay {
+                            if firstActiveRightPanel == .filePanel {
+                                rightResizer
+                            }
+                        }
                     FilePanelView(rootURL: store.active?.workingDirectory
-                        ?? FileManager.default.homeDirectoryForCurrentUser)
+                        ?? FileManager.default.homeDirectoryForCurrentUser,
+                        width: store.panelWidths.rightPanel)
                         .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
                 }
                 if store.diffPanelMode != .hidden { // [archer]
                     Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                        .overlay {
+                            if firstActiveRightPanel == .diffPanel {
+                                rightResizer
+                            }
+                        }
                     DiffPanelView(rootURL: store.active?.workingDirectory
-                        ?? FileManager.default.homeDirectoryForCurrentUser)
+                        ?? FileManager.default.homeDirectoryForCurrentUser,
+                        width: store.panelWidths.rightPanel)
                         .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
                 }
                 if store.downloaderPanelMode != .hidden { // [archer]
                     Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                        .overlay {
+                            if firstActiveRightPanel == .downloaderPanel {
+                                rightResizer
+                            }
+                        }
                     FanboxDownloaderView(rootURL: store.active?.workingDirectory
-                        ?? FileManager.default.homeDirectoryForCurrentUser)
+                        ?? FileManager.default.homeDirectoryForCurrentUser,
+                        onFinished: {},
+                        width: store.panelWidths.rightPanel)
                         .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
                 }
             }
@@ -157,6 +193,29 @@ struct ContentView: View {
         case .compact: return "Hide sidebar"
         case .hidden: return "Show sidebar"
         }
+    }
+
+    private enum RightPanelType {
+        case rightSidebar, filePanel, diffPanel, downloaderPanel
+    }
+
+    private var firstActiveRightPanel: RightPanelType? {
+        if store.rightSidebarMode != .hidden { return .rightSidebar }
+        if store.filePanelMode != .hidden { return .filePanel }
+        if store.diffPanelMode != .hidden { return .diffPanel }
+        if store.downloaderPanelMode != .hidden { return .downloaderPanel }
+        return nil
+    }
+
+    private var rightResizer: some View {
+        PanelResizer(
+            width: Binding(
+                get: { store.panelWidths.rightPanel },
+                set: { store.resizePanel(.rightPanel, to: $0) }
+            ),
+            range: PanelWidths.rightRange,
+            panelSide: .trailing
+        )
     }
 
 }

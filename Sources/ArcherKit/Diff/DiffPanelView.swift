@@ -6,9 +6,11 @@ public struct DiffPanelView: View {
     @StateObject private var model: DiffModel
     @State private var showingDetail = false
     let rootURL: URL
+    var width: Double
 
-    public init(rootURL: URL) {
+    public init(rootURL: URL, width: Double = 280) {
         self.rootURL = rootURL
+        self.width = width
         _model = StateObject(wrappedValue: DiffModel(rootURL: rootURL))
     }
 
@@ -30,7 +32,7 @@ public struct DiffPanelView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 280)
+        .frame(width: CGFloat(width))
         .background(Theme.chromeBackground)
         .onDisappear {
             model.teardown()

@@ -13,6 +13,7 @@ struct PersistedState: Codable, Equatable {
     var diffPanelMode: SidebarMode? // [archer]
     var downloaderPanelMode: SidebarMode? // [archer]
     var usageStripVisible: Bool?
+    var panelWidths: PanelWidths?
 }
 
 /// Root of the multi-window `state.json`. Each `PersistedWindow` is one
