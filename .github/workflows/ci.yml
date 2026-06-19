@@ -9,11 +9,27 @@ on:
 jobs:
   build-and-test:
     name: Build and Test (macOS)
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
+
+    # Package.swift declares swift-tools-version 6.2, which ships with Xcode 26.
+    # The runner's default Xcode is older (Swift 5.10), so select the newest
+    # stable Xcode on the image before any swift command.
+    - name: Select Xcode (Swift 6.2 toolchain)
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Show Swift version
+      run: swift --version
+
+    # GhosttyKit.xcframework is gitignored (Vendor/) and fetched on demand.
+    # Without it the GhosttyKit binary target path is missing and the build fails.
+    - name: Fetch vendored GhosttyKit.xcframework
+      run: bash scripts/setup-libghostty.sh
 
     - name: Resolve Dependencies
       run: swift package resolve
