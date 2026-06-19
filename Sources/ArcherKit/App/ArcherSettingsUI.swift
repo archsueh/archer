@@ -110,8 +110,6 @@ final class ArcherSettingsModel {
     var notifyOnFailure: Bool = true
     var notifyOnCompleted: Bool = true // [archer] sound/banner when an agent finishes
     var notificationSound: String = "Submarine" // [archer] sound name
-    var autoClassifyRequiresReview: Bool = true // [archer]
-    var classificationRules: [ClassifyRule] = [] // [archer]
 
     private var saveWork: DispatchWorkItem?
 
@@ -189,11 +187,8 @@ final class ArcherSettingsModel {
         notificationsEnabled = (notifications["enabled"] as? Bool) ?? true
         notifyOnAttention = (notifications["attention"] as? Bool) ?? true
         notifyOnFailure = (notifications["failure"] as? Bool) ?? true
-        notifyOnCompleted = (notifications["completed"] as? Bool) ?? true // [archer]
-        notificationSound = (notifications["sound"] as? String) ?? "Submarine" // [archer]
-        autoClassifyRequiresReview = parsed["autoClassifyRequiresReview"] as? Bool ?? true // [archer]
-        classificationRules = Classifier.loadRules() // [archer]
-
+        notifyOnCompleted = (notifications["completed"] as? Bool) ?? true // [archer] sound/banner when an agent finishes
+        notificationSound = (notifications["sound"] as? String) ?? "Submarine" // [archer] sound name
         let rawCustom = (agents["custom"] as? [[String: Any]]) ?? []
         let builtinIds = Set(AgentTemplate.builtin.map(\.id))
         var seen: Set<String> = []
@@ -400,15 +395,6 @@ final class ArcherSettingsModel {
             parsed["statusbar"] = statusbar
         }
 
-        parsed["autoClassifyRequiresReview"] = autoClassifyRequiresReview // [archer]
-        parsed["classify"] = classificationRules.map { rule -> [String: Any] in // [archer]
-            return [
-                "extension": rule.extension,
-                "folder": rule.folder,
-                "priority": rule.priority,
-            ]
-        }
-
         ArcherSettings.write(parsed)
         ArcherShellIntegration.refreshClaudeCustomSettings(customAgents: customAgents)
         ArcherShellIntegration.refreshSshRemoteAgentDetection(enabled: sshRemoteAgentDetection)
@@ -568,7 +554,7 @@ final class ArcherSettingsModel {
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general, terminalPresets, codingAgents, ssh, notifications, statusBar, advanced, classification // [archer]
+    case general, terminalPresets, codingAgents, ssh, notifications, statusBar, advanced
 
     var id: String {
         rawValue
@@ -583,7 +569,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .notifications: return "Notifications"
         case .statusBar: return "Status Bar"
         case .advanced: return "Advanced"
-        case .classification: return "Classification" // [archer]
         }
     }
 }
@@ -602,8 +587,6 @@ struct ArcherSettingsView: View {
     let onOpenInTab: () -> Void
     @State private var selected: SettingsCategory = .general
     // [archer] begin: new rule inputs
-    @State private var newRuleExt: String = ""
-    @State private var newRuleFolder: String = ""
     // [archer] end: new rule inputs
 
     var body: some View {
@@ -644,10 +627,6 @@ struct ArcherSettingsView: View {
             .onChange(of: model.notifyOnFailure) { _, _ in model.scheduleSave() }
             .onChange(of: model.notifyOnCompleted) { _, _ in model.scheduleSave() } // [archer]
             .onChange(of: model.notificationSound) { _, _ in model.scheduleSave() } // [archer]
-            // [archer] begin: auto-classify settings change observers
-            .onChange(of: model.autoClassifyRequiresReview) { _, _ in model.scheduleSave() }
-            .onChange(of: model.classificationRules) { _, _ in model.scheduleSave() }
-            // [archer] end: auto-classify settings change observers
             .onChange(of: model.autoLightTheme) { _, _ in model.flushSave() }
             .onChange(of: model.autoDarkTheme) { _, _ in model.flushSave() }
     }
@@ -719,7 +698,6 @@ struct ArcherSettingsView: View {
             case .notifications: notificationsDetail
             case .statusBar: statusBarDetail
             case .advanced: advancedDetail
-            case .classification: classificationDetail // [archer]
             }
             Spacer(minLength: 28)
         }
@@ -891,120 +869,6 @@ struct ArcherSettingsView: View {
                 .padding(.top, 16)
         }
     }
-
-    /// [archer] begin: classification UI
-    private var classificationDetail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SettingsRow(label: "require-review-on-classify") {
-                Toggle("", isOn: $model.autoClassifyRequiresReview)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
-            SettingsHairline()
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text("classification-rules")
-                    .font(Theme.mono(12.5))
-                    .foregroundStyle(Theme.chromeForeground)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 14)
-                    .padding(.bottom, 8)
-
-                if model.classificationRules.isEmpty {
-                    Text("No classification rules defined.")
-                        .font(Theme.mono(11.5))
-                        .foregroundStyle(Theme.chromeMuted)
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 14)
-                } else {
-                    ForEach(model.classificationRules) { rule in
-                        HStack(spacing: 14) {
-                            Text(".\(rule.extension)")
-                                .font(Theme.mono(12))
-                                .foregroundStyle(Theme.chromeForeground)
-                                .frame(width: 80, alignment: .leading)
-
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Theme.chromeMuted)
-
-                            Text(rule.folder)
-                                .font(Theme.mono(12))
-                                .foregroundStyle(Theme.chromeForeground)
-
-                            Spacer()
-
-                            Button("delete") {
-                                model.classificationRules.removeAll { $0.id == rule.id }
-                                model.scheduleSave()
-                            }
-                            .buttonStyle(.plain)
-                            .font(Theme.mono(11))
-                            .foregroundStyle(Theme.activityFailure.opacity(0.85))
-                            .underline()
-                        }
-                        .padding(.horizontal, 28)
-                        .padding(.vertical, 6)
-                    }
-                }
-            }
-
-            SettingsHairline()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("add-new-rule")
-                    .font(Theme.mono(12.5))
-                    .foregroundStyle(Theme.chromeForeground)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 14)
-
-                HStack(spacing: 12) {
-                    TextField("ext (e.g. zip)", text: $newRuleExt)
-                        .font(Theme.mono(11.5))
-                        .textFieldStyle(.plain)
-                        .padding(6)
-                        .background(Theme.chromeHairline.opacity(0.12))
-                        .bracketBorder()
-                        .frame(width: 120)
-
-                    Text("to folder")
-                        .font(Theme.mono(11.5))
-                        .foregroundStyle(Theme.chromeMuted)
-
-                    TextField("folder (e.g. Archives)", text: $newRuleFolder)
-                        .font(Theme.mono(11.5))
-                        .textFieldStyle(.plain)
-                        .padding(6)
-                        .background(Theme.chromeHairline.opacity(0.12))
-                        .bracketBorder()
-                        .frame(minWidth: 150)
-
-                    Button("+ Add") {
-                        let ext = newRuleExt.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                        let folder = newRuleFolder.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !ext.isEmpty && !folder.isEmpty {
-                            model.classificationRules.removeAll { $0.extension == ext }
-                            model.classificationRules.append(ClassifyRule(extension: ext, folder: folder, priority: 1))
-                            model.scheduleSave()
-                            newRuleExt = ""
-                            newRuleFolder = ""
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .font(Theme.mono(11.5, weight: .medium))
-                    .foregroundStyle(Theme.chromeForeground)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .bracketBorder()
-                    .disabled(newRuleExt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newRuleFolder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 14)
-            }
-        }
-    }
-
-    // [archer] end: classification UI
 
     private var terminalRestartCallout: some View {
         HStack(spacing: 12) {
