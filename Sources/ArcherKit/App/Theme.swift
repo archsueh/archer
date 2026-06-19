@@ -15,7 +15,7 @@ enum Theme {
     /// Single readout for translucent layers.
     /// NOTE: if you want to tint the slider or resizer, use the
     /// background colour at this opacity instead of changing the modifier.
-    nonisolated static let glassOpacity: Double = 0.72 // [archer] was 0.60 — unified to match rester
+    nonisolated static let glassOpacity: Double = 0.72 // [archer] glass — more translucent than Ghostty 0.82
     static var chromeForeground: Color {
         Color(nsColor: resolved.foregroundColor)
     }
@@ -118,7 +118,7 @@ enum Theme {
         }
     }
 
-    private static let defaultTerminalSurface = NSColor(srgbRed: 40 / 255, green: 44 / 255, blue: 52 / 255, alpha: 1)
+    private static let defaultTerminalSurface = NSColor(srgbRed: 42 / 255, green: 42 / 255, blue: 42 / 255, alpha: 1) // [archer] #2A2A2A — matches local Ghostty background
     private static let defaultForeground = NSColor(srgbRed: 0xEF / 255, green: 0xEF / 255, blue: 0xF1 / 255, alpha: 1)
     /// `NSColor.black` lives in `NSDeviceRGBColorSpace`; bridging to sRGB
     /// on every `mix(_, .black, _)` call is wasted work. Pre-convert once.

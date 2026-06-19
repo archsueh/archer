@@ -39,10 +39,13 @@ enum ArcherSettings {
 
       // === Terminal rendering (forwarded to libghostty) ===
       // ghostty key reference: https://ghostty.org/docs/config/reference
+      // Defaults mirror the local Ghostty appearance (color / opacity / blur).
       "terminal": {
-        // "font-family": "JetBrains Mono",
-        // "font-size": 13,
-        // "theme": "dracula"
+        "background": "#2A2A2A",
+        "background-opacity": 0.72,
+        "background-blur": 20,
+        "font-family": "Maple Mono NF CN",
+        "font-size": 16
       }
     }
     """
@@ -125,7 +128,7 @@ enum ArcherSettings {
         // cursor there. The shell wrapper emits OSC 133 prompt markers with
         // the `cl=line` metadata libghostty needs to recognise it.
         // Also align terminal/TUI background opacity with window glass theme.
-        let baseline = "cursor-click-to-move = true\nbackground-opacity = \(Theme.glassOpacity)\n"
+        let baseline = "cursor-click-to-move = true\nbackground-opacity = \(Theme.glassOpacity)\nbackground-blur = 20\n"
         baseline.withCString { cstr in
             "archer-baseline".withCString { source in
                 ghostty_config_load_string(config, cstr, UInt(strlen(cstr)), source)
