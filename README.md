@@ -112,6 +112,25 @@ swift test                           # 383 unit tests
 
 `Vendor/` and `dist/` are gitignored. The libghostty setup script is idempotent.
 
+## Contributors
+
+<table>
+  <tr>
+    <td align="center" width="120">
+      <a href="https://github.com/archsueh">
+        <img src="https://github.com/archsueh.png" width="72" alt="archsueh"/><br/>
+        <sub><b>archsueh</b></sub>
+      </a>
+    </td>
+    <td align="center" width="120">
+      <a href="https://claude.com/claude-code">
+        <img src="https://github.com/claude.png" width="72" alt="Claude"/><br/>
+        <sub><b>Claude</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=archsueh/archer&type=Date)](https://star-history.com/#archsueh/archer&Date)
