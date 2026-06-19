@@ -1,4 +1,4 @@
-# archer
+# Archer
 
 [![License](https://img.shields.io/github/license/archsueh/archer?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/archsueh/archer?style=flat-square)](https://github.com/archsueh/archer/releases/latest)
