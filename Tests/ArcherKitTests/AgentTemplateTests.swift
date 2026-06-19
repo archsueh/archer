@@ -24,8 +24,19 @@ final class AgentTemplateTests: XCTestCase {
     }
 
     func testTerminalTemplateUsesUserDefaultShell() {
-        let expected = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        XCTAssertEqual(AgentTemplate.terminal.makeSessionConfig().command, expected)
+        // Terminal respects the user's shell, but bash/zsh route through an
+        // integration wrapper (bash → archer-bash-launch-*, zsh → /bin/zsh);
+        // only unwrapped shells (fish/nu/...) surface $SHELL verbatim. Assert
+        // per detected shell so the test holds on bash CI runners too.
+        let cmd = AgentTemplate.terminal.makeSessionConfig().command
+        switch ArcherShellIntegration.detectedUserShell {
+        case .zsh:
+            XCTAssertEqual(cmd, ArcherShellIntegration.zshPath)
+        case .bash:
+            XCTAssertTrue(cmd.contains("archer-bash-launch-"), "bash terminal must use the launcher wrapper: \(cmd)")
+        case .other:
+            XCTAssertEqual(cmd, ProcessInfo.processInfo.environment["SHELL"] ?? ArcherShellIntegration.zshPath)
+        }
     }
 
     func testAgentTemplatesPickAShellWithIntegrationWrapper() {
