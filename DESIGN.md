@@ -37,6 +37,24 @@ components:
     textColor: "{colors.primary}"
     rounded: "{rounded.brutalist}"
     padding: "5px 10px"
+  terminal-pane:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.primary}"
+  pane-border:
+    backgroundColor: "{colors.chrome-hairline}"
+  session-tab-active:
+    backgroundColor: "{colors.chrome-active}"
+    textColor: "{colors.primary}"
+  status-indicator-running:
+    textColor: "{colors.active-running}"
+  status-indicator-attention:
+    textColor: "{colors.active-attention}"
+  status-indicator-failure:
+    textColor: "{colors.active-failure}"
+  git-indicator-insertion:
+    textColor: "{colors.git-insertion}"
+  git-indicator-deletion:
+    textColor: "{colors.git-deletion}"
 ---
 
 ## Overview
