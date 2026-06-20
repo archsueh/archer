@@ -152,6 +152,13 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hans</string>
+    </array>
+    <key>CFBundleAllowMixedLocalizations</key>
+    <true/>
     <key>CFBundleExecutable</key>
     <string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key>
@@ -186,6 +193,12 @@ ${APPLE_ICON_PLIST_KEYS}
 </dict>
 </plist>
 PLIST
+
+# Compile the String Catalog into Contents/Resources/<locale>.lproj so the
+# .app carries real localizations (Bundle.main) and the per-app language
+# picker appears in System Settings. SwiftPM won't do this for .xcstrings.
+echo "==> Generating localizations into ${APP}/Contents/Resources"
+bash "$ROOT/scripts/gen-localizations.sh" "${APP}/Contents/Resources"
 
 echo "==> Adhoc codesign (skips Gatekeeper kill on first launch)"
 # Adhoc signature ('-') is enough for personal-machine launches without a

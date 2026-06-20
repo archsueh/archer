@@ -2,7 +2,9 @@ import Foundation
 
 enum L10n {
     static func string(_ key: String) -> String {
-        let value = NSLocalizedString(key, bundle: Bundle.module, value: "", comment: "")
+        // Localizations live in the .app's Contents/Resources (Bundle.main),
+        // generated from Localizable.xcstrings by scripts/gen-localizations.sh.
+        let value = NSLocalizedString(key, bundle: Bundle.main, value: "", comment: "")
         return value.isEmpty || value == key ? key : value
     }
 
