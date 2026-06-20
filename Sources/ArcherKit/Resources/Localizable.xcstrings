@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "  ▸ daytime (light)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "  ▸ 白天（浅色）"
+          }
+        }
+      }
+    },
+    "  ▸ nighttime (dark)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "  ▸ 夜间（深色）"
+          }
+        }
+      }
+    },
     "+": {
       "localizations": {
         "zh-Hans": {
@@ -17,6 +37,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "添加终端预设"
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高级"
           }
         }
       }
@@ -41,12 +71,62 @@
         }
       }
     },
+    "Agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        }
+      }
+    },
     "Archer": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "Archer"
+          }
+        }
+      }
+    },
+    "Ask each time": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每次询问"
+          }
+        }
+      }
+    },
+    "Auto (Time-based)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动（跟随时间）"
+          }
+        }
+      }
+    },
+    "Bar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "竖线"
+          }
+        }
+      }
+    },
+    "Block": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "块"
           }
         }
       }
@@ -71,12 +151,42 @@
         }
       }
     },
+    "Default": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认"
+          }
+        }
+      }
+    },
     "Developer": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "开发者"
+          }
+        }
+      }
+    },
+    "Each preset becomes a Terminal entry in the + menu that always spawns in the configured folder, regardless of the active workspace.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个预设会在 + 菜单里成为一个终端入口，始终在配置的目录中打开，与当前工作区无关。"
+          }
+        }
+      }
+    },
+    "Edit the raw JSON for any key not exposed above. Comments (`//`, `/* */`) are accepted.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑上面未列出的任意配置项的原始 JSON。支持注释（`//`、`/* */`）。"
           }
         }
       }
@@ -97,6 +207,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "文件面板"
+          }
+        }
+      }
+    },
+    "General": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用"
           }
         }
       }
@@ -191,6 +311,16 @@
         }
       }
     },
+    "SETTINGS": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置"
+          }
+        }
+      }
+    },
     "Show proxy env (click text to copy)": {
       "localizations": {
         "zh-Hans": {
@@ -241,6 +371,46 @@
         }
       }
     },
+    "Status Bar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态栏"
+          }
+        }
+      }
+    },
+    "System": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统"
+          }
+        }
+      }
+    },
+    "Terminals": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端"
+          }
+        }
+      }
+    },
+    "Theme reloads existing panes. Font and cursor changes may need restart.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主题会立即应用到已打开的面板；字体和光标改动可能需要重启。"
+          }
+        }
+      }
+    },
     "Topbar.manage.agents": {
       "localizations": {
         "zh-Hans": {
@@ -281,6 +451,16 @@
         }
       }
     },
+    "Underline": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下划线"
+          }
+        }
+      }
+    },
     "Unset": {
       "localizations": {
         "zh-Hans": {
@@ -301,12 +481,42 @@
         }
       }
     },
+    "agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        }
+      }
+    },
     "agents": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "Agent"
+          }
+        }
+      }
+    },
+    "alert sound": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提示音"
+          }
+        }
+      }
+    },
+    "based on": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "基于"
           }
         }
       }
@@ -331,12 +541,82 @@
         }
       }
     },
+    "command": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命令"
+          }
+        }
+      }
+    },
+    "completed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
+          }
+        }
+      }
+    },
+    "cursor-style": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "光标样式"
+          }
+        }
+      }
+    },
+    "default-new-tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认新标签页"
+          }
+        }
+      }
+    },
     "done": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "完成"
+          }
+        }
+      }
+    },
+    "font-family": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字体"
+          }
+        }
+      }
+    },
+    "font-size": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字号"
+          }
+        }
+      }
+    },
+    "language": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语言"
           }
         }
       }
@@ -411,6 +691,16 @@
         }
       }
     },
+    "path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "路径"
+          }
+        }
+      }
+    },
     "processed-completion-tokens": {
       "localizations": {
         "zh-Hans": {
@@ -441,6 +731,16 @@
         }
       }
     },
+    "resume-conversation-when-reopen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重开时恢复会话"
+          }
+        }
+      }
+    },
     "search workspace, tab, agent…": {
       "localizations": {
         "zh-Hans": {
@@ -457,6 +757,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "该会话用量信息已失效"
+          }
+        }
+      }
+    },
+    "theme": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主题"
+          }
+        }
+      }
+    },
+    "top bar search": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顶栏搜索"
           }
         }
       }
