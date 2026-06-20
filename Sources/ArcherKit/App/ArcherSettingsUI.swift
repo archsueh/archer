@@ -681,7 +681,7 @@ struct ArcherSettingsView: View {
                 .font(Theme.mono(11, weight: .medium))
                 .foregroundStyle(isSelected ? Theme.chromeForeground : Color.clear)
                 .frame(width: 14, alignment: .leading)
-            Text(category.title)
+            Text(L10n.string(category.title)) // [archer] localize section name
                 .font(Theme.mono(12, weight: isSelected ? .medium : .regular))
                 .foregroundStyle(isSelected ? Theme.chromeForeground : Theme.chromeMuted)
             Spacer()
@@ -695,7 +695,7 @@ struct ArcherSettingsView: View {
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 14) {
-                Text(selected.title)
+                Text(L10n.string(selected.title)) // [archer] localize section title
                     .font(Theme.display(22, weight: .medium))
                     .foregroundStyle(Theme.chromeForeground)
                 // The Notifications section's master switch lives on the title
@@ -997,7 +997,7 @@ private struct SettingsRow<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Text(label)
+            Text(L10n.string(label)) // [archer] localize row labels
                 .font(Theme.mono(12.5))
                 .foregroundStyle(Theme.chromeForeground)
             Spacer(minLength: 14)
