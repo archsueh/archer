@@ -8,10 +8,6 @@ struct ContentView: View {
         VStack(spacing: 0) {
             topStrip
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            if store.usageStripVisible { // [archer]
-                UsageStripView()
-                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            }
             HStack(spacing: 0) {
                 if store.sidebarMode != .hidden {
                     SidebarView(store: store)
@@ -129,13 +125,18 @@ struct ContentView: View {
         .frame(height: 32)
     }
 
-    @ViewBuilder
     private var mainPane: some View {
-        if let workspace = store.active {
-            PaneTreeView(node: workspace.root, workspace: workspace, store: store)
-                .id(workspace.id)
-        } else {
-            Color.clear
+        VStack(spacing: 0) {
+            if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
+                UsageStripView()
+                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+            }
+            if let workspace = store.active {
+                PaneTreeView(node: workspace.root, workspace: workspace, store: store)
+                    .id(workspace.id)
+            } else {
+                Color.clear
+            }
         }
     }
 
