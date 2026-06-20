@@ -110,6 +110,10 @@ final class ArcherSettingsModel {
     var notifyOnFailure: Bool = true
     var notifyOnCompleted: Bool = true // [archer] sound/banner when an agent finishes
     var notificationSound: String = "Submarine" // [archer] sound name
+    /// In-app UI language. "system" follows macOS; "en"/"zh-Hans" override via
+    /// the AppleLanguages user default (takes effect after restart). Lives in
+    /// UserDefaults, not settings.json. // [archer]
+    var appLanguage: String = "system"
 
     private var saveWork: DispatchWorkItem?
 
@@ -133,6 +137,26 @@ final class ArcherSettingsModel {
             if terminalThemeSelection == Self.autoThemeSelection {
                 save()
             }
+        }
+    }
+
+    /// [archer] Reads the app's own AppleLanguages override (not the inherited
+    /// system value), mapping to "system" / "en" / "zh-Hans".
+    static func detectAppLanguage() -> String {
+        let bid = Bundle.main.bundleIdentifier ?? ""
+        let domain = UserDefaults.standard.persistentDomain(forName: bid)
+        guard let first = (domain?["AppleLanguages"] as? [String])?.first else { return "system" }
+        if first.hasPrefix("zh") { return "zh-Hans" }
+        if first.hasPrefix("en") { return "en" }
+        return "system"
+    }
+
+    /// [archer] Persists the AppleLanguages override; takes effect after restart.
+    func applyAppLanguage(_ value: String) {
+        switch value {
+        case "en": UserDefaults.standard.set(["en"], forKey: "AppleLanguages")
+        case "zh-Hans": UserDefaults.standard.set(["zh-Hans"], forKey: "AppleLanguages")
+        default: UserDefaults.standard.removeObject(forKey: "AppleLanguages")
         }
     }
 
@@ -189,6 +213,7 @@ final class ArcherSettingsModel {
         notifyOnFailure = (notifications["failure"] as? Bool) ?? true
         notifyOnCompleted = (notifications["completed"] as? Bool) ?? true // [archer] sound/banner when an agent finishes
         notificationSound = (notifications["sound"] as? String) ?? "Submarine" // [archer] sound name
+        appLanguage = ArcherSettingsModel.detectAppLanguage() // [archer]
         let rawCustom = (agents["custom"] as? [[String: Any]]) ?? []
         let builtinIds = Set(AgentTemplate.builtin.map(\.id))
         var seen: Set<String> = []
@@ -786,6 +811,20 @@ struct ArcherSettingsView: View {
                 Toggle("", isOn: $model.showSearchPill)
                     .labelsHidden()
                     .toggleStyle(.switch)
+            }
+            SettingsHairline()
+            SettingsRow(label: "language") { // [archer]
+                Picker("", selection: $model.appLanguage) {
+                    Text("System").tag("system")
+                    Text("English").tag("en")
+                    Text("简体中文").tag("zh-Hans")
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(minWidth: 180)
+                .onChange(of: model.appLanguage) { _, newValue in
+                    model.applyAppLanguage(newValue)
+                }
             }
             terminalRestartCallout
         }
