@@ -2,6 +2,13 @@
 
 Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 
+## v1.0.1 — 2026-06-20
+
+- **Chinese Localization (zh-Hans)** — Localized the Settings window (General, Notifications, SSH) and the system menu bar/context menus.
+- **Activity Chimes** — Restored startup ritual ping sound, and play chime alerts on turn completion.
+- **Design System Alignment** — Mapped all color tokens to components in `DESIGN.md` to resolve `@google/design.md` lint warnings.
+- **UI & Bug Fixes** — Prevented launch hanging, aligned topbar/sidebar layouts, and updated entitlements for macOS 26+ hardened runtime compliance.
+
 ## v0.26.8 — 2026-06-15
 
 - Fixed: switching workspaces now keeps keyboard focus on the pane you left it on, instead of jumping to the last split pane (#24).
