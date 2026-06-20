@@ -1203,12 +1203,15 @@ final class WorkspaceStore {
             // the same icon-upgrade the default Terminal does.
             session.agent = agent
         }
+        // [archer] Turn finished — chime + inbox, keep the agent (no revert).
+        // Fired regardless of activity-state change so the cue still lands.
+        if event == .turn { onSessionAlert(session.id, .completed) }
         // SessionStart → UserPromptSubmit on Claude (and BeforeAgent on Gemini)
         // re-fires `.running` per turn; the @Observable setter notifies every
         // sidebar/tab observer even on same-value assignment, so guard.
         if session.activityState != event.activityState {
             session.activityState = event.activityState
-            if event.activityState == .attention { onSessionAlert(session.id, .attention) }
+            if event.activityState == .attention, event != .turn { onSessionAlert(session.id, .attention) }
         }
         if session.agent.id != agentBefore { scheduleSave() }
     }
@@ -1559,9 +1562,11 @@ final class WorkspaceStore {
             session.transientAgent = agent
         }
 
+        // [archer] Turn finished — chime + inbox, keep the agent (no revert).
+        if event == .turn { onSessionAlert(session.id, .completed) }
         if session.activityState != event.activityState {
             session.activityState = event.activityState
-            if event.activityState == .attention { onSessionAlert(session.id, .attention) }
+            if event.activityState == .attention, event != .turn { onSessionAlert(session.id, .attention) }
         }
         if session.agent.id != agentBefore { scheduleSave() }
     }

@@ -18,7 +18,7 @@ final class ShellIntegrationTests: XCTestCase {
 
         let expected: [String: String] = [
             "BeforeAgent": "running",
-            "AfterAgent": "attention",
+            "AfterAgent": "turn",
             "Notification": "attention",
             "SessionEnd": "ended",
         ]
@@ -36,7 +36,7 @@ final class ShellIntegrationTests: XCTestCase {
 
         for (event, state) in [
             "UserPromptSubmit": "running",
-            "Stop": "attention",
+            "Stop": "turn",
             "Notification": "attention",
             "SessionEnd": "ended",
         ] {
