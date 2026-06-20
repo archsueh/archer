@@ -501,7 +501,7 @@ enum ArcherShellIntegration {
             events: [
                 "SessionStart": .running,
                 "UserPromptSubmit": .running,
-                "Stop": .turn, // [archer] turn done → chime, not generic attention
+                "Stop": .attention,
                 "Notification": .attention,
                 "SessionEnd": .ended,
             ],
@@ -566,7 +566,7 @@ enum ArcherShellIntegration {
         hooksObject(slug: "gemini", hookCmd: hookCmd, events: [
             "SessionStart": .running,
             "BeforeAgent": .running,
-            "AfterAgent": .turn, // [archer] turn done → chime, not generic attention
+            "AfterAgent": .attention,
             "Notification": .attention,
             "SessionEnd": .ended,
         ])

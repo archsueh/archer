@@ -11,15 +11,12 @@ import Foundation
 /// Lifecycle signal an agent's hook fired. Wire format is the raw String
 /// case names; the enum lets `WorkspaceStore` switch exhaustively.
 enum HookEvent: String {
-    /// [archer] `.turn` = agent finished a turn (Claude `Stop` / Gemini
-    /// `AfterAgent`), distinct from `.attention` (needs input) so only turn
-    /// completion chimes — a `Notification` at startup must not.
-    case running, attention, idle, ended, turn
+    case running, attention, idle, ended
 
     var activityState: SessionActivityState {
         switch self {
         case .running: return .running
-        case .attention, .turn: return .attention
+        case .attention: return .attention
         case .idle, .ended: return .idle
         }
     }
