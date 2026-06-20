@@ -348,6 +348,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             else { return }
             NSSound(named: NSSound.Name(settings.notificationSound))?.play()
         case .attention:
+            // [archer] Agent became active/done (Claude `Stop` + `Notification`,
+            // incl. the startup ping) — chime even on the visible tab. Wanted:
+            // a ritual cue on launch and a cue every turn. Banner stays bg-only.
+            if settings.notificationsEnabled, settings.notifyOnCompleted {
+                NSSound(named: NSSound.Name(settings.notificationSound))?.play()
+            }
             guard settings.notificationsEnabled, settings.notifyOnAttention,
                   !visible else { return }
             notificationManager.post(
