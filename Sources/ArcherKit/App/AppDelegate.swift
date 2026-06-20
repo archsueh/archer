@@ -661,7 +661,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         for entry in entries {
             switch entry {
             case let .row(row):
-                let item = NSMenuItem(title: row.title, action: row.selector, keyEquivalent: row.key)
+                let item = NSMenuItem(title: L10n.string(row.title), action: row.selector, keyEquivalent: row.key) // [archer] localize
                 item.keyEquivalentModifierMask = row.modifiers
                 item.target = row.target
                 item.tag = row.tag
@@ -678,7 +678,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // isn't used as a fallback. An empty title degrades to "NSMenuItem"
         // in the bar, so copy the submenu's title across.
         let item = NSMenuItem()
-        item.title = menu.title
+        item.title = L10n.string(menu.title) // [archer] localize bar title
         item.submenu = menu
         return item
     }

@@ -55,7 +55,7 @@ struct ArcherMenuRow<Leading: View>: View {
         Button(action: action) {
             HStack(spacing: Theme.space2) {
                 leading
-                Text(title)
+                Text(L10n.string(title)) // [archer] localize menu row
                     .font(Theme.display(12.5, weight: .regular))
                     .foregroundStyle(isDisabled ? Theme.chromeMuted : Theme.chromeForeground)
                 Spacer(minLength: 0)
