@@ -394,12 +394,12 @@ struct SearchTriggerPill: View {
     @State private var isHovered: Bool = false
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Theme.chromeForeground.opacity(0.75))
             Text("search workspace, tab, agent…")
-                .font(Theme.mono(11))
+                .font(Theme.mono(11.5))
                 .foregroundStyle(Theme.chromeForeground.opacity(0.75))
                 .lineLimit(1)
             Spacer(minLength: 14)
@@ -409,10 +409,14 @@ struct SearchTriggerPill: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .frame(width: 280, height: 22)
+        .frame(width: 440, height: 30)
         .background(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(isHovered ? Theme.chromeActive : Theme.chromeHover)
+                .fill(Theme.chromeHover)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .strokeBorder(Theme.chromeHairline, lineWidth: 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         .padding(.vertical, 5)

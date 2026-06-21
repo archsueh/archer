@@ -41,7 +41,7 @@ struct TabBarView: View {
             // ScrollView so they stay put while the tabs scroll.
             splitButtons
         }
-        .frame(height: 40)
+        .frame(height: 44)
     }
 
     /// Split-right / split-down buttons. Mirror ⌘D / ⌘⇧D exactly: Split

@@ -12,6 +12,14 @@ enum Theme {
     static var chromeBackground: Color {
         Color(nsColor: resolved.chromeBackgroundColor).opacity(glassOpacity)
     } // [archer]
+
+    static var chromeBackgroundBlur: CGFloat {
+        30
+    } // [archer] matches design spec
+    static var chromeBackgroundSaturate: CGFloat {
+        1.3
+    } // [archer] matches design spec
+
     /// Single readout for translucent layers.
     /// NOTE: if you want to tint the slider or resizer, use the
     /// background colour at this opacity instead of changing the modifier.
