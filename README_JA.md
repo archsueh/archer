@@ -24,9 +24,7 @@ AI コーディングのために作られた、ミニマルでモダンな macO
 
 ![左側に垂直 tab、1 つの pane を 4 分割](img/screenshot-2.png)
 
-**ワンクリックで AI agent セッション。** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok Build · Antigravity CLI · Kimi Code · Pi · Kiro CLI。`+` メニューから選ぶだけで、最初の prompt を打つ前に agent が起動します。Claude の会話は archer の再起動を跨いで自動で resume されるので、tab を閉じて再度開いても直前の続きから再開できます。
-
-![対応する全 agent、それぞれ Settings で切り替え可能](img/screenshot-4.png)
+**ワンクリックで AI agent セッション。** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok Build · Antigravity CLI · Kimi Code · Pi · Kiro CLI。`+` メニューから选ぶだけで、最初の prompt を打つ前に agent が起動します。Claude の会話は archer の再起動を跨いで自動で resume されるので、tab を閉じて再度開いても直前の続きから再開できます。
 
 **Git worktree。** 任意の git workspace を右クリック → "Create Worktree…" で新しい branch (または既存 branch の checkout) に対する worktree を作成します。worktree はサイドバーで元のリポジトリの下にネストして表示され、独自の tab + agent を持ちます —— main で何かが走っている最中でも、Claude を feature branch で並行して動かせます。コマンドラインで `git worktree add` した worktree も、次回 archer 起動時に自動でサイドバーに現れます。
 
