@@ -519,31 +519,35 @@ struct SkillsView: View {
         // Seed two specific issues to showcase "有问题" and "一键清理" if there are none or very few issues
         let issueItems = items.filter { $0.hasIssue }
         if issueItems.count < 2 {
-            items.append(SkillItem(
-                name: "pptx-export",
-                source: "~/.codex",
-                path: (home as NSString).appendingPathComponent(".codex/skills/pptx-export/SKILL.md"),
-                description: "Export editable PPTX — skill body present but YAML frontmatter missing.",
-                triggerCount: 0,
-                lastTriggered: "—",
-                isDuplicate: false,
-                duplicateCount: 1,
-                hasIssue: true,
-                issueDescription: "缺 frontmatter"
-            ))
+            if !items.contains(where: { $0.name == "pptx-export" }) {
+                items.append(SkillItem(
+                    name: "pptx-export",
+                    source: "~/.codex",
+                    path: (home as NSString).appendingPathComponent(".codex/skills/pptx-export/SKILL.md"),
+                    description: "Export editable PPTX — skill body present but YAML frontmatter missing.",
+                    triggerCount: 0,
+                    lastTriggered: "—",
+                    isDuplicate: false,
+                    duplicateCount: 1,
+                    hasIssue: true,
+                    issueDescription: "缺 frontmatter"
+                ))
+            }
 
-            items.append(SkillItem(
-                name: "db-migrate",
-                source: "~/.agents",
-                path: (home as NSString).appendingPathComponent(".agents/skills/db-migrate/SKILL.md"),
-                description: "Plan and run schema migrations — description exceeds 1024 chars, truncated.",
-                triggerCount: 0,
-                lastTriggered: "—",
-                isDuplicate: false,
-                duplicateCount: 1,
-                hasIssue: true,
-                issueDescription: "描述截断"
-            ))
+            if !items.contains(where: { $0.name == "db-migrate" }) {
+                items.append(SkillItem(
+                    name: "db-migrate",
+                    source: "~/.agents",
+                    path: (home as NSString).appendingPathComponent(".agents/skills/db-migrate/SKILL.md"),
+                    description: "Plan and run schema migrations — description exceeds 1024 chars, truncated.",
+                    triggerCount: 0,
+                    lastTriggered: "—",
+                    isDuplicate: false,
+                    duplicateCount: 1,
+                    hasIssue: true,
+                    issueDescription: "描述截断"
+                ))
+            }
         }
 
         return items
@@ -628,18 +632,76 @@ struct SkillsView: View {
     }
 
     private func performCleanup() {
-        withAnimation(Theme.chromeTransition) {
-            var fixCount = 0
-            for index in skills.indices {
-                if skills[index].hasIssue {
-                    skills[index].hasIssue = false
-                    skills[index].issueDescription = nil
-                    if skills[index].description.isEmpty {
-                        skills[index].description = "Auto-repaired: frontmatter and metadata restored successfully."
+        var fixCount = 0
+        let fm = FileManager.default
+
+        for index in skills.indices {
+            if skills[index].hasIssue {
+                let filePath = skills[index].path
+                let folderPath = (filePath as NSString).deletingLastPathComponent
+
+                // Ensure parent directory exists
+                try? fm.createDirectory(atPath: folderPath, withIntermediateDirectories: true, attributes: nil)
+
+                // Read original content if file exists
+                var originalBody = ""
+                if fm.fileExists(atPath: filePath) {
+                    if let content = try? String(contentsOfFile: filePath, encoding: .utf8) {
+                        // Strip existing frontmatter if any to rebuild it cleanly
+                        let lines = content.components(separatedBy: .newlines)
+                        var dashCount = 0
+                        var bodyLines: [String] = []
+                        for line in lines {
+                            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmed == "---" {
+                                dashCount += 1
+                                continue
+                            }
+                            if dashCount >= 2 {
+                                bodyLines.append(line)
+                            }
+                        }
+                        if dashCount >= 2 {
+                            originalBody = bodyLines.joined(separator: "\n")
+                        } else {
+                            originalBody = content
+                        }
+                    }
+                }
+
+                if originalBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    originalBody = "# \(skills[index].name)\n\nAuto-repaired skill body."
+                }
+
+                // Ensure description is under 1024 characters
+                var desc = skills[index].description
+                if desc.count > 1024 {
+                    desc = String(desc.prefix(1000)) + "..."
+                }
+
+                // Construct clean frontmatter markdown
+                let repairedContent = """
+                ---
+                name: \(skills[index].name)
+                description: \(desc)
+                ---
+
+                \(originalBody.trimmingCharacters(in: .whitespacesAndNewlines))
+                """
+
+                // Write back to disk
+                if let _ = try? repairedContent.write(toFile: filePath, atomically: true, encoding: .utf8) {
+                    withAnimation(Theme.chromeTransition) {
+                        skills[index].hasIssue = false
+                        skills[index].issueDescription = nil
+                        skills[index].description = desc
                     }
                     fixCount += 1
                 }
             }
+        }
+
+        withAnimation(Theme.chromeTransition) {
             calculateStats()
             cleanBtnState = .done(count: fixCount)
         }
@@ -657,6 +719,17 @@ struct SkillsView: View {
     }
 
     private func deleteSkill(_ skill: SkillItem) {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: skill.path) {
+            try? fm.removeItem(atPath: skill.path)
+
+            // Clean up empty directory if empty (excluding hidden/dotfiles)
+            let folderPath = (skill.path as NSString).deletingLastPathComponent
+            if let contents = try? fm.contentsOfDirectory(atPath: folderPath), contents.filter({ !$0.hasPrefix(".") }).isEmpty {
+                try? fm.removeItem(atPath: folderPath)
+            }
+        }
+
         withAnimation(Theme.chromeTransition) {
             skills.removeAll { $0.id == skill.id }
             calculateStats()
