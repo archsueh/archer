@@ -29,64 +29,114 @@ final class UsageViewModel: ObservableObject {
     }
 
     private func fetchStatsFromDB() -> UsageStats {
-        let dbPath = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/usage.db")
-        var db: OpaquePointer?
+        let home = NSHomeDirectory()
+        let fm = FileManager.default
 
-        var todayInput = 0
-        var todayOutput = 0
-        var todayCacheRead = 0
+        let claudeDbPath = (home as NSString).appendingPathComponent(".claude/usage.db")
+        let hermesDbPath = (home as NSString).appendingPathComponent(".hermes/state.db")
 
-        if sqlite3_open(dbPath, &db) == SQLITE_OK {
-            // Query today's tokens (local time)
-            let todayQuery = """
-                SELECT SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens)
-                FROM turns
-                WHERE date(timestamp, 'localtime') = date('now', 'localtime');
-            """
-            var stmt: OpaquePointer?
-            if sqlite3_prepare_v2(db, todayQuery, -1, &stmt, nil) == SQLITE_OK {
-                if sqlite3_step(stmt) == SQLITE_ROW {
-                    todayInput = Int(sqlite3_column_int64(stmt, 0))
-                    todayOutput = Int(sqlite3_column_int64(stmt, 1))
-                    todayCacheRead = Int(sqlite3_column_int64(stmt, 2))
-                }
-                sqlite3_finalize(stmt)
-            }
-            sqlite3_close(db)
-        }
+        var todayClaudeInput = 0
+        var todayClaudeOutput = 0
+        var todayClaudeCacheRead = 0
 
-        // If there's no real database usage yet (or database is empty), seed some realistic default values
-        if todayInput == 0 && todayOutput == 0 {
-            todayInput = 820_000
-            todayOutput = 310_000
-            todayCacheRead = 4_100_000
-        }
-
-        // Query 7 days of historical data from DB
-        var claudeUsageByDay: [String: (input: Int, output: Int)] = [:]
-        if sqlite3_open(dbPath, &db) == SQLITE_OK {
-            let last7DaysQuery = """
-                SELECT date(timestamp, 'localtime') as day, SUM(input_tokens), SUM(output_tokens)
-                FROM turns
-                WHERE timestamp >= datetime('now', '-7 days')
-                GROUP BY day;
-            """
-            var stmt: OpaquePointer?
-            if sqlite3_prepare_v2(db, last7DaysQuery, -1, &stmt, nil) == SQLITE_OK {
-                while sqlite3_step(stmt) == SQLITE_ROW {
-                    if let dayChars = sqlite3_column_text(stmt, 0) {
-                        let day = String(cString: dayChars)
-                        let input = Int(sqlite3_column_int64(stmt, 1))
-                        let output = Int(sqlite3_column_int64(stmt, 2))
-                        claudeUsageByDay[day] = (input, output)
+        if fm.fileExists(atPath: claudeDbPath) {
+            var db: OpaquePointer?
+            if sqlite3_open_v2(claudeDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
+                let todayQuery = """
+                    SELECT SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens)
+                    FROM turns
+                    WHERE date(timestamp, 'localtime') = date('now', 'localtime');
+                """
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, todayQuery, -1, &stmt, nil) == SQLITE_OK {
+                    if sqlite3_step(stmt) == SQLITE_ROW {
+                        todayClaudeInput = Int(sqlite3_column_int64(stmt, 0))
+                        todayClaudeOutput = Int(sqlite3_column_int64(stmt, 1))
+                        todayClaudeCacheRead = Int(sqlite3_column_int64(stmt, 2))
                     }
+                    sqlite3_finalize(stmt)
                 }
-                sqlite3_finalize(stmt)
+                sqlite3_close(db)
             }
-            sqlite3_close(db)
         }
 
-        // Build 7 days
+        var todayHermesInput = 0
+        var todayHermesOutput = 0
+        var todayHermesCacheRead = 0
+
+        if fm.fileExists(atPath: hermesDbPath) {
+            var db: OpaquePointer?
+            if sqlite3_open_v2(hermesDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
+                let todayQuery = """
+                    SELECT SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens)
+                    FROM sessions
+                    WHERE date(started_at, 'unixepoch', 'localtime') = date('now', 'localtime');
+                """
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, todayQuery, -1, &stmt, nil) == SQLITE_OK {
+                    if sqlite3_step(stmt) == SQLITE_ROW {
+                        todayHermesInput = Int(sqlite3_column_int64(stmt, 0))
+                        todayHermesOutput = Int(sqlite3_column_int64(stmt, 1))
+                        todayHermesCacheRead = Int(sqlite3_column_int64(stmt, 2))
+                    }
+                    sqlite3_finalize(stmt)
+                }
+                sqlite3_close(db)
+            }
+        }
+
+        var claudeUsageByDay: [String: (input: Int, output: Int)] = [:]
+        if fm.fileExists(atPath: claudeDbPath) {
+            var db: OpaquePointer?
+            if sqlite3_open_v2(claudeDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
+                let last7DaysQuery = """
+                    SELECT date(timestamp, 'localtime') as day, SUM(input_tokens), SUM(output_tokens)
+                    FROM turns
+                    WHERE timestamp >= datetime('now', '-7 days')
+                    GROUP BY day;
+                """
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, last7DaysQuery, -1, &stmt, nil) == SQLITE_OK {
+                    while sqlite3_step(stmt) == SQLITE_ROW {
+                        if let dayChars = sqlite3_column_text(stmt, 0) {
+                            let day = String(cString: dayChars)
+                            let input = Int(sqlite3_column_int64(stmt, 1))
+                            let output = Int(sqlite3_column_int64(stmt, 2))
+                            claudeUsageByDay[day] = (input, output)
+                        }
+                    }
+                    sqlite3_finalize(stmt)
+                }
+                sqlite3_close(db)
+            }
+        }
+
+        var hermesUsageByDay: [String: (input: Int, output: Int)] = [:]
+        if fm.fileExists(atPath: hermesDbPath) {
+            var db: OpaquePointer?
+            if sqlite3_open_v2(hermesDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
+                let last7DaysQuery = """
+                    SELECT date(started_at, 'unixepoch', 'localtime') as day, SUM(input_tokens), SUM(output_tokens)
+                    FROM sessions
+                    WHERE started_at >= strftime('%s', 'now', '-7 days')
+                    GROUP BY day;
+                """
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, last7DaysQuery, -1, &stmt, nil) == SQLITE_OK {
+                    while sqlite3_step(stmt) == SQLITE_ROW {
+                        if let dayChars = sqlite3_column_text(stmt, 0) {
+                            let day = String(cString: dayChars)
+                            let input = Int(sqlite3_column_int64(stmt, 1))
+                            let output = Int(sqlite3_column_int64(stmt, 2))
+                            hermesUsageByDay[day] = (input, output)
+                        }
+                    }
+                    sqlite3_finalize(stmt)
+                }
+                sqlite3_close(db)
+            }
+        }
+
         var dayItems: [UsageStats.DayUsage] = []
         let calendar = Calendar.current
         let dateFormatter = DateFormatter()
@@ -94,10 +144,10 @@ final class UsageViewModel: ObservableObject {
 
         let weekdayFormatter = DateFormatter()
         weekdayFormatter.locale = Locale(identifier: "zh_CN")
-        weekdayFormatter.dateFormat = "E" // e.g. "周一"
+        weekdayFormatter.dateFormat = "E"
 
         var maxTotal = 0
-        var rawDays: [(dayName: String, claude: Int, codex: Int)] = []
+        var rawDays: [(dayName: String, claude: Int, hermes: Int)] = []
 
         for i in (0 ..< 7).reversed() {
             if let date = calendar.date(byAdding: .day, value: -i, to: Date()) {
@@ -105,47 +155,35 @@ final class UsageViewModel: ObservableObject {
                 let dayName = i == 0 ? "今天" : weekdayFormatter.string(from: date)
 
                 let claudeTokens = (claudeUsageByDay[dateStr]?.input ?? 0) + (claudeUsageByDay[dateStr]?.output ?? 0)
+                let hermesTokens = (hermesUsageByDay[dateStr]?.input ?? 0) + (hermesUsageByDay[dateStr]?.output ?? 0)
 
-                // Seed Codex tokens to create a beautiful comparative stacked graph
-                let hash = abs(dateStr.hashValue)
-                let codexTokens: Int
-                if claudeTokens > 0 {
-                    codexTokens = (hash % (claudeTokens / 2 + 1000)) + 5000
-                } else {
-                    // Seed standard values matching the design screenshots if empty
-                    let standardSeeds = [80000, 140_000, 60000, 200_000, 100_000, 40000, 180_000]
-                    let index = abs(i) % standardSeeds.count
-                    codexTokens = standardSeeds[index]
-                }
-
-                let actualClaude = claudeTokens > 0 ? claudeTokens : (i == 0 ? 600_000 : (abs(dateStr.hashValue) % 400_000 + 150_000))
-
-                let total = actualClaude + codexTokens
+                let total = claudeTokens + hermesTokens
                 if total > maxTotal {
                     maxTotal = total
                 }
-                rawDays.append((dayName: dayName, claude: actualClaude, codex: codexTokens))
+                rawDays.append((dayName: dayName, claude: claudeTokens, hermes: hermesTokens))
             }
         }
 
-        // Map raw values to heights
         let scaleMax = maxTotal > 0 ? CGFloat(maxTotal) : 1_000_000.0
         for item in rawDays {
-            // Cap visual heights at 120pt max height
             let claudeH = (CGFloat(item.claude) / scaleMax) * 110.0
-            let codexH = (CGFloat(item.codex) / scaleMax) * 110.0
+            let hermesH = (CGFloat(item.hermes) / scaleMax) * 110.0
 
             dayItems.append(UsageStats.DayUsage(
                 dayName: item.dayName,
                 claudeHeight: max(claudeH, 4),
-                codexHeight: max(codexH, 4)
+                hermesHeight: max(hermesH, 4)
             ))
         }
 
         return UsageStats(
-            todayInput: todayInput,
-            todayOutput: todayOutput,
-            todayCacheRead: todayCacheRead,
+            todayInput: todayClaudeInput,
+            todayOutput: todayClaudeOutput,
+            todayCacheRead: todayClaudeCacheRead,
+            hermesTodayInput: todayHermesInput,
+            hermesTodayOutput: todayHermesOutput,
+            hermesTodayCacheRead: todayHermesCacheRead,
             chartDays: dayItems
         )
     }
@@ -156,11 +194,15 @@ struct UsageStats {
     var todayOutput: Int = 0
     var todayCacheRead: Int = 0
 
+    var hermesTodayInput: Int = 0
+    var hermesTodayOutput: Int = 0
+    var hermesTodayCacheRead: Int = 0
+
     struct DayUsage: Identifiable {
         let id = UUID()
         let dayName: String
         let claudeHeight: CGFloat
-        let codexHeight: CGFloat
+        let hermesHeight: CGFloat
     }
 
     var chartDays: [DayUsage] = []
@@ -260,7 +302,7 @@ struct UsageView: View {
                 .font(Theme.display(24, weight: .semibold))
                 .foregroundStyle(Theme.chromeForeground)
 
-            Text("Claude Code 官方 5h 窗口 + 周配额（与 /usage 同源） · Codex 窗口快照 · 本地 token 统计")
+            Text("Claude Code 官方 5h 窗口 + 周配额（与 /usage 同源） · Hermes 统计（与 state.db 同源）")
                 .font(Theme.mono(11))
                 .foregroundStyle(Theme.chromeMuted)
         }
@@ -356,20 +398,21 @@ struct UsageView: View {
                 }
             )
 
-            // Stat 4: Codex Window
+            // Stat 4: Hermes Today's Tokens
             VStack(alignment: .leading, spacing: 8) {
+                let totalHermesToday = Double(viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayOutput) / 1_000_000.0
                 HStack(alignment: .lastTextBaseline, spacing: 2) {
-                    Text("22")
+                    Text(String(format: "%.2f", totalHermesToday))
                         .font(Theme.display(38, weight: .semibold))
                         .foregroundStyle(Theme.activityRunning)
-                    Text("%")
+                    Text("M")
                         .font(Theme.display(17, weight: .medium))
                         .foregroundStyle(Theme.chromeMuted)
                 }
-                Text("Codex · 窗口")
+                Text("Hermes · 今日 Token")
                     .font(Theme.display(13))
                     .foregroundStyle(Theme.chromeForeground)
-                Text("检测到 4h 前重置一次")
+                Text("输入 \(formatTokens(viewModel.stats.hermesTodayInput)) · 输出 \(formatTokens(viewModel.stats.hermesTodayOutput))")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
             }
@@ -473,21 +516,21 @@ struct UsageView: View {
                     Text("5h 窗口接近上限")
                     .font(Theme.mono(10.5, weight: .bold))
                     .foregroundStyle(Theme.activityAttention) +
-                    Text("——重活建议错峰或切到 Codex。")
+                    Text("——重活建议错峰或切到 Hermes。")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
             }
             .padding(24)
             .bracketBorder()
 
-            // Right Panel: Codex
+            // Right Panel: Hermes
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 8) {
                     Image(systemName: "cpu")
                         .foregroundStyle(Theme.chromeMuted)
-                    Text("Codex")
+                    Text("Hermes")
                         .font(Theme.mono(12, weight: .bold))
-                    Text("API · token 计费")
+                    Text("Nous Research · token 计费")
                         .font(Theme.mono(9.5))
                         .foregroundStyle(Theme.chromeMuted)
                         .padding(.horizontal, 6)
@@ -495,33 +538,32 @@ struct UsageView: View {
                         .bracketBorder()
                 }
 
-                // Meter: Current Window
+                // Meter: Cache hit rate
                 VStack(alignment: .leading, spacing: 6) {
+                    let totalInput = viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayCacheRead
+                    let hitRate = totalInput > 0 ? Double(viewModel.stats.hermesTodayCacheRead) / Double(totalInput) : 0.0
                     HStack {
-                        Text("当前窗口")
+                        Text("缓存命中率")
                             .font(Theme.display(13))
                         Spacer()
-                        Text("22%")
+                        Text(String(format: "%.0f%%", hitRate * 100))
                             .font(Theme.mono(12))
-                            .foregroundStyle(Theme.chromeForeground) +
-                            Text(" · 快照")
-                            .font(Theme.mono(12))
-                            .foregroundStyle(Theme.chromeMuted)
+                            .foregroundStyle(Theme.chromeForeground)
                     }
 
                     GeometryReader { geo in
                         Rectangle()
                             .fill(Theme.activityRunning)
-                            .frame(width: geo.size.width * 0.22)
+                            .frame(width: geo.size.width * CGFloat(hitRate))
                     }
                     .frame(height: 14)
                     .background(Color.gray.opacity(0.1))
                     .bracketBorder()
 
                     HStack {
-                        Text("窗口宽松")
+                        Text("缓存效率")
                         Spacer()
-                        Text("上次重置 4h 前")
+                        Text("基于最近的 API 会话统计")
                     }
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
@@ -529,21 +571,22 @@ struct UsageView: View {
 
                 // Token rows
                 VStack(spacing: 8) {
-                    tokenRow(label: "输入", value: formatTokens(viewModel.stats.todayInput), percent: 0.64)
-                    tokenRow(label: "输出", value: formatTokens(viewModel.stats.todayOutput), percent: 0.24)
-                    tokenRow(label: "缓存读", value: formatTokens(viewModel.stats.todayCacheRead), percent: 1.0)
+                    let maxVal = max(1, max(viewModel.stats.hermesTodayInput, max(viewModel.stats.hermesTodayOutput, viewModel.stats.hermesTodayCacheRead)))
+                    tokenRow(label: "输入", value: formatTokens(viewModel.stats.hermesTodayInput), percent: CGFloat(viewModel.stats.hermesTodayInput) / CGFloat(maxVal))
+                    tokenRow(label: "输出", value: formatTokens(viewModel.stats.hermesTodayOutput), percent: CGFloat(viewModel.stats.hermesTodayOutput) / CGFloat(maxVal))
+                    tokenRow(label: "缓存读", value: formatTokens(viewModel.stats.hermesTodayCacheRead), percent: CGFloat(viewModel.stats.hermesTodayCacheRead) / CGFloat(maxVal))
                 }
 
                 Divider().background(Theme.chromeHairline)
 
-                let cost = calculateCost(input: viewModel.stats.todayInput, output: viewModel.stats.todayOutput, cacheRead: viewModel.stats.todayCacheRead)
+                let cost = calculateCost(input: viewModel.stats.hermesTodayInput, output: viewModel.stats.hermesTodayOutput, cacheRead: viewModel.stats.hermesTodayCacheRead)
                 Text("今日估算花费 ")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted) +
                     Text(String(format: "$%.2f", cost))
                     .font(Theme.mono(10.5, weight: .bold))
                     .foregroundStyle(Theme.gitInsertion) +
-                    Text(" · 缓存命中率 78% 已抵扣大部分输入成本。")
+                    Text(" · 本地大模型 & API 计费估算。")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
             }
@@ -589,7 +632,7 @@ struct UsageView: View {
                             Spacer()
                             Rectangle()
                                 .fill(Theme.gitInsertion)
-                                .frame(height: day.codexHeight)
+                                .frame(height: day.hermesHeight)
                             Rectangle()
                                 .fill(Theme.activityRunning)
                                 .frame(height: day.claudeHeight)
@@ -617,7 +660,7 @@ struct UsageView: View {
                     Rectangle()
                         .fill(Theme.gitInsertion)
                         .frame(width: 10, height: 10)
-                    Text("Codex")
+                    Text("Hermes")
                 }
             }
             .font(Theme.mono(10.5))
