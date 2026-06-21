@@ -29,6 +29,14 @@ final class ArcherWindowController: NSWindowController, NSWindowDelegate {
         effect.material = .hudWindow
         effect.blendingMode = .behindWindow
         effect.state = .active
+        effect.wantsLayer = true
+        if let layer = effect.layer {
+            layer.masksToBounds = false
+            layer.setValue(true, forKey: "caEnableBlur")
+            layer.setValue(Theme.chromeBackgroundBlur, forKey: "blurRadius")
+            layer.setValue(Theme.chromeBackgroundSaturate, forKey: "saturation")
+            layer.setValue(true, forKey: "caEnableColorSaturate")
+        }
         let hosting = NSHostingView(rootView: ContentView(store: store))
         hosting.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(hosting)

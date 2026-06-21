@@ -567,7 +567,7 @@ private struct StatusSegment<Content: View>: View {
         .padding(.vertical, 3)
         .overlay(
             RoundedRectangle(cornerRadius: 4)
-                .stroke(Theme.chromeFaint, lineWidth: 1)
+                .stroke(Theme.chromeHairline, lineWidth: 1)
         )
     }
 }
