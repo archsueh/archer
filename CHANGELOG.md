@@ -2,6 +2,12 @@
 
 Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 
+## v1.0.2 — 2026-06-21
+
+- **Skills Dashboard** — Added a dedicated full-screen agent skills view, which dynamically scans local/project skills metadata, parses frontmatter config files, flags duplicates/issues, and provides an interactive one-click repair tool.
+- **Agent Usage Dashboard** — Integrated a detailed token quota and rate limit tracker, pulling direct stats from `~/.claude/usage.db` SQLite logs to render live input/output metrics and a custom 7-day stacked bar chart.
+- **Improved Shell Input** — Refined Prompt Composer focus border transitions inside terminal split panes.
+
 ## v1.0.1 — 2026-06-20
 
 - **Chinese Localization (zh-Hans)** — Localized the Settings window (General, Notifications, SSH) and the system menu bar/context menus.
