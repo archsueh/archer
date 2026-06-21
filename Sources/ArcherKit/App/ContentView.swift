@@ -6,60 +6,65 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            topStrip
-            Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            HStack(spacing: 0) {
-                if store.sidebarMode != .hidden {
-                    SidebarView(store: store)
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                        .overlay {
-                            if store.sidebarMode == .full {
-                                PanelResizer(
-                                    width: Binding(
-                                        get: { store.panelWidths.sidebar },
-                                        set: { store.resizePanel(.sidebar, to: $0) }
-                                    ),
-                                    range: PanelWidths.sidebarRange,
-                                    panelSide: .leading
-                                )
+            if store.activeScreen == .cockpit {
+                topStrip
+                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+                HStack(spacing: 0) {
+                    if store.sidebarMode != .hidden {
+                        SidebarView(store: store)
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                            .overlay {
+                                if store.sidebarMode == .full {
+                                    PanelResizer(
+                                        width: Binding(
+                                            get: { store.panelWidths.sidebar },
+                                            set: { store.resizePanel(.sidebar, to: $0) }
+                                        ),
+                                        range: PanelWidths.sidebarRange,
+                                        panelSide: .leading
+                                    )
+                                }
                             }
-                        }
+                    }
+                    mainPane
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if store.rightSidebarMode != .hidden {
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                            .overlay {
+                                if firstActiveRightPanel == .rightSidebar {
+                                    rightResizer
+                                }
+                            }
+                        AgentOverviewSidebar(mode: store.rightSidebarMode, width: store.panelWidths.rightPanel)
+                    }
+                    if store.filePanelMode != .hidden { // [archer]
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                            .overlay {
+                                if firstActiveRightPanel == .filePanel {
+                                    rightResizer
+                                }
+                            }
+                        FilePanelView(rootURL: store.active?.workingDirectory
+                            ?? FileManager.default.homeDirectoryForCurrentUser,
+                            width: store.panelWidths.rightPanel)
+                            .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                    }
+                    if store.diffPanelMode != .hidden { // [archer]
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                            .overlay {
+                                if firstActiveRightPanel == .diffPanel {
+                                    rightResizer
+                                }
+                            }
+                        DiffPanelView(rootURL: store.active?.workingDirectory
+                            ?? FileManager.default.homeDirectoryForCurrentUser,
+                            width: store.panelWidths.rightPanel)
+                            .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                    }
                 }
+            } else {
                 mainPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if store.rightSidebarMode != .hidden {
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                        .overlay {
-                            if firstActiveRightPanel == .rightSidebar {
-                                rightResizer
-                            }
-                        }
-                    AgentOverviewSidebar(mode: store.rightSidebarMode, width: store.panelWidths.rightPanel)
-                }
-                if store.filePanelMode != .hidden { // [archer]
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                        .overlay {
-                            if firstActiveRightPanel == .filePanel {
-                                rightResizer
-                            }
-                        }
-                    FilePanelView(rootURL: store.active?.workingDirectory
-                        ?? FileManager.default.homeDirectoryForCurrentUser,
-                        width: store.panelWidths.rightPanel)
-                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
-                }
-                if store.diffPanelMode != .hidden { // [archer]
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                        .overlay {
-                            if firstActiveRightPanel == .diffPanel {
-                                rightResizer
-                            }
-                        }
-                    DiffPanelView(rootURL: store.active?.workingDirectory
-                        ?? FileManager.default.homeDirectoryForCurrentUser,
-                        width: store.panelWidths.rightPanel)
-                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
-                }
             }
         }
         .background(chromeBackground.opacity(Theme.glassOpacity)) // [archer] glass
@@ -122,20 +127,27 @@ struct ContentView: View {
             InboxBell()
                 .padding(.trailing, 8)
         }
-        .frame(height: 32)
+        .frame(height: 48)
     }
 
     private var mainPane: some View {
         VStack(spacing: 0) {
-            if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
-                UsageStripView()
-                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-            }
-            if let workspace = store.active {
-                PaneTreeView(node: workspace.root, workspace: workspace, store: store)
-                    .id(workspace.id)
-            } else {
-                Color.clear
+            switch store.activeScreen {
+            case .cockpit:
+                if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
+                    UsageStripView()
+                    Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+                }
+                if let workspace = store.active {
+                    PaneTreeView(node: workspace.root, workspace: workspace, store: store)
+                        .id(workspace.id)
+                } else {
+                    Color.clear
+                }
+            case .skills:
+                SkillsView(store: store)
+            case .usage:
+                UsageView(store: store)
             }
         }
     }

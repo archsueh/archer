@@ -52,9 +52,16 @@ enum SidebarMode: String, Codable, Equatable {
     }
 }
 
+enum ActiveScreen: String, Codable, Equatable {
+    case cockpit
+    case skills
+    case usage
+}
+
 @MainActor
 @Observable
 final class WorkspaceStore {
+    var activeScreen: ActiveScreen = .cockpit // [archer]
     private(set) var workspaces: [Workspace] = []
     private(set) var activeWorkspaceId: UUID?
     /// Session id currently being dragged in any pane's tab bar. Shared across

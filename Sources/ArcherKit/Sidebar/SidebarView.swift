@@ -360,6 +360,8 @@ struct SidebarView: View {
             }
 
             Spacer(minLength: 0)
+
+            sideNav // [archer]
         }
         .frame(width: isCompact ? Self.compactWidth : CGFloat(store.panelWidths.sidebar))
         .background(Theme.chromeBackground)
@@ -609,6 +611,96 @@ struct SidebarView: View {
         let ws = closingCount == 1 ? "workspace" : "workspaces"
         let wt = worktreeCount == 1 ? "worktree" : "worktrees"
         return "\(closingCount) \(ws) will close · \(worktreeCount) \(wt)"
+    }
+
+    private var sideNav: some View {
+        let isCompact = store.sidebarMode == .compact
+        return VStack(spacing: 2) {
+            if isCompact {
+                VStack(spacing: 6) {
+                    HoverableIconButton(
+                        systemName: "square.stack.3d.up",
+                        fontSize: 12,
+                        size: 28,
+                        help: "Skills"
+                    ) {
+                        withAnimation(Theme.chromeTransition) {
+                            store.activeScreen = .skills
+                        }
+                    }
+                    .background(store.activeScreen == .skills ? Theme.chromeActive : Color.clear)
+
+                    HoverableIconButton(
+                        systemName: "gauge.medium",
+                        fontSize: 12,
+                        size: 28,
+                        help: L10n.string("Agent usage")
+                    ) {
+                        withAnimation(Theme.chromeTransition) {
+                            store.activeScreen = .usage
+                        }
+                    }
+                    .background(store.activeScreen == .usage ? Theme.chromeActive : Color.clear)
+                }
+            } else {
+                VStack(spacing: 4) {
+                    HoverableNavButton(
+                        title: "SKILLS",
+                        iconName: "square.stack.3d.up",
+                        isActive: store.activeScreen == .skills
+                    ) {
+                        withAnimation(Theme.chromeTransition) {
+                            store.activeScreen = .skills
+                        }
+                    }
+
+                    HoverableNavButton(
+                        title: "AGENT 用量",
+                        iconName: "gauge.medium",
+                        isActive: store.activeScreen == .usage
+                    ) {
+                        withAnimation(Theme.chromeTransition) {
+                            store.activeScreen = .usage
+                        }
+                    }
+                }
+                .padding(.horizontal, Theme.space2)
+            }
+        }
+        .padding(.vertical, 8)
+        .overlay(
+            VStack {
+                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+                Spacer()
+            }
+        )
+    }
+}
+
+private struct HoverableNavButton: View {
+    let title: String
+    let iconName: String
+    let isActive: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: iconName)
+                    .font(.system(size: 13))
+                Text(title)
+                    .font(Theme.mono(11.5, weight: .medium))
+                Spacer()
+            }
+            .foregroundStyle(isActive ? Theme.chromeForeground : Theme.chromeMuted)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(isActive ? Theme.chromeActive : (isHovered ? Theme.chromeHover : Color.clear))
+            .bracketBorder()
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { isHovered = $0 }
     }
 }
 
