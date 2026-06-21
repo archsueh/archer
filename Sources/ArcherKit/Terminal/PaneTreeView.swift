@@ -1125,12 +1125,19 @@ private struct PaneComposerBar: View {
                 .fill(Theme.chromeBackground.opacity(0.98))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Theme.chromeHairline, lineWidth: 1)
+                        .stroke(composerBorderColor, lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.3), radius: 12, y: 3)
         )
         .frame(maxWidth: .infinity)
         .onAppear { onFocusGained() }
+    }
+
+    private var composerBorderColor: Color {
+        if !session.composerActive { return Theme.chromeHairline }
+        let trimmed = session.composerDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return Theme.activityRunning } // ready / focus-within
+        return Theme.chromeActive // focused but empty
     }
 
     private func hint(_ key: String, _ label: String) -> some View {
