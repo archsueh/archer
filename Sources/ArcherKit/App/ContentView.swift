@@ -12,6 +12,7 @@ struct ContentView: View {
                 HStack(spacing: 0) {
                     if store.sidebarMode != .hidden {
                         SidebarView(store: store)
+                            .transition(.move(edge: .leading))
                         Rectangle().fill(Theme.chromeHairline).frame(width: 1)
                             .overlay {
                                 if store.sidebarMode == .full {
@@ -25,6 +26,7 @@ struct ContentView: View {
                                     )
                                 }
                             }
+                            .transition(.move(edge: .leading))
                     }
                     mainPane
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -35,7 +37,9 @@ struct ContentView: View {
                                     rightResizer
                                 }
                             }
+                            .transition(.move(edge: .trailing))
                         AgentOverviewSidebar(mode: store.rightSidebarMode, width: store.panelWidths.rightPanel)
+                            .transition(.move(edge: .trailing))
                     }
                     if store.filePanelMode != .hidden { // [archer]
                         Rectangle().fill(Theme.chromeHairline).frame(width: 1)
@@ -44,10 +48,12 @@ struct ContentView: View {
                                     rightResizer
                                 }
                             }
+                            .transition(.move(edge: .trailing))
                         FilePanelView(rootURL: store.active?.workingDirectory
                             ?? FileManager.default.homeDirectoryForCurrentUser,
                             width: store.panelWidths.rightPanel)
                             .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                            .transition(.move(edge: .trailing))
                     }
                     if store.diffPanelMode != .hidden { // [archer]
                         Rectangle().fill(Theme.chromeHairline).frame(width: 1)
@@ -56,10 +62,12 @@ struct ContentView: View {
                                     rightResizer
                                 }
                             }
+                            .transition(.move(edge: .trailing))
                         DiffPanelView(rootURL: store.active?.workingDirectory
                             ?? FileManager.default.homeDirectoryForCurrentUser,
                             width: store.panelWidths.rightPanel)
                             .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                            .transition(.move(edge: .trailing))
                     }
                 }
             } else {
@@ -134,20 +142,27 @@ struct ContentView: View {
         VStack(spacing: 0) {
             switch store.activeScreen {
             case .cockpit:
-                if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
-                    UsageStripView()
-                    Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+                VStack(spacing: 0) {
+                    if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
+                        UsageStripView()
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    if let workspace = store.active {
+                        PaneTreeView(node: workspace.root, workspace: workspace, store: store)
+                            .id(workspace.id)
+                    } else {
+                        Color.clear
+                    }
                 }
-                if let workspace = store.active {
-                    PaneTreeView(node: workspace.root, workspace: workspace, store: store)
-                        .id(workspace.id)
-                } else {
-                    Color.clear
-                }
+                .transition(.opacity)
             case .skills:
                 SkillsView(store: store)
+                    .transition(.opacity)
             case .usage:
                 UsageView(store: store)
+                    .transition(.opacity)
             }
         }
     }
