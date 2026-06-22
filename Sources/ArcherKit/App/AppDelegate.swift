@@ -327,7 +327,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // and reused below to also suppress the banner.
         let visible = isSessionVisible(sessionId)
         let settings = ArcherSettingsModel.shared
-        print("[archer-alert] kind=\(kind) tab=\(tab) workspace=\(workspace) visible=\(visible) notificationsEnabled=\(settings.notificationsEnabled) notifyOnCompleted=\(settings.notifyOnCompleted) notifyOnAttention=\(settings.notifyOnAttention) notifyOnFailure=\(settings.notifyOnFailure) edgeGlowEnabled=\(settings.edgeGlowEnabled)")
         // Every kind — including completed — lands in the inbox.
         NotificationInbox.shared.add(
             kind: kind,
