@@ -124,6 +124,40 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
                 "#839496", "#6C71C4", "#93A1A1", "#FDF6E3",
             ]
         ),
+        // Aver design-system terminal pair — dark is the user's existing
+        // glass palette (matches Aver `amber-foil` cursor); light is derived
+        // from Aver tokens (paper-0 ground, ink fg, cinnabar accent). Drives
+        // the `__archer-auto-theme` follow-system switch.
+        .init(
+            id: "aver-dark",
+            title: "Aver Dark",
+            background: "#2A2A2A",
+            foreground: "#E8E6E3",
+            cursor: "#D17D7B",
+            selectionBackground: "#3F638B",
+            selectionForeground: "#FFFFFF",
+            palette: [
+                "#1E1E1E", "#C76874", "#85AE85", "#D9A678",
+                "#7BA8D4", "#A07A98", "#6CAAA4", "#C7C5C2",
+                "#3A3A3A", "#E08894", "#A0C8A0", "#E8C29A",
+                "#9DC0DE", "#BF99B6", "#8FC4BE", "#FFFFFF",
+            ]
+        ),
+        .init(
+            id: "aver-light",
+            title: "Aver Light",
+            background: "#FDF9F4",
+            foreground: "#2A2320",
+            cursor: "#A6444C",
+            selectionBackground: "#CBD9E8",
+            selectionForeground: "#1C1410",
+            palette: [
+                "#1C1410", "#A6444C", "#5E865E", "#9A7234",
+                "#286096", "#7A5870", "#3E7E78", "#ACA9A4",
+                "#77706C", "#BE5A60", "#6B9A6B", "#B0853F",
+                "#3B76AC", "#8E6A84", "#4E948D", "#D8D4CF",
+            ]
+        ),
     ]
 
     static func preset(for storedValue: String) -> ArcherTerminalTheme? {

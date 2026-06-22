@@ -66,7 +66,6 @@ private struct PaneView: View {
                             }
                         )
                         .id(active.id)
-                        .padding(8)
                         .overlay(RightClickCatcher { unit in
                             // Promote this pane to the workspace's active one —
                             // RightClickCatcher swallows rightMouseDown before
@@ -412,10 +411,14 @@ private struct PaneStatusBar: View {
     @ViewBuilder
     private var pendingTurnSegment: some View {
         if session.activityState == .running {
-            StatusSegment(systemImage: "hourglass") {
-                PendingTurnIcon()
-            }
-            .help("Agent is processing…")
+            PendingTurnIcon()
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Theme.chromeHairline, lineWidth: 1)
+                )
+                .help("Agent is processing…")
         }
     }
 
