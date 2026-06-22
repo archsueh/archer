@@ -134,13 +134,15 @@ final class ArcherTerminalThemeTests: XCTestCase {
         model.autoLightTheme = "catppuccin-latte"
         model.autoDarkTheme = "catppuccin-frappe"
 
-        // Simulate daytime
-        model.currentHour = 10
-        XCTAssertEqual(model.selectedTerminalTheme?.id, "catppuccin-latte")
-
-        // Simulate nighttime
-        model.currentHour = 22
-        XCTAssertEqual(model.selectedTerminalTheme?.id, "catppuccin-frappe")
+        XCTContext.runActivity(named: "Simulate daytime") { _ in
+            model.systemAppearanceIsDark = false
+            XCTAssertEqual(model.terminalThemeSelection, ArcherSettingsModel.autoThemeSelection)
+            XCTAssertEqual(model.selectedTerminalTheme?.id, model.autoLightTheme)
+        }
+        XCTContext.runActivity(named: "Simulate nighttime") { _ in
+            model.systemAppearanceIsDark = true
+            XCTAssertEqual(model.selectedTerminalTheme?.id, model.autoDarkTheme)
+        }
     }
 
     private func makeTemporaryDirectory() throws -> URL {

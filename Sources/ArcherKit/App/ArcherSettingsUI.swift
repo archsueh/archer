@@ -19,8 +19,12 @@ final class ArcherSettingsModel {
 
     var autoLightTheme: String = "rose-pine-dawn"
     var autoDarkTheme: String = "rose-pine"
-    var currentHour: Int = Calendar.current.component(.hour, from: Date())
-    private var timeTimer: Timer?
+    /// Mirrors the system Light/Dark setting for the "Follow System" theme.
+    /// `@Observable` so flipping it re-renders any SwiftUI chrome that reads a
+    /// `Theme` token (via `selectedTerminalTheme`); the observer below keeps it
+    /// in sync with macOS.
+    var systemAppearanceIsDark: Bool = archerSystemIsDark()
+    private var appearanceObserver: NSObjectProtocol?
     private var lastAppliedTheme: String?
 
     var fontFamily: String = ""
@@ -125,25 +129,36 @@ final class ArcherSettingsModel {
 
     init() {
         load()
-        setupTimeTimer()
+        observeSystemAppearance()
     }
 
-    private func setupTimeTimer() {
-        timeTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+    /// Tracks macOS Light/Dark so the "Follow System" theme stays aligned with
+    /// Finder. `AppleInterfaceThemeChangedNotification` is the canonical signal;
+    /// it fires on the system flip (including macOS's own auto schedule).
+    private func observeSystemAppearance() {
+        appearanceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             Task { @MainActor in
-                self?.updateCurrentHour()
+                self?.systemAppearanceChanged()
             }
         }
     }
 
-    func updateCurrentHour() {
-        let hour = Calendar.current.component(.hour, from: Date())
-        if currentHour != hour {
-            currentHour = hour
-            if terminalThemeSelection == Self.autoThemeSelection {
-                save()
-            }
-        }
+    func systemAppearanceChanged() {
+        let isDark = archerSystemIsDark()
+        guard isDark != systemAppearanceIsDark else { return }
+        systemAppearanceIsDark = isDark
+        // Setting the @Observable above re-renders SwiftUI chrome. libghostty's
+        // surface + the windows' NSAppearance need an explicit nudge: the
+        // persisted theme is the unchanged `__archer-auto-theme` sentinel, so
+        // `save()`'s diff gate would skip the reload/refresh pass.
+        guard terminalThemeSelection == Self.autoThemeSelection else { return }
+        lastAppliedTheme = isDark ? autoDarkTheme : autoLightTheme
+        LibghosttyApp.shared.reloadConfig()
+        (NSApp.delegate as? AppDelegate)?.refreshThemeAppearances()
     }
 
     /// [archer] Reads the app's own AppleLanguages override (not the inherited
@@ -194,8 +209,7 @@ final class ArcherSettingsModel {
             in: terminalThemeChoices
         )
         if loadedTheme == Self.autoThemeSelection {
-            let isDay = currentHour >= 6 && currentHour < 18
-            lastAppliedTheme = isDay ? autoLightTheme : autoDarkTheme
+            lastAppliedTheme = systemAppearanceIsDark ? autoDarkTheme : autoLightTheme
         } else {
             lastAppliedTheme = loadedTheme
         }
@@ -453,8 +467,7 @@ final class ArcherSettingsModel {
         let currThemeRaw = terminal["theme"] as? String
         let resolvedTheme: String?
         if currThemeRaw == Self.autoThemeSelection {
-            let isDay = currentHour >= 6 && currentHour < 18
-            resolvedTheme = isDay ? autoLightTheme : autoDarkTheme
+            resolvedTheme = systemAppearanceIsDark ? autoDarkTheme : autoLightTheme
         } else {
             resolvedTheme = currThemeRaw
         }
@@ -484,8 +497,7 @@ final class ArcherSettingsModel {
 
     var selectedTerminalTheme: ArcherTerminalTheme? {
         if terminalThemeSelection == Self.autoThemeSelection {
-            let isDay = currentHour >= 6 && currentHour < 18
-            let activeId = isDay ? autoLightTheme : autoDarkTheme
+            let activeId = systemAppearanceIsDark ? autoDarkTheme : autoLightTheme
             return terminalThemeChoices.first { $0.id == activeId }
         }
         return terminalThemeChoices.first { $0.id == terminalThemeSelection }
@@ -762,7 +774,7 @@ struct ArcherSettingsView: View {
             }
             if model.terminalThemeSelection == ArcherSettingsModel.autoThemeSelection {
                 SettingsHairline()
-                SettingsRow(label: "  ▸ daytime (light)") {
+                SettingsRow(label: "  ▸ light mode") {
                     Picker("", selection: $model.autoLightTheme) {
                         ForEach(model.terminalThemeChoices) { theme in
                             Text(theme.title).tag(theme.id)
@@ -773,7 +785,7 @@ struct ArcherSettingsView: View {
                     .frame(minWidth: 220)
                 }
                 SettingsHairline()
-                SettingsRow(label: "  ▸ nighttime (dark)") {
+                SettingsRow(label: "  ▸ dark mode") {
                     Picker("", selection: $model.autoDarkTheme) {
                         ForEach(model.terminalThemeChoices) { theme in
                             Text(theme.title).tag(theme.id)
@@ -1001,7 +1013,7 @@ struct ArcherSettingsView: View {
     private var themeControl: some View {
         Picker("", selection: $model.terminalThemeSelection) {
             Text("Default").tag(ArcherSettingsModel.defaultThemeSelection)
-            Text("Auto (Time-based)").tag(ArcherSettingsModel.autoThemeSelection)
+            Text("Follow System").tag(ArcherSettingsModel.autoThemeSelection)
             if let customLabel = model.customTerminalThemeLabel {
                 Text(customLabel).tag(ArcherSettingsModel.customThemeSelection)
             }

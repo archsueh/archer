@@ -2,6 +2,14 @@ import AppKit
 import Foundation
 import GhosttyKit
 
+/// True when macOS is in Dark mode. Reads the global `AppleInterfaceStyle`
+/// default rather than `NSApp.effectiveAppearance` so it's safe off the main
+/// thread (`makeGhosttyConfig` isn't main-isolated) and reflects the *system*
+/// setting Finder follows — not any app-level appearance override.
+func archerSystemIsDark() -> Bool {
+    UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+}
+
 /// Reads `~/.archer/settings.json` and forwards its `terminal.*` section to
 /// libghostty. JSONC-tolerant (line + block comments stripped before parse).
 ///
@@ -78,11 +86,9 @@ enum ArcherSettings {
         if let rawTheme = terminal["theme"] as? String {
             var actualTheme = rawTheme
             if rawTheme == "__archer-auto-theme" {
-                let hour = Calendar.current.component(.hour, from: Date())
-                let isDay = hour >= 6 && hour < 18
                 let autoLightTheme = terminal["autoLightTheme"] as? String ?? "rose-pine-dawn"
                 let autoDarkTheme = terminal["autoDarkTheme"] as? String ?? "rose-pine"
-                actualTheme = isDay ? autoLightTheme : autoDarkTheme
+                actualTheme = archerSystemIsDark() ? autoDarkTheme : autoLightTheme
             }
             if let preset = ArcherTerminalTheme.preset(for: actualTheme) {
                 lines.append(contentsOf: preset.lines)

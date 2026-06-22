@@ -13,42 +13,41 @@ struct ContentView: View {
                     if store.sidebarMode != .hidden {
                         SidebarView(store: store)
                             .transition(.move(edge: .leading))
-                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                            .overlay {
-                                if store.sidebarMode == .full {
-                                    PanelResizer(
-                                        width: Binding(
-                                            get: { store.panelWidths.sidebar },
-                                            set: { store.resizePanel(.sidebar, to: $0) }
-                                        ),
-                                        range: PanelWidths.sidebarRange,
-                                        panelSide: .leading
-                                    )
-                                }
-                            }
-                            .transition(.move(edge: .leading))
+                        PanelResizer(
+                            width: Binding(
+                                get: { store.panelWidths.sidebar },
+                                set: { store.resizePanel(.sidebar, to: $0) }
+                            ),
+                            range: PanelWidths.sidebarRange,
+                            panelSide: .leading
+                        )
+                        .transition(.move(edge: .leading))
                     }
                     mainPane
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     if store.rightSidebarMode != .hidden {
-                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                            .overlay {
-                                if firstActiveRightPanel == .rightSidebar {
-                                    rightResizer
-                                }
-                            }
-                            .transition(.move(edge: .trailing))
+                        PanelResizer(
+                            width: Binding(
+                                get: { store.panelWidths.rightPanel },
+                                set: { store.resizePanel(.rightPanel, to: $0) }
+                            ),
+                            range: PanelWidths.rightRange,
+                            panelSide: .trailing
+                        )
+                        .transition(.move(edge: .trailing))
                         AgentOverviewSidebar(mode: store.rightSidebarMode, width: store.panelWidths.rightPanel)
                             .transition(.move(edge: .trailing))
                     }
                     if store.filePanelMode != .hidden { // [archer]
-                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                            .overlay {
-                                if firstActiveRightPanel == .filePanel {
-                                    rightResizer
-                                }
-                            }
-                            .transition(.move(edge: .trailing))
+                        PanelResizer(
+                            width: Binding(
+                                get: { store.panelWidths.rightPanel },
+                                set: { store.resizePanel(.rightPanel, to: $0) }
+                            ),
+                            range: PanelWidths.rightRange,
+                            panelSide: .trailing
+                        )
+                        .transition(.move(edge: .trailing))
                         FilePanelView(rootURL: store.active?.workingDirectory
                             ?? FileManager.default.homeDirectoryForCurrentUser,
                             width: store.panelWidths.rightPanel)
@@ -56,13 +55,15 @@ struct ContentView: View {
                             .transition(.move(edge: .trailing))
                     }
                     if store.diffPanelMode != .hidden { // [archer]
-                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                            .overlay {
-                                if firstActiveRightPanel == .diffPanel {
-                                    rightResizer
-                                }
-                            }
-                            .transition(.move(edge: .trailing))
+                        PanelResizer(
+                            width: Binding(
+                                get: { store.panelWidths.rightPanel },
+                                set: { store.resizePanel(.rightPanel, to: $0) }
+                            ),
+                            range: PanelWidths.rightRange,
+                            panelSide: .trailing
+                        )
+                        .transition(.move(edge: .trailing))
                         DiffPanelView(rootURL: store.active?.workingDirectory
                             ?? FileManager.default.homeDirectoryForCurrentUser,
                             width: store.panelWidths.rightPanel)
