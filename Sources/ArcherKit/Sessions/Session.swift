@@ -105,12 +105,6 @@ final class Session: Identifiable {
     var searchTotal = 0
     var searchSelected = -1
 
-    /// Multiline prompt composer state (⌘L). Per-session like search — the
-    /// draft survives a tab switch (switching destroys the view; `composerDraft`
-    /// re-seeds the `TextEditor` on re-appear). Runtime-only, not persisted.
-    var composerActive = false
-    var composerDraft = ""
-
     /// Set true to open the rename popover on this tab from outside the view
     /// (the ⌘R menu command). The active tab's `TabBarItem` observes this,
     /// opens its rename popover, and resets the flag. Runtime-only.

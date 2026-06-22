@@ -553,8 +553,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             selfRow("Find…", #selector(handleFind), "f"),
             selfRow("Find Next", #selector(handleFindNext), "g"),
             selfRow("Find Previous", #selector(handleFindPrevious), "g", modifiers: [.command, .shift]),
-            .separator,
-            selfRow("Compose Prompt…", #selector(handleComposePrompt), "l"),
         ])))
 
         let tabSwitchRows: [MenuEntry] = MenuTag.tabRange.map { n in
@@ -937,12 +935,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         } else {
             session.engine.performAction("start_search")
         }
-    }
-
-    @objc private func handleComposePrompt() {
-        guard let session = activeStore?.active?.activeSession else { return }
-        // ⌘L toggles the composer on the active tab. Per-session, like search.
-        session.composerActive.toggle()
     }
 
     @objc private func handleFindNext() {

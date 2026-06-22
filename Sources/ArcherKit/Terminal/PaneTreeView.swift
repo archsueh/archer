@@ -120,21 +120,9 @@ private struct PaneView: View {
                                     .padding(.bottom, Theme.space3 + 8)
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
-                                // ⌘L composer rises from the bottom like a chat box.
-                                // Per-pane / per-session, same as search.
-                                if active.composerActive {
-                                    PaneComposerBar(
-                                        session: active,
-                                        store: store,
-                                        onFocusGained: { store.activateTab(active, in: workspace) }
-                                    )
-                                    .padding(.horizontal, Theme.space3)
-                                    .padding(.bottom, Theme.space3)
-                                }
                             }
                         }
-                        // Always present now that it hosts the compose button — a
-                        // stable bottom affordance, not gated on git / env / zoom data.
+
                         Rectangle().fill(Theme.chromeHairline).frame(height: 1)
                         PaneStatusBar(session: active, paneId: pane.id, workspace: workspace, store: store)
                     }
@@ -164,8 +152,8 @@ private struct PaneView: View {
         .opacity(paneOpacity)
         .animation(Theme.chromeTransition, value: isFocused)
         .onChange(of: pane.activeTab.map { paneStatusBarHasData(session: $0) } ?? false) { _, _ in
-            // Status-bar height transition. The bar is always present now (it
-            // hosts the compose button), so this fires when its CONTENT height
+            // Status-bar height transition. The bar is always present, so this
+            // fires when its CONTENT height
             // changes — a pill/segment appears or clears, or FlowLayout wraps
             // to another row — not when the whole bar shows/hides. That still
             // moves chrome height → libghostty re-frames the surface →
@@ -208,8 +196,8 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     /// visibility; reordering this kind has no visible effect because
     /// rendering bypasses `visibleItems`.
     case toolCallActivity = "tool-call-activity"
-    /// Pending turn indicator — shows when agent is processing (activityState == .running)
-    /// and composer is not active. Not user-configurable; always visible when relevant.
+    /// Pending turn indicator — shows when agent is processing (activityState == .running).
+    /// Not user-configurable; always visible when relevant.
     case pendingTurn = "pending-turn"
     case pythonVenv = "python-venv"
     case nodeVersion = "node-version"
@@ -272,7 +260,7 @@ func paneStatusBarHasData(session: Session) -> Bool {
         // gate already lives in the loop predicate.
         switch item {
         case .toolCallActivity: if sessionWantsToolCallActivity(session) { return true }
-        case .pendingTurn: if session.activityState == .running && !session.composerActive { return true }
+        case .pendingTurn: if session.activityState == .running { return true }
         case .pythonVenv: if session.environment.pythonVenv != nil { return true }
         case .nodeVersion: if session.environment.nodeVersion != nil { return true }
         case .proxy: if session.environment.proxy != nil { return true }
@@ -358,9 +346,7 @@ private struct PaneStatusBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Zoom + compose: bracket-pill icon buttons. Zoom shows only when
-            // meaningful; compose is always present — the reason the bar's
-            // visibility gate is gone (the bar is the stable host for it).
+            // Zoom: bracket-pill icon button, shown only when meaningful.
             if workspace.canZoom {
                 let isZoomed = workspace.isZoomed(paneId)
                 StatusBarIconButton(
@@ -374,13 +360,6 @@ private struct PaneStatusBar: View {
                         store.toggleZoom(in: workspace, paneId: paneId)
                     }
                 }
-            }
-            StatusBarIconButton(
-                systemName: "long.text.page.and.pencil",
-                isActive: session.composerActive,
-                help: "Compose (⌘L)"
-            ) {
-                session.composerActive.toggle()
             }
             // Tool-call activity pill — Claude-only, shows the latest
             // tool call + click-to-popover for history. Sits on the left
@@ -432,7 +411,7 @@ private struct PaneStatusBar: View {
 
     @ViewBuilder
     private var pendingTurnSegment: some View {
-        if session.activityState == .running && !session.composerActive {
+        if session.activityState == .running {
             StatusSegment(systemImage: "hourglass") {
                 PendingTurnIcon()
             }
@@ -1051,235 +1030,6 @@ private struct PaneSearchBar: View {
     private var counterText: String {
         guard session.searchSelected >= 0 else { return "\(session.searchTotal)" }
         return "\(session.searchSelected + 1) / \(session.searchTotal)"
-    }
-}
-
-/// Multiline prompt composer (⌘L) — a chat-style box that rises from the
-/// bottom of the pane for writing prompts. Return sends the draft to the agent
-/// (pasted whole, newlines intact, then a carriage return to submit);
-/// Shift+Return inserts a newline; Esc cancels but keeps the draft on the
-/// session. The body is an `NSTextView` (`ComposerTextView`) rather than a
-/// SwiftUI `TextEditor`: only `doCommandBy` can intercept Return *before* a
-/// newline is inserted, which is what the chat convention needs (Return =
-/// send, Shift+Return = newline — same as ChatGPT / Claude.ai / Slack).
-private struct PaneComposerBar: View {
-    @Bindable var session: Session
-    @Bindable var store: WorkspaceStore
-    let onFocusGained: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // [archer] Drag handle
-            HStack {
-                Spacer()
-                Capsule()
-                    .fill(Theme.chromeMuted.opacity(0.4))
-                    .frame(width: 36, height: 5)
-                Spacer()
-            }
-            .padding(.top, -6)
-            .padding(.bottom, 2)
-            .contentShape(Rectangle())
-            .onDrag {
-                store.draggingTabId = session.id
-                let provider = NSItemProvider(object: session.id.uuidString as NSString)
-                let tracker = DragCleanupTracker { [weak store] in
-                    store?.draggingTabId = nil
-                }
-                objc_setAssociatedObject(provider, &dragCleanupKey, tracker, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-                return provider
-            }
-
-            ComposerTextView(
-                text: $session.composerDraft,
-                onSend: send,
-                onCancel: close
-            )
-            // Identity by session. SwiftUI otherwise reuses one
-            // NSViewRepresentable coordinator across tabs, so switching between
-            // two tabs that both have the composer open would route this tab's
-            // edits / Return to the previous session, and the reused view
-            // wouldn't re-grab focus (Codex P2). `.id` forces a fresh view +
-            // coordinator + makeFirstResponder per session.
-            .id(session.id)
-            .frame(minHeight: 46, maxHeight: 168)
-            .overlay(alignment: .topLeading) {
-                if session.composerDraft.isEmpty {
-                    Text("type prompt or command here")
-                        .font(Theme.mono(12.5))
-                        .foregroundStyle(Theme.chromeMuted.opacity(0.55))
-                        .padding(.leading, 7)
-                        .padding(.top, 6)
-                        .allowsHitTesting(false)
-                }
-            }
-            HStack(spacing: 12) {
-                Spacer(minLength: 0)
-                hint("⏎", "send")
-                hint("⇧⏎", "newline")
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Theme.chromeBackground.opacity(0.98))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(composerBorderColor, lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.3), radius: 12, y: 3)
-        )
-        .frame(maxWidth: .infinity)
-        .onAppear { onFocusGained() }
-    }
-
-    private var composerBorderColor: Color {
-        if !session.composerActive { return Theme.chromeHairline }
-        let trimmed = session.composerDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return Theme.activityRunning } // ready / focus-within
-        return Theme.chromeActive // focused but empty
-    }
-
-    private func hint(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 4) {
-            Text(key)
-                .font(Theme.mono(9.5, weight: .medium))
-                .foregroundStyle(Theme.chromeForeground.opacity(0.7))
-            Text(label)
-                .font(Theme.mono(9.5))
-                .foregroundStyle(Theme.chromeMuted)
-        }
-    }
-
-    private func send() {
-        let trimmed = session.composerDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { close(); return }
-        // Paste the raw draft (newlines intact, bracketed-paste wrapped) then a
-        // carriage return to submit — the same two-step the shell / agent
-        // readline expects from a real ⌘V followed by Enter.
-        session.engine.paste(session.composerDraft)
-        session.engine.sendInput("\r")
-        session.composerDraft = ""
-        close()
-    }
-
-    private func close() {
-        session.composerActive = false
-        // Hand first responder back to the terminal surface. The composer's
-        // NSTextView held it, so without this the surface stays unfocused once
-        // the overlay is torn down and the user must click the pane before
-        // typing again (Codex P2). Deferred so the overlay is gone first.
-        let view = session.engine.view
-        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
-    }
-}
-
-/// NSTextView that resolves a pasted file or image into the terminal's full
-/// backslash-escaped path — matching ⌘V in the surface — instead of the system
-/// default, where a fileURL's `.string` is just the basename (why pasting a
-/// file showed only the filename in the composer). Routes through the shared
-/// `readTerminalPasteText` seam (file → escaped path, image → cached-PNG path)
-/// that both terminal paste entry points use, so the composer can't drift from
-/// them. Plain text falls through to NSTextView's native paste, keeping undo
-/// coalescing + smart behaviors.
-private final class ComposerNSTextView: NSTextView {
-    override func paste(_ sender: Any?) {
-        let pb = NSPasteboard.general
-        if pb.availableType(from: [.fileURL, .png, .tiff]) != nil,
-           let text = ArcherShellIntegration.readTerminalPasteText(from: pb),
-           !text.isEmpty
-        {
-            insertText(text, replacementRange: selectedRange())
-            return
-        }
-        super.paste(sender)
-    }
-}
-
-/// AppKit-backed multiline editor for the composer. A SwiftUI `TextEditor`
-/// inserts a newline on Return before `onKeyPress` can see it, so it can't do
-/// "Return sends, Shift+Return newlines." An `NSTextView` via `doCommandBy`
-/// intercepts the Return command itself, before any newline is inserted.
-private struct ComposerTextView: NSViewRepresentable {
-    @Binding var text: String
-    var onSend: () -> Void
-    var onCancel: () -> Void
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let tv = ComposerNSTextView(frame: .zero)
-        tv.minSize = .zero
-        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        tv.isVerticallyResizable = true
-        tv.isHorizontallyResizable = false
-        tv.autoresizingMask = [.width]
-        tv.textContainer?.widthTracksTextView = true
-        tv.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-        tv.delegate = context.coordinator
-        tv.string = text
-        tv.font = .monospacedSystemFont(ofSize: 12.5, weight: .regular)
-        tv.textColor = NSColor(Theme.chromeForeground)
-        tv.insertionPointColor = NSColor(Theme.chromeForeground)
-        tv.drawsBackground = false
-        tv.isRichText = false
-        tv.allowsUndo = true
-        tv.textContainerInset = NSSize(width: 3, height: 5)
-        // This text feeds a terminal / agent verbatim — kill every auto-rewrite
-        // so smart quotes / dashes, text replacement, and autocorrect can't
-        // mangle command args, JSON, or `--flags` before paste (Codex P2).
-        tv.isAutomaticQuoteSubstitutionEnabled = false
-        tv.isAutomaticDashSubstitutionEnabled = false
-        tv.isAutomaticTextReplacementEnabled = false
-        tv.isAutomaticSpellingCorrectionEnabled = false
-        tv.isContinuousSpellCheckingEnabled = false
-        tv.isGrammarCheckingEnabled = false
-
-        let scroll = NSScrollView()
-        scroll.documentView = tv
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .noBorder
-        // Grab focus once the view lands in a window so Return / Esc route here.
-        DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }
-        return scroll
-    }
-
-    func updateNSView(_ scroll: NSScrollView, context _: Context) {
-        guard let tv = scroll.documentView as? NSTextView else { return }
-        if tv.string != text { tv.string = text }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        let parent: ComposerTextView
-        init(_ parent: ComposerTextView) {
-            self.parent = parent
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard let tv = notification.object as? NSTextView else { return }
-            parent.text = tv.string
-        }
-
-        func textView(_: NSTextView, doCommandBy selector: Selector) -> Bool {
-            switch selector {
-            case #selector(NSResponder.insertNewline(_:)):
-                // Shift+Return → newline (let the text view handle it);
-                // plain Return → send.
-                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
-                    return false
-                }
-                parent.onSend()
-                return true
-            case #selector(NSResponder.cancelOperation(_:)): // Esc
-                parent.onCancel()
-                return true
-            default:
-                return false
-            }
-        }
     }
 }
 
