@@ -431,6 +431,7 @@ final class GhosttySurfaceView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
+        layer?.isOpaque = false
         ScrollIndicator.install(scrollIndicator, in: self)
         updateTrackingAreas()
         wireScrollDrag()
@@ -439,6 +440,10 @@ final class GhosttySurfaceView: NSView {
         // onto the terminal pane and we inject its backslash-escaped
         // absolute path (or paths, space-separated) as if it were pasted.
         registerForDraggedTypes([.fileURL])
+    }
+
+    override var isOpaque: Bool {
+        false
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
@@ -582,6 +587,7 @@ final class GhosttySurfaceView: NSView {
         // Pin contentsScale so Core Animation doesn't double-scale ghostty's
         // already-pixel-correct render.
         layer?.contentsScale = scale
+        layer?.isOpaque = false
         // Seed so the first viewDidChangeBackingProperties on this display is a
         // no-op; only a real cross-display scale change re-pushes (issue #8).
         lastBackingScale = window.backingScaleFactor
