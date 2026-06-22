@@ -240,6 +240,56 @@ struct BrutalistButtonStyle: ButtonStyle {
     }
 }
 
+/// Flat brutalist slider — hairline track, square handle, sharp corners, no
+/// shadow. Replaces the native macOS `Slider` whose glossy white knob and
+/// system-blue fill clash with the monochrome chrome. Themes off chrome tokens
+/// so it follows the active light/dark terminal theme automatically.
+struct BrutalistSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    private let handleWidth: CGFloat = 8
+    private let handleHeight: CGFloat = 14
+    private let trackHeight: CGFloat = 2
+
+    var body: some View {
+        GeometryReader { geo in
+            let span = max(geo.size.width - handleWidth, 1)
+            let fraction = range.upperBound > range.lowerBound
+                ? (value - range.lowerBound) / (range.upperBound - range.lowerBound)
+                : 0
+            let x = span * min(max(fraction, 0), 1)
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Theme.chromeHairline)
+                    .frame(height: trackHeight)
+                Rectangle()
+                    .fill(Theme.chromeForeground.opacity(0.5))
+                    .frame(width: x + handleWidth / 2, height: trackHeight)
+                Rectangle()
+                    .fill(Theme.chromeForeground)
+                    .frame(width: handleWidth, height: handleHeight)
+                    .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
+                    .offset(x: x)
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { g in
+                        let p = min(max(g.location.x - handleWidth / 2, 0), span)
+                        let f = p / span
+                        value = range.lowerBound + f * (range.upperBound - range.lowerBound)
+                    }
+            )
+        }
+        .frame(height: handleHeight + 2)
+        .opacity(isEnabled ? 1 : 0.4)
+    }
+}
+
 /// Registers bundled fonts at app launch via Core Text. SPM resources show up
 /// in `Bundle.module`; CTFontManagerRegisterFontsForURL exposes them by family
 /// name so SwiftUI's Font.custom("...") finds them.

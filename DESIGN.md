@@ -100,6 +100,9 @@ A custom interactive primitive representing a plain-text `[bracketed]` control:
 - Font: `{typography.mono-button}`.
 - Border: 1pt hairline stroke via `bracketBorder()`.
 
+### edge-glow
+A screen-edge activity glow that mirrors the chime: a thin, sharp-cornered hairline stroke painted around the screen edge on a transparent click-through overlay window. Color comes **only** from the activity tokens — running `{colors.active-running}` (turn complete, brief pulse), attention `{colors.active-attention}` and failure `{colors.active-failure}` (held until archer regains focus). Low default brightness, narrow width, zero corner radius, no rainbow. Off-by-toggle. See `docs/edge-glow-spec.md`.
+
 ## Do's and Don'ts
 
 ### Do
