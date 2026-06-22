@@ -208,10 +208,59 @@ struct UsageStats {
     var chartDays: [DayUsage] = []
 }
 
+@MainActor
 struct UsageView: View {
     @Bindable var store: WorkspaceStore
     @StateObject private var viewModel = UsageViewModel()
+    @State private var selectedAgentId: String = ""
     @State private var hoverBack = false
+
+    var availableAgents: [AgentTemplate] {
+        var usedIds = Set<String>()
+
+        // 1. Check all distinct agents used in sessions across all workspaces.
+        for workspace in store.workspaces {
+            for agent in workspace.distinctAgents {
+                usedIds.insert(agent.id)
+            }
+        }
+
+        // 2. Check if the databases have records.
+        let home = NSHomeDirectory()
+        let fm = FileManager.default
+        let claudeDbPath = (home as NSString).appendingPathComponent(".claude/usage.db")
+        let hermesDbPath = (home as NSString).appendingPathComponent(".hermes/state.db")
+
+        if fm.fileExists(atPath: claudeDbPath) {
+            usedIds.insert("claude-code")
+        }
+        if fm.fileExists(atPath: hermesDbPath) {
+            usedIds.insert("hermes")
+            usedIds.insert("antigravity")
+        }
+
+        // 3. Make sure the currently selected agent or active cockpit agent is in the list
+        if let activeAgentId = store.active?.activeSession?.agent.id, !activeAgentId.isEmpty {
+            usedIds.insert(activeAgentId)
+        }
+
+        // 4. Always include Claude Code and Hermes as baseline core agents
+        usedIds.insert("claude-code")
+        usedIds.insert("hermes")
+
+        // Resolve agent templates from all (built-in + custom)
+        let allTemplates = AgentTemplate.all
+
+        // Filter and return the templates that are in our usedIds set.
+        return allTemplates.filter { usedIds.contains($0.id) && !$0.isShell }
+    }
+
+    private var resolvedBaseAgentId: String {
+        guard let agent = AgentTemplate.all.first(where: { $0.id == selectedAgentId }) else {
+            return selectedAgentId
+        }
+        return agent.baseAgentId ?? agent.id
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -227,6 +276,7 @@ struct UsageView: View {
                 ScrollView(showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 24) {
                         headerSection
+                        agentPicker
                         statStrip
                         gridPanels
                         chartPanel
@@ -237,8 +287,35 @@ struct UsageView: View {
         }
         .background(Theme.chromeBackground)
         .onAppear {
+            if selectedAgentId.isEmpty {
+                selectedAgentId = store.active?.activeSession?.agent.id ?? "claude-code"
+            }
             Task {
                 await viewModel.load()
+            }
+        }
+    }
+
+    private var agentPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(availableAgents) { agent in
+                Button(action: {
+                    withAnimation(Theme.chromeTransition) {
+                        selectedAgentId = agent.id
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        AgentIconView(asset: agent.iconAsset, fallbackSymbol: agent.symbol, size: 12)
+                        Text(agent.title)
+                            .font(Theme.mono(11.5, weight: selectedAgentId == agent.id ? .bold : .medium))
+                    }
+                    .foregroundStyle(selectedAgentId == agent.id ? Theme.chromeForeground : Theme.chromeMuted)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(selectedAgentId == agent.id ? Theme.chromeActive : Color.clear)
+                    .bracketBorder()
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }
@@ -312,286 +389,464 @@ struct UsageView: View {
         let (fiveHourPercent, weeklyPercent) = getUsagePercentages()
 
         return HStack(spacing: 0) {
-            // Stat 1: Claude 5h
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .lastTextBaseline, spacing: 2) {
-                    Text("\(fiveHourPercent)")
-                        .font(Theme.display(38, weight: .semibold))
-                        .foregroundStyle(fiveHourPercent > 75 ? Theme.activityAttention : Theme.activityRunning)
-                    Text("%")
-                        .font(Theme.display(17, weight: .medium))
-                        .foregroundStyle(Theme.chromeMuted)
-                }
-                Text("Claude · 5h 窗口")
-                    .font(Theme.display(13))
-                    .foregroundStyle(Theme.chromeForeground)
-
-                if let resets = viewModel.usage?.fiveHour?.resetsAt {
-                    Text("重置 \(countdown(resets))")
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.chromeMuted)
-                } else {
-                    Text("重置 1h 12m")
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.chromeMuted)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .overlay(
-                HStack {
-                    Spacer()
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                }
-            )
-
-            // Stat 2: Claude Weekly
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .lastTextBaseline, spacing: 2) {
-                    Text("\(weeklyPercent)")
-                        .font(Theme.display(38, weight: .semibold))
-                        .foregroundStyle(Theme.activityRunning)
-                    Text("%")
-                        .font(Theme.display(17, weight: .medium))
-                        .foregroundStyle(Theme.chromeMuted)
-                }
-                Text("Claude · 周配额")
-                    .font(Theme.display(13))
-                    .foregroundStyle(Theme.chromeForeground)
-                Text("重置 周一 09:00")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .overlay(
-                HStack {
-                    Spacer()
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                }
-            )
-
-            // Stat 3: Today's Tokens
-            VStack(alignment: .leading, spacing: 8) {
-                let totalToday = Double(viewModel.stats.todayInput + viewModel.stats.todayOutput) / 1_000_000.0
-                HStack(alignment: .lastTextBaseline, spacing: 2) {
-                    Text(String(format: "%.2f", totalToday))
-                        .font(Theme.display(38, weight: .semibold))
+            if resolvedBaseAgentId == "claude-code" {
+                // Stat 1: Claude 5h
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text("\(fiveHourPercent)")
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(fiveHourPercent > 75 ? Theme.activityAttention : Theme.activityRunning)
+                        Text("%")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("Claude · 5h 窗口")
+                        .font(Theme.display(13))
                         .foregroundStyle(Theme.chromeForeground)
-                    Text("M")
-                        .font(Theme.display(17, weight: .medium))
-                        .foregroundStyle(Theme.chromeMuted)
-                }
-                Text("今日 Token")
-                    .font(Theme.display(13))
-                    .foregroundStyle(Theme.chromeForeground)
-                Text("输入 \(formatTokens(viewModel.stats.todayInput)) · 输出 \(formatTokens(viewModel.stats.todayOutput))")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .overlay(
-                HStack {
-                    Spacer()
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                }
-            )
 
-            // Stat 4: Hermes Today's Tokens
-            VStack(alignment: .leading, spacing: 8) {
-                let totalHermesToday = Double(viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayOutput) / 1_000_000.0
-                HStack(alignment: .lastTextBaseline, spacing: 2) {
-                    Text(String(format: "%.2f", totalHermesToday))
-                        .font(Theme.display(38, weight: .semibold))
-                        .foregroundStyle(Theme.activityRunning)
-                    Text("M")
-                        .font(Theme.display(17, weight: .medium))
+                    if let resets = viewModel.usage?.fiveHour?.resetsAt {
+                        Text("重置 \(countdown(resets))")
+                            .font(Theme.mono(10.5))
+                            .foregroundStyle(Theme.chromeMuted)
+                    } else {
+                        Text("重置 1h 12m")
+                            .font(Theme.mono(10.5))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                // Stat 2: Claude Weekly
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text("\(weeklyPercent)")
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.activityRunning)
+                        Text("%")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("Claude · 周配额")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("重置 周一 09:00")
+                        .font(Theme.mono(10.5))
                         .foregroundStyle(Theme.chromeMuted)
                 }
-                Text("Hermes · 今日 Token")
-                    .font(Theme.display(13))
-                    .foregroundStyle(Theme.chromeForeground)
-                Text("输入 \(formatTokens(viewModel.stats.hermesTodayInput)) · 输出 \(formatTokens(viewModel.stats.hermesTodayOutput))")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                // Stat 3: Today's Tokens
+                VStack(alignment: .leading, spacing: 8) {
+                    let totalToday = Double(viewModel.stats.todayInput + viewModel.stats.todayOutput) / 1_000_000.0
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(String(format: "%.2f", totalToday))
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.chromeForeground)
+                        Text("M")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("今日 Token")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("输入 \(formatTokens(viewModel.stats.todayInput)) · 输出 \(formatTokens(viewModel.stats.todayOutput))")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+            } else if resolvedBaseAgentId == "hermes" || resolvedBaseAgentId == "antigravity" {
+                // Gemini/Hermes stats
+                let totalInput = viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayCacheRead
+                let hitRate = totalInput > 0 ? Double(viewModel.stats.hermesTodayCacheRead) / Double(totalInput) : 0.0
+
+                // Stat 1: Cache Hit Rate
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(String(format: "%.0f", hitRate * 100))
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.activityRunning)
+                        Text("%")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("缓存命中率")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("基于最近的 API 会话")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                // Stat 2: Today's Tokens
+                VStack(alignment: .leading, spacing: 8) {
+                    let totalHermesToday = Double(viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayOutput) / 1_000_000.0
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(String(format: "%.2f", totalHermesToday))
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.activityRunning)
+                        Text("M")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("今日 Token")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("输入 \(formatTokens(viewModel.stats.hermesTodayInput)) · 输出 \(formatTokens(viewModel.stats.hermesTodayOutput))")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                // Stat 3: Estimated Cost
+                VStack(alignment: .leading, spacing: 8) {
+                    let cost = calculateCost(input: viewModel.stats.hermesTodayInput, output: viewModel.stats.hermesTodayOutput, cacheRead: viewModel.stats.hermesTodayCacheRead)
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(String(format: "$%.2f", cost))
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.gitInsertion)
+                    }
+                    Text("今日估算花费")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("本地大模型 & API 计费")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+            } else {
+                // Placeholder stats for other agents
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text("N/A")
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("缓存命中率")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("无本地数据")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text("0.00")
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.chromeMuted)
+                        Text("M")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("今日 Token")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("未检测到 API 活动")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text("$0.00")
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("今日估算花费")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("未检测到 API 活动")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
         }
         .bracketBorder()
     }
 
     private var gridPanels: some View {
-        HStack(alignment: .top, spacing: 16) {
-            // Left Panel: Claude Code
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(.orange)
-                    Text("Claude Code")
-                        .font(Theme.mono(12, weight: .bold))
-                    Text("Pro 订阅 · /usage 同源")
-                        .font(Theme.mono(9.5))
-                        .foregroundStyle(Theme.chromeMuted)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .bracketBorder()
-                }
+        VStack(alignment: .leading, spacing: 16) {
+            if resolvedBaseAgentId == "claude-code" {
+                // Claude Code Panel
+                let agent = AgentTemplate.all.first { $0.id == selectedAgentId }
+                let title = agent?.title ?? "Claude Code"
+                let symbol = agent?.symbol ?? "sparkles"
 
-                // Meter 1: 5h Window
-                let (fiveHourPercent, weeklyPercent) = getUsagePercentages()
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("5 小时滚动窗口")
-                            .font(Theme.display(13))
-                        Spacer()
-                        Text("\(Int(Double(fiveHourPercent) / 100.0 * 50000.0))")
-                            .font(Theme.mono(12))
-                            .foregroundStyle(Theme.chromeForeground) +
-                            Text(" / 50,000")
-                            .font(Theme.mono(12))
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 8) {
+                        Image(systemName: symbol)
+                            .foregroundStyle(.orange)
+                        Text(title)
+                            .font(Theme.mono(12, weight: .bold))
+                        Text("Pro 订阅 · /usage 同源")
+                            .font(Theme.mono(9.5))
                             .foregroundStyle(Theme.chromeMuted)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .bracketBorder()
                     }
 
-                    GeometryReader { geo in
-                        Rectangle()
-                            .fill(fiveHourPercent > 75 ? Theme.activityAttention : Theme.activityRunning)
-                            .frame(width: geo.size.width * CGFloat(Double(fiveHourPercent) / 100.0))
-                    }
-                    .frame(height: 14)
-                    .background(Color.gray.opacity(0.1))
-                    .bracketBorder()
+                    // Meter 1: 5h Window
+                    let (fiveHourPercent, weeklyPercent) = getUsagePercentages()
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("5 小时滚动窗口")
+                                .font(Theme.display(13))
+                            Spacer()
+                            Text("\(Int(Double(fiveHourPercent) / 100.0 * 50000.0))")
+                                .font(Theme.mono(12))
+                                .foregroundStyle(Theme.chromeForeground) +
+                                Text(" / 50,000")
+                                .font(Theme.mono(12))
+                                .foregroundStyle(Theme.chromeMuted)
+                        }
 
-                    HStack {
-                        Text("\(fiveHourPercent)% 已用")
-                        Spacer()
-                        if let resets = viewModel.usage?.fiveHour?.resetsAt {
-                            Text("重置于 \(timeStr(resets)) · \(countdown(resets)) 后")
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(fiveHourPercent > 75 ? Theme.activityAttention : Theme.activityRunning)
+                                .frame(width: geo.size.width * CGFloat(Double(fiveHourPercent) / 100.0))
+                        }
+                        .frame(height: 14)
+                        .background(Color.gray.opacity(0.1))
+                        .bracketBorder()
+
+                        HStack {
+                            Text("\(fiveHourPercent)% 已用")
+                            Spacer()
+                            if let resets = viewModel.usage?.fiveHour?.resetsAt {
+                                Text("重置于 \(timeStr(resets)) · \(countdown(resets)) 后")
+                            } else {
+                                Text("重置于 14:30 · 1h 12m 后")
+                            }
+                        }
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                    }
+
+                    // Meter 2: Weekly Quota
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("本周配额")
+                                .font(Theme.display(13))
+                            Spacer()
+                            Text(String(format: "%.1fM", Double(weeklyPercent) / 100.0 * 5.8))
+                                .font(Theme.mono(12))
+                                .foregroundStyle(Theme.chromeForeground) +
+                                Text(" / 5.8M")
+                                .font(Theme.mono(12))
+                                .foregroundStyle(Theme.chromeMuted)
+                        }
+
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(Theme.activityRunning)
+                                .frame(width: geo.size.width * CGFloat(Double(weeklyPercent) / 100.0))
+                        }
+                        .frame(height: 14)
+                        .background(Color.gray.opacity(0.1))
+                        .bracketBorder()
+
+                        HStack {
+                            Text("\(weeklyPercent)% 已用")
+                            Spacer()
+                            Text("重置 周一 09:00 · 3 天后")
+                        }
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                    }
+
+                    Divider().background(Theme.chromeHairline)
+
+                    Text("订阅制不按 token 计费；窗口用满后请求会排队至下个窗口。")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted) +
+                        Text("5h 窗口接近上限")
+                        .font(Theme.mono(10.5, weight: .bold))
+                        .foregroundStyle(Theme.activityAttention) +
+                        Text("——重活建议错峰或切到 Hermes。")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .padding(24)
+                .bracketBorder()
+            } else if resolvedBaseAgentId == "hermes" || resolvedBaseAgentId == "antigravity" {
+                // Hermes / Antigravity Panel (shares state.db)
+                let agent = AgentTemplate.all.first { $0.id == selectedAgentId }
+                let title = agent?.title ?? (selectedAgentId == "antigravity" ? "Antigravity CLI" : "Hermes")
+                let symbol = agent?.symbol ?? (selectedAgentId == "antigravity" ? "arrow.up.circle" : "cpu")
+                let isAgy = resolvedBaseAgentId == "antigravity"
+
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 8) {
+                        Image(systemName: symbol)
+                            .foregroundStyle(isAgy ? Theme.activityRunning : Theme.chromeMuted)
+                        Text(title)
+                            .font(Theme.mono(12, weight: .bold))
+                        Text(isAgy ? "Gemini 3.5 Flash · API 计费" : "Nous Research · token 计费")
+                            .font(Theme.mono(9.5))
+                            .foregroundStyle(Theme.chromeMuted)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .bracketBorder()
+                    }
+
+                    // Meter: Cache hit rate
+                    VStack(alignment: .leading, spacing: 6) {
+                        let totalInput = viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayCacheRead
+                        let hitRate = totalInput > 0 ? Double(viewModel.stats.hermesTodayCacheRead) / Double(totalInput) : 0.0
+                        HStack {
+                            Text("缓存命中率")
+                                .font(Theme.display(13))
+                            Spacer()
+                            Text(String(format: "%.0f%%", hitRate * 100))
+                                .font(Theme.mono(12))
+                                .foregroundStyle(Theme.chromeForeground)
+                        }
+
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(Theme.activityRunning)
+                                .frame(width: geo.size.width * CGFloat(hitRate))
+                        }
+                        .frame(height: 14)
+                        .background(Color.gray.opacity(0.1))
+                        .bracketBorder()
+
+                        HStack {
+                            Text("缓存效率")
+                            Spacer()
+                            Text("基于最近 of API 会话统计")
+                        }
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                    }
+
+                    // Token rows
+                    VStack(spacing: 8) {
+                        let maxVal = max(1, max(viewModel.stats.hermesTodayInput, max(viewModel.stats.hermesTodayOutput, viewModel.stats.hermesTodayCacheRead)))
+                        tokenRow(label: "输入", value: formatTokens(viewModel.stats.hermesTodayInput), percent: CGFloat(viewModel.stats.hermesTodayInput) / CGFloat(maxVal))
+                        tokenRow(label: "输出", value: formatTokens(viewModel.stats.hermesTodayOutput), percent: CGFloat(viewModel.stats.hermesTodayOutput) / CGFloat(maxVal))
+                        tokenRow(label: "缓存读", value: formatTokens(viewModel.stats.hermesTodayCacheRead), percent: CGFloat(viewModel.stats.hermesTodayCacheRead) / CGFloat(maxVal))
+                    }
+
+                    Divider().background(Theme.chromeHairline)
+
+                    let cost = calculateCost(input: viewModel.stats.hermesTodayInput, output: viewModel.stats.hermesTodayOutput, cacheRead: viewModel.stats.hermesTodayCacheRead)
+                    Text("今日估算花费 ")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted) +
+                        Text(String(format: "$%.2f", cost))
+                        .font(Theme.mono(10.5, weight: .bold))
+                        .foregroundStyle(Theme.gitInsertion) +
+                        Text(isAgy ? " · Google Cloud / Vertex API 计费估算。" : " · 本地大模型 & API 计费估算。")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .padding(24)
+                .bracketBorder()
+            } else {
+                // Dynamic Panel for any other agent
+                let agent = AgentTemplate.all.first { $0.id == selectedAgentId }
+                let title = agent?.title ?? selectedAgentId
+                let symbol = agent?.symbol ?? "wand.and.stars"
+                let command = agent?.initialCommand ?? ""
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 8) {
+                        Image(systemName: symbol)
+                            .foregroundStyle(Theme.chromeMuted)
+                        Text(title)
+                            .font(Theme.mono(12, weight: .bold))
+                        if !command.isEmpty {
+                            Text("\(command) · API 计费")
+                                .font(Theme.mono(9.5))
+                                .foregroundStyle(Theme.chromeMuted)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .bracketBorder()
                         } else {
-                            Text("重置于 14:30 · 1h 12m 后")
+                            Text("未配置命令")
+                                .font(Theme.mono(9.5))
+                                .foregroundStyle(Theme.chromeMuted)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .bracketBorder()
                         }
                     }
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
-                }
 
-                // Meter 2: Weekly Quota
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("本周配额")
-                            .font(Theme.display(13))
-                        Spacer()
-                        Text(String(format: "%.1fM", Double(weeklyPercent) / 100.0 * 5.8))
-                            .font(Theme.mono(12))
-                            .foregroundStyle(Theme.chromeForeground) +
-                            Text(" / 5.8M")
-                            .font(Theme.mono(12))
-                            .foregroundStyle(Theme.chromeMuted)
-                    }
-
-                    GeometryReader { geo in
-                        Rectangle()
-                            .fill(Theme.activityRunning)
-                            .frame(width: geo.size.width * CGFloat(Double(weeklyPercent) / 100.0))
-                    }
-                    .frame(height: 14)
-                    .background(Color.gray.opacity(0.1))
-                    .bracketBorder()
-
-                    HStack {
-                        Text("\(weeklyPercent)% 已用")
-                        Spacer()
-                        Text("重置 周一 09:00 · 3 天后")
-                    }
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
-                }
-
-                Divider().background(Theme.chromeHairline)
-
-                Text("订阅制不按 token 计费；窗口用满后请求会排队至下个窗口。")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted) +
-                    Text("5h 窗口接近上限")
-                    .font(Theme.mono(10.5, weight: .bold))
-                    .foregroundStyle(Theme.activityAttention) +
-                    Text("——重活建议错峰或切到 Hermes。")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
-            }
-            .padding(24)
-            .bracketBorder()
-
-            // Right Panel: Hermes
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 8) {
-                    Image(systemName: "cpu")
-                        .foregroundStyle(Theme.chromeMuted)
-                    Text("Hermes")
-                        .font(Theme.mono(12, weight: .bold))
-                    Text("Nous Research · token 计费")
-                        .font(Theme.mono(9.5))
-                        .foregroundStyle(Theme.chromeMuted)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .bracketBorder()
-                }
-
-                // Meter: Cache hit rate
-                VStack(alignment: .leading, spacing: 6) {
-                    let totalInput = viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayCacheRead
-                    let hitRate = totalInput > 0 ? Double(viewModel.stats.hermesTodayCacheRead) / Double(totalInput) : 0.0
-                    HStack {
-                        Text("缓存命中率")
-                            .font(Theme.display(13))
-                        Spacer()
-                        Text(String(format: "%.0f%%", hitRate * 100))
-                            .font(Theme.mono(12))
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("未检测到本地使用记录")
+                            .font(Theme.display(14, weight: .semibold))
                             .foregroundStyle(Theme.chromeForeground)
-                    }
 
-                    GeometryReader { geo in
-                        Rectangle()
-                            .fill(Theme.activityRunning)
-                            .frame(width: geo.size.width * CGFloat(hitRate))
+                        Text("\(title) 尚未生成本地用量日志数据库。请在 settings.json 中配置相应的 API 凭证，并在 cockpit 中使用以在后续会话中启用用量跟踪。")
+                            .font(Theme.mono(11))
+                            .foregroundStyle(Theme.chromeMuted)
+                            .lineLimit(nil)
                     }
-                    .frame(height: 14)
-                    .background(Color.gray.opacity(0.1))
-                    .bracketBorder()
+                    .padding(.vertical, 8)
+
+                    Divider().background(Theme.chromeHairline)
 
                     HStack {
-                        Text("缓存效率")
-                        Spacer()
-                        Text("基于最近的 API 会话统计")
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 11))
+                        Text("API 计费根据实际的 Input / Output token 在对应平台端单独结算。")
                     }
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
                 }
-
-                // Token rows
-                VStack(spacing: 8) {
-                    let maxVal = max(1, max(viewModel.stats.hermesTodayInput, max(viewModel.stats.hermesTodayOutput, viewModel.stats.hermesTodayCacheRead)))
-                    tokenRow(label: "输入", value: formatTokens(viewModel.stats.hermesTodayInput), percent: CGFloat(viewModel.stats.hermesTodayInput) / CGFloat(maxVal))
-                    tokenRow(label: "输出", value: formatTokens(viewModel.stats.hermesTodayOutput), percent: CGFloat(viewModel.stats.hermesTodayOutput) / CGFloat(maxVal))
-                    tokenRow(label: "缓存读", value: formatTokens(viewModel.stats.hermesTodayCacheRead), percent: CGFloat(viewModel.stats.hermesTodayCacheRead) / CGFloat(maxVal))
-                }
-
-                Divider().background(Theme.chromeHairline)
-
-                let cost = calculateCost(input: viewModel.stats.hermesTodayInput, output: viewModel.stats.hermesTodayOutput, cacheRead: viewModel.stats.hermesTodayCacheRead)
-                Text("今日估算花费 ")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted) +
-                    Text(String(format: "$%.2f", cost))
-                    .font(Theme.mono(10.5, weight: .bold))
-                    .foregroundStyle(Theme.gitInsertion) +
-                    Text(" · 本地大模型 & API 计费估算。")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
+                .padding(24)
+                .bracketBorder()
             }
-            .padding(24)
-            .bracketBorder()
         }
     }
 
@@ -660,7 +915,7 @@ struct UsageView: View {
                     Rectangle()
                         .fill(Theme.gitInsertion)
                         .frame(width: 10, height: 10)
-                    Text("Hermes")
+                    Text("Gemini / Hermes")
                 }
             }
             .font(Theme.mono(10.5))
