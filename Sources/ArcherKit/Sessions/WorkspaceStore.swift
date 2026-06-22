@@ -1492,12 +1492,20 @@ final class WorkspaceStore {
         engine.onCommandFinished = { [weak self, weak session] exit, duration in
             guard let session else { return }
             // A remote agent surfaced via an OSC marker (transientAgent) emits
+            // no `ended` marker when the child process exits (e.g., a
+            // finished Hermes / Claude turn). Treat the command finish as a
+            // completion so Archer plays the chime and lights edge glow.
+            if session.transientAgent != nil {
+                self?.onSessionAlert(session.id, .completed)
+            }
+            // A remote agent surfaced via an OSC marker (transientAgent) emits
             // no `ended` marker when the ssh drops abnormally (network loss,
             // killed connection). The local command finishing — the `ssh`
             // itself returning to the prompt — is the reliable "remote session
             // over" signal, so clear the transient promotion here too. During a
             // live ssh the local shell is blocked, so this never fires mid-
-            // session and can't clear a still-running remote agent early.
+            // session and only wipes the running indicator when that command
+            // queue is truly empty.
             if session.transientAgent != nil {
                 session.transientAgent = nil
                 session.activityState = .idle
@@ -1554,9 +1562,10 @@ final class WorkspaceStore {
         let agentBefore = session.agent.id
         if event == .ended {
             if session.transientAgent?.id == agent.id || session.transientAgent?.baseAgentId == agent.id {
-                // Remote agent done — inbox completion before clearing, so
-                // displayAgent still resolves to the remote agent.
-                onSessionAlert(session.id, .completed)
+                // Only complete if command-finished hasn't already done so.
+                if session.transientAgent != nil {
+                    onSessionAlert(session.id, .completed)
+                }
                 session.transientAgent = nil
             }
             if session.agent.id == agent.id || session.agent.baseAgentId == agent.id {

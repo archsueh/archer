@@ -326,6 +326,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // user is looking at it, so it shouldn't light the bell. Computed once
         // and reused below to also suppress the banner.
         let visible = isSessionVisible(sessionId)
+        let settings = ArcherSettingsModel.shared
+        print("[archer-alert] kind=\(kind) tab=\(tab) workspace=\(workspace) visible=\(visible) notificationsEnabled=\(settings.notificationsEnabled) notifyOnCompleted=\(settings.notifyOnCompleted) notifyOnAttention=\(settings.notifyOnAttention) notifyOnFailure=\(settings.notifyOnFailure) edgeGlowEnabled=\(settings.edgeGlowEnabled)")
         // Every kind — including completed — lands in the inbox.
         NotificationInbox.shared.add(
             kind: kind,
@@ -338,25 +340,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // System banner + sound: each kind gated on the master setting, its
         // sub-toggle, and visibility. [archer] completed now notifies too
         // (was inbox-only) so a finished agent gives an audible cue.
-        let settings = ArcherSettingsModel.shared
         // [archer] Drive the edge glow from the same signal as the chime,
         // before the chime/banner guards — it has its own enable gate.
         EdgeGlowController.shared.handle(kind: kind)
         switch kind {
         case .completed:
-            // [archer] NSSound (not UN) so it fires under dev `swift run` too.
-            // Fires on every completion, including the active tab — an audible
-            // cue each time an agent finishes, not just background ones.
-            guard settings.notificationsEnabled, settings.notifyOnCompleted
-            else { return }
-            NSSound(named: NSSound.Name(settings.notificationSound))?.play()
+            break
         case .attention:
-            // [archer] Agent became active/done (Claude `Stop` + `Notification`,
-            // incl. the startup ping) — chime even on the visible tab. Wanted:
-            // a ritual cue on launch and a cue every turn. Banner stays bg-only.
-            if settings.notificationsEnabled, settings.notifyOnCompleted {
-                NSSound(named: NSSound.Name(settings.notificationSound))?.play()
-            }
             guard settings.notificationsEnabled, settings.notifyOnAttention,
                   !visible else { return }
             notificationManager.post(
