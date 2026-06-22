@@ -1301,6 +1301,19 @@ enum ArcherShellIntegration {
         _archer_cmd="$ARCHER_AGENT"
         _archer_agent_bin="${_archer_cmd%% *}"
         unset ARCHER_AGENT
+        # If the command carries --resume <id>, verify the session file
+        # exists before launching. A missing file means Claude will print
+        # "No conversation found" and exit non-zero, leaving the user at a
+        # bare prompt. Stripping --resume here lets the agent start fresh
+        # without an error, and the hook will capture the new session id.
+        if [[ "$_archer_cmd" == *" --resume "* ]]; then
+            _archer_resume_id="${_archer_cmd##* --resume }"
+            _archer_resume_id="${_archer_resume_id%% *}"
+            if [[ -n "$_archer_resume_id" ]] && ! find ~/.claude/projects -name "${_archer_resume_id}.jsonl" -maxdepth 2 2>/dev/null | grep -q .; then
+                _archer_cmd="${_archer_cmd/ --resume $_archer_resume_id/}"
+            fi
+            unset _archer_resume_id
+        fi
         # `eval` lets ARCHER_AGENT carry multi-word commands (e.g. an
         # editor + file path); single-word agent commands like `claude`
         # behave identically.
