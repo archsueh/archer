@@ -110,6 +110,12 @@ final class ArcherSettingsModel {
     var notifyOnFailure: Bool = true
     var notifyOnCompleted: Bool = true // [archer] sound/banner when an agent finishes
     var notificationSound: String = "Submarine" // [archer] sound name
+    // [archer] Edge activity glow (see docs/edge-glow-spec.md). Defaults: on,
+    // all screens, low brightness. Persistence + UI land in a later step.
+    var edgeGlowEnabled: Bool = true
+    var edgeGlowScope: EdgeGlowScope = .allScreens
+    var edgeGlowBrightness: Double = 0.35
+    var edgeGlowWidth: Double = 3
     /// In-app UI language. "system" follows macOS; "en"/"zh-Hans" override via
     /// the AppleLanguages user default (takes effect after restart). Lives in
     /// UserDefaults, not settings.json. // [archer]
@@ -213,6 +219,12 @@ final class ArcherSettingsModel {
         notifyOnFailure = (notifications["failure"] as? Bool) ?? true
         notifyOnCompleted = (notifications["completed"] as? Bool) ?? true // [archer] sound/banner when an agent finishes
         notificationSound = (notifications["sound"] as? String) ?? "Submarine" // [archer] sound name
+
+        let edgeGlow = parsed["edgeGlow"] as? [String: Any] ?? [:] // [archer]
+        edgeGlowEnabled = (edgeGlow["enabled"] as? Bool) ?? true
+        edgeGlowScope = EdgeGlowScope(rawValue: (edgeGlow["scope"] as? String) ?? "") ?? .allScreens
+        edgeGlowBrightness = (edgeGlow["brightness"] as? Double) ?? 0.35
+        edgeGlowWidth = (edgeGlow["width"] as? Double) ?? 3
         appLanguage = ArcherSettingsModel.detectAppLanguage() // [archer]
         let rawCustom = (agents["custom"] as? [[String: Any]]) ?? []
         let builtinIds = Set(AgentTemplate.builtin.map(\.id))
@@ -391,6 +403,17 @@ final class ArcherSettingsModel {
             parsed.removeValue(forKey: "notifications")
         } else {
             parsed["notifications"] = notifications
+        }
+
+        var edgeGlow = parsed["edgeGlow"] as? [String: Any] ?? [:] // [archer]
+        edgeGlow["enabled"] = edgeGlowEnabled ? nil : false
+        edgeGlow["scope"] = edgeGlowScope == .allScreens ? nil : edgeGlowScope.rawValue
+        edgeGlow["brightness"] = edgeGlowBrightness == 0.35 ? nil : edgeGlowBrightness
+        edgeGlow["width"] = edgeGlowWidth == 3 ? nil : edgeGlowWidth
+        if edgeGlow.isEmpty {
+            parsed.removeValue(forKey: "edgeGlow")
+        } else {
+            parsed["edgeGlow"] = edgeGlow
         }
 
         let serialisedPresets: [[String: Any]] = terminalPresets.compactMap { p in
@@ -652,6 +675,10 @@ struct ArcherSettingsView: View {
             .onChange(of: model.notifyOnFailure) { _, _ in model.scheduleSave() }
             .onChange(of: model.notifyOnCompleted) { _, _ in model.scheduleSave() } // [archer]
             .onChange(of: model.notificationSound) { _, _ in model.scheduleSave() } // [archer]
+            .onChange(of: model.edgeGlowEnabled) { _, _ in model.scheduleSave(); EdgeGlowController.shared.refresh() } // [archer]
+            .onChange(of: model.edgeGlowScope) { _, _ in model.scheduleSave(); EdgeGlowController.shared.refresh() } // [archer]
+            .onChange(of: model.edgeGlowBrightness) { _, _ in model.scheduleSave() } // [archer]
+            .onChange(of: model.edgeGlowWidth) { _, _ in model.scheduleSave() } // [archer]
             .onChange(of: model.autoLightTheme) { _, _ in model.flushSave() }
             .onChange(of: model.autoDarkTheme) { _, _ in model.flushSave() }
     }
@@ -892,6 +919,31 @@ struct ArcherSettingsView: View {
                 .onChange(of: model.notificationSound) { _, newValue in
                     NSSound(named: NSSound.Name(newValue))?.play()
                 }
+            }
+            SettingsRow(label: "edge glow") { // [archer]
+                Toggle("", isOn: $model.edgeGlowEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            SettingsRow(label: "  ▸ screens") { // [archer]
+                Picker("", selection: $model.edgeGlowScope) {
+                    Text("all").tag(EdgeGlowScope.allScreens)
+                    Text("current").tag(EdgeGlowScope.currentScreen)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 120) // [archer] match slider column so the control edges line up
+                .disabled(!model.edgeGlowEnabled)
+            }
+            SettingsRow(label: "  ▸ brightness") { // [archer]
+                BrutalistSlider(value: $model.edgeGlowBrightness, range: 0.1 ... 1)
+                    .frame(width: 120)
+                    .disabled(!model.edgeGlowEnabled)
+            }
+            SettingsRow(label: "  ▸ width") { // [archer]
+                BrutalistSlider(value: $model.edgeGlowWidth, range: 1 ... 8)
+                    .frame(width: 120)
+                    .disabled(!model.edgeGlowEnabled)
             }
         }
     }

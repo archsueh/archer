@@ -339,6 +339,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // sub-toggle, and visibility. [archer] completed now notifies too
         // (was inbox-only) so a finished agent gives an audible cue.
         let settings = ArcherSettingsModel.shared
+        // [archer] Drive the edge glow from the same signal as the chime,
+        // before the chime/banner guards — it has its own enable gate.
+        EdgeGlowController.shared.handle(kind: kind)
         switch kind {
         case .completed:
             // [archer] NSSound (not UN) so it fires under dev `swift run` too.
@@ -494,6 +497,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// wouldn't fire).
     public func applicationDidBecomeActive(_: Notification) {
         markVisibleSessionRead()
+        EdgeGlowController.shared.clearHolds() // [archer] focus clears a lingering glow
     }
 
     // MARK: - Menu
