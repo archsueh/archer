@@ -2,6 +2,14 @@
 
 Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 
+## v1.0.3 — 2026-06-22
+
+- **Screen-Edge Activity Glow** — Added an off-by-default screen-edge glow that mirrors the activity chime: a thin monochrome hairline on a click-through overlay window per screen, driven by the same hook signal as the notification sound. Color comes only from the activity tokens (running/attention/failure), with enable, screen-scope, brightness, and width controls in Settings → Notifications.
+- **Per-Agent Usage View** — The Usage dashboard now has an agent picker and sources available agents from sessions plus the on-disk usage databases (`~/.claude/usage.db`, `~/.hermes/state.db`), so it reflects agents that actually have records and renders real Hermes/Claude metrics instead of placeholders.
+- **Unified Terminal Input** — Removed the ⌘L prompt composer so input lives only in the terminal, unifying each pane to a single input surface.
+- **Persistent Skill Repairs** — Skill repairs and deletions made in the Skills Dashboard now persist to disk across launches.
+- **Sidebar & Panel Transitions** — Added slide/fade transitions for sidebars, panels, and cockpit views.
+
 ## v1.0.2 — 2026-06-21
 
 - **Skills Dashboard** — Added a dedicated full-screen agent skills view, which dynamically scans local/project skills metadata, parses frontmatter config files, flags duplicates/issues, and provides an interactive one-click repair tool.
