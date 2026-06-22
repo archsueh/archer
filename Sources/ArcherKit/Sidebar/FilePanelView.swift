@@ -49,7 +49,7 @@ struct FilePanelView: View {
     }
 
     private func move(_ source: URL, into dest: URL) {
-        try? model.move(source, into: dest)
+        _ = try? model.move(source, into: dest)
     }
 
     // MARK: Header
@@ -264,16 +264,27 @@ private func iconName(_ url: URL) -> String {
 }
 
 private func loadURLs(_ providers: [NSItemProvider], _ completion: @escaping ([URL]) -> Void) {
-    var urls: [URL] = []
+    final class URLCollector: @unchecked Sendable {
+        private let lock = NSLock()
+        private var urls: [URL] = []
+        func append(_ url: URL) {
+            lock.withLock { urls.append(url) }
+        }
+
+        var result: [URL] {
+            lock.withLock { urls }
+        }
+    }
+    let collector = URLCollector()
     let group = DispatchGroup()
     for p in providers {
         group.enter()
         _ = p.loadObject(ofClass: URL.self) { url, _ in
-            if let url { urls.append(url) }
+            if let url { collector.append(url) }
             group.leave()
         }
     }
-    group.notify(queue: .main) { completion(urls) }
+    group.notify(queue: .main) { completion(collector.result) }
 }
 
 /// Drop the file's escaped path on the pasteboard so it can be pasted into the
