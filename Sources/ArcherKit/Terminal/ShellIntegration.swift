@@ -781,6 +781,24 @@ enum ArcherShellIntegration {
     \(ttyPassthroughGuard)
 
     if [[ -n "$ARCHER_SURFACE_ID" || -n "$ARCHER_AGENT_MARKERS" ]]; then
+        # Strip --resume <id> if the session file is missing — last-ditch guard
+        # before the real binary runs. The Swift layer (claudeSessionExists) is
+        # the primary check; this wrapper-level check is the reliable backstop
+        # that catches cases where the bash agentLaunchBlock string-rewrite or
+        # the zshrc claude() function relay left --resume intact.
+        _archer_args=("$@")
+        for (( _archer_i=0; _archer_i<${#_archer_args[@]}; _archer_i++ )); do
+            if [[ "${_archer_args[$_archer_i]}" == "--resume" ]]; then
+                _archer_j=$(( _archer_i + 1 ))
+                if [[ -n "${_archer_args[$_archer_j]}" ]] && ! find ~/.claude/projects -maxdepth 2 -name "${_archer_args[$_archer_j]}.jsonl" 2>/dev/null | grep -q .; then
+                    _archer_args=("${_archer_args[@]:0:$_archer_i}" "${_archer_args[@]:$(( _archer_j + 1 ))}")
+                fi
+                break
+            fi
+        done
+        unset _archer_i _archer_j
+        set -- "${_archer_args[@]}"
+        unset _archer_args
         \(agentMarkerCommand(slug: "claude", event: .running))
         if [[ -n "$ARCHER_SURFACE_ID" && -n "$ARCHER_HOOKS_PATH" ]]; then
             "$real" --settings "$ARCHER_HOOKS_PATH" "$@"
