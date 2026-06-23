@@ -798,8 +798,9 @@ enum ArcherShellIntegration {
     /// per-invocation, but it does have `notify = ["cmd", "arg", ...]` in
     /// config.toml — fired after each agent turn with a JSON payload appended
     /// as the final argv. We override `notify` inline via `-c` so user's
-    /// ~/.codex/config.toml is left untouched. The single signal we get is
-    /// "turn complete" which we map to `attention`.
+    /// ~/.codex/config.toml is left untouched. Each turn fires `running` then
+    /// `attention` so the activityState cycles and every turn triggers an alert
+    /// (without cycling, the guard in applyAgentStatusMarker blocks turns 2+).
     static let codexWrapperScript = """
     \(wrapperPreamble(binary: "codex"))
 
@@ -814,7 +815,7 @@ enum ArcherShellIntegration {
         \(agentMarkerCommand(slug: "codex", event: .running))
         if [[ -n "$ARCHER_SURFACE_ID" && -n "$ARCHER_HOOK_BIN" ]]; then
             "$ARCHER_HOOK_BIN" codex running 2>/dev/null
-            "$real" -c "notify=[\\"$ARCHER_HOOK_BIN\\",\\"codex\\",\\"attention\\"]" "$@"
+            "$real" -c "notify=[\\"/bin/sh\\",\\"-c\\",\\"$ARCHER_HOOK_BIN codex running 2>/dev/null; $ARCHER_HOOK_BIN codex attention 2>/dev/null\\"]" "$@"
         else
             "$real" "$@"
         fi
