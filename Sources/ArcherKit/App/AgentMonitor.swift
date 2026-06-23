@@ -231,7 +231,7 @@ private struct AgentOverviewCompactRow: View {
                 Circle()
                     .fill(agentAccent(entry.state))
                     .frame(width: 7, height: 7)
-                    .overlay(Circle().stroke(Theme.chromeBackground, lineWidth: 1.5))
+                    .overlay(Circle().stroke(Theme.chromeSurface, lineWidth: 1.5))
             }
             .background(isHovered ? Theme.chromeHover : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 6))

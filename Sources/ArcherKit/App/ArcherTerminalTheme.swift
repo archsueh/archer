@@ -158,6 +158,24 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
                 "#3B76AC", "#8E6A84", "#4E948D", "#D8D4CF",
             ]
         ),
+        // Liquid Glass — icy blue-white ground, deep navy text, sky-blue accents.
+        // Designed to pair with Archer's glass chrome: cool tones make the
+        // backdrop blur read as refracted light rather than plain fog.
+        .init(
+            id: "liquid-glass",
+            title: "Liquid Glass",
+            background: "#EDF3F8",
+            foreground: "#1B2B38",
+            cursor: "#38BDF8",
+            selectionBackground: "#B8D4E8",
+            selectionForeground: "#1B2B38",
+            palette: [
+                "#1B2B38", "#D95F6E", "#38966E", "#C8904C",
+                "#3E8EC8", "#8068B8", "#2EACD8", "#9AB8C8",
+                "#3A5068", "#F07080", "#48B888", "#DCA860",
+                "#58AADC", "#9880C8", "#48C4EC", "#EDF3F8",
+            ]
+        ),
     ]
 
     static func preset(for storedValue: String) -> ArcherTerminalTheme? {
