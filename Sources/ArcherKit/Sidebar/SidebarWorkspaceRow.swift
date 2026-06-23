@@ -237,7 +237,7 @@ struct SidebarWorkspaceRow: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
                     .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(Theme.chromeBackground)
+                    .foregroundStyle(Theme.chromeSurface)
                     .frame(width: 12, height: 12)
                     .background(badgeColor, in: RoundedRectangle(cornerRadius: 3))
                 Text(branch)
@@ -278,7 +278,7 @@ struct SidebarWorkspaceRow: View {
                 if agents.count > 1 {
                     Text("+\(agents.count - 1)")
                         .font(Theme.mono(9))
-                        .foregroundStyle(Theme.chromeBackground)
+                        .foregroundStyle(Theme.chromeSurface)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 0.5)
                         .background(Capsule().fill(Theme.chromeForeground.opacity(0.92)))

@@ -1401,13 +1401,18 @@ final class WorkspaceStore {
     /// the workspace exists, so callbacks can't capture it here.
     private func spawnSession(template: AgentTemplate, initialCwd: URL, sessionId: UUID = UUID(), conversationId: String? = nil, initialPrompt: String? = nil) -> Session {
         let engine = engineFactory()
-        // Resume gated by user setting — `resumeConversations` flips this off
-        // when the user wants every Claude tab to start fresh without
-        // losing the persisted conversation id (it stays on disk so the
-        // setting can be flipped back on later). Non-resumable templates
-        // ignore the value via `makeSessionConfig`'s own `supportsResume`
-        // gate, so we don't have to re-check here.
-        let resumeId = resumeProvider() ? conversationId : nil
+        // Resume gated by user setting AND session file existence. A missing
+        // file makes Claude print "No conversation found" and exit — drop the
+        // id here so the agent starts fresh rather than erroring.
+        // `resumeProvider()` checks the user toggle; `claudeSessionExists`
+        // verifies the .jsonl is on disk. Unknown (can't read dir) → assume
+        // exists so we never silently drop a valid resume.
+        let resumeId: String?
+        if resumeProvider(), let cid = conversationId, !cid.isEmpty {
+            resumeId = Self.claudeSessionExists(cid) ? cid : nil
+        } else {
+            resumeId = nil
+        }
         var config = template.makeSessionConfig(
             extraOptions: optionsProvider(template.id),
             resumeId: resumeId,
@@ -1431,6 +1436,21 @@ final class WorkspaceStore {
             agent: template,
             conversationId: conversationId
         )
+    }
+
+    /// Returns true when a `.jsonl` session file for `id` exists under
+    /// `~/.claude/projects/`. Searches one level of subdirectories (one
+    /// dir per project root). Unknown (directory unreadable) → true so
+    /// we never silently discard a valid resume id.
+    private static func claudeSessionExists(_ id: String) -> Bool {
+        let projectsDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/projects")
+        let fm = FileManager.default
+        guard let subdirs = try? fm.contentsOfDirectory(
+            at: projectsDir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
+        ) else { return true }
+        let target = "\(id).jsonl"
+        return subdirs.contains { fm.fileExists(atPath: $0.appendingPathComponent(target).path) }
     }
 
     private func wireSessionCallbacks(engine: any TerminalEngine, session: Session, workspace: Workspace) {

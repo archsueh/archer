@@ -13,17 +13,23 @@ enum Theme {
         Color(nsColor: resolved.chromeBackgroundColor).opacity(glassOpacity)
     } // [archer]
 
+    /// Full-opacity chrome background — use for badge/knockout foregrounds where
+    /// the colour must be solid (not the near-transparent panel tint).
+    static var chromeSurface: Color {
+        Color(nsColor: resolved.chromeBackgroundColor)
+    } // [archer]
+
     static var chromeBackgroundBlur: CGFloat {
-        30
+        40
     } // [archer] matches design spec
     static var chromeBackgroundSaturate: CGFloat {
-        1.3
+        1.6
     } // [archer] matches design spec
 
     /// Single readout for translucent layers.
     /// NOTE: if you want to tint the slider or resizer, use the
     /// background colour at this opacity instead of changing the modifier.
-    nonisolated static let glassOpacity: Double = 0.72 // [archer] glass — more translucent than Ghostty 0.82
+    nonisolated static let glassOpacity: Double = 0.08 // [archer] glass — near-zero fill, NSVisualEffectView carries the depth
     static var chromeForeground: Color {
         Color(nsColor: resolved.foregroundColor)
     }
