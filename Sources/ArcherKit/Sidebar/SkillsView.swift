@@ -19,6 +19,8 @@ struct SkillsView: View {
     @State private var hoverClean = false
     @State private var hoverSort = false
 
+    @State private var watcher: DirectoryWatcher?
+
     enum CleanState {
         case idle
         case done(count: Int)
@@ -63,6 +65,10 @@ struct SkillsView: View {
         .background(Theme.chromeBackground)
         .onAppear {
             loadSkills()
+        }
+        .onDisappear {
+            watcher?.cancel()
+            watcher = nil
         }
     }
 
@@ -418,20 +424,30 @@ struct SkillsView: View {
 
     // MARK: - Logic / Actions
 
-    private func loadSkills() {
-        isLoading = true
+    private func loadSkills(silent: Bool = false) {
+        if !silent { isLoading = true }
         Task {
-            let loaded = await loadSkillsFromDisk()
+            let result = await loadSkillsFromDisk()
             await MainActor.run {
-                self.skills = loaded
+                self.skills = result.items
                 self.calculateStats()
                 self.isLoading = false
+                self.setupWatcher(skillDirs: result.watchDirs)
             }
         }
     }
 
-    private func loadSkillsFromDisk() async -> [SkillItem] {
+    private func setupWatcher(skillDirs: [URL]) {
+        if watcher == nil {
+            watcher = DirectoryWatcher { [self] _ in loadSkills(silent: true) }
+        }
+        guard let w = watcher else { return }
+        skillDirs.forEach { w.add($0) }
+    }
+
+    private func loadSkillsFromDisk() async -> (items: [SkillItem], watchDirs: [URL]) {
         var items: [SkillItem] = []
+        var watchDirs: [URL] = []
         let home = NSHomeDirectory()
 
         let paths = [
@@ -453,6 +469,9 @@ struct SkillsView: View {
                 continue
             }
 
+            // Watch the root skill dir (catches install/uninstall)
+            watchDirs.append(URL(fileURLWithPath: entry.path))
+
             guard let subdirs = try? fm.contentsOfDirectory(atPath: entry.path) else {
                 continue
             }
@@ -464,6 +483,9 @@ struct SkillsView: View {
                 guard fm.fileExists(atPath: skillDirPath, isDirectory: &isSubDir), isSubDir.boolValue else {
                     continue
                 }
+
+                // Watch each skill subdir (catches SKILL.md content edits)
+                watchDirs.append(URL(fileURLWithPath: skillDirPath))
 
                 let filenames = ["SKILL.md", "README.md", "SKILL_CN.md", "README_CN.md"]
                 var skillFileContent = ""
@@ -550,7 +572,7 @@ struct SkillsView: View {
             }
         }
 
-        return items
+        return (items, watchDirs)
     }
 
     private func parseFrontmatter(text: String) -> (name: String?, description: String?, hasIssue: Bool, issueDesc: String?) {
