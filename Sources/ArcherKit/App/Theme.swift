@@ -20,16 +20,16 @@ enum Theme {
     } // [archer]
 
     static var chromeBackgroundBlur: CGFloat {
-        40
+        30
     } // [archer] matches design spec
     static var chromeBackgroundSaturate: CGFloat {
-        1.6
+        1.3
     } // [archer] matches design spec
 
     /// Single readout for translucent layers.
     /// NOTE: if you want to tint the slider or resizer, use the
     /// background colour at this opacity instead of changing the modifier.
-    nonisolated static let glassOpacity: Double = 0.08 // [archer] glass — near-zero fill, NSVisualEffectView carries the depth
+    nonisolated static let glassOpacity: Double = 0.72 // [archer] glass — more translucent than Ghostty 0.82
     static var chromeForeground: Color {
         Color(nsColor: resolved.foregroundColor)
     }
