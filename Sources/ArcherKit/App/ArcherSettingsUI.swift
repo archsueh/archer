@@ -1183,12 +1183,13 @@ private struct AgentReorderList: View {
         )
     }
 
-    /// All non-terminal templates in the user's chosen order — visible and
-    /// hidden alike. Hidden agents render greyed out but stay wherever the
-    /// user dragged them, so toggling visibility doesn't move them. The
-    /// `+` menu's filter to visible-only lives in `AgentTemplate.visibleOrdered`.
+    /// Non-terminal templates in the user's chosen order, filtered to those
+    /// whose CLI binary is detected on this machine. Custom agents always
+    /// appear (user added them explicitly). Uninstalled builtins are hidden.
     private var rows: [AgentTemplate] {
-        AgentTemplate.ordered(model: model)
+        AgentTemplate.ordered(model: model).filter { template in
+            isCustomId(template.id) || template.isInstalled
+        }
     }
 
     private var hasCustomisation: Bool {
@@ -1264,16 +1265,11 @@ private struct AgentRow: View {
             HStack(spacing: 12) {
                 ReorderHandle(payload: template.id, onBeginDrag: onBeginDrag)
                 AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 14)
-                    .opacity(visible ? 1.0 : 0.35)
                 Text(template.title)
                     .font(Theme.mono(12.5))
-                    .foregroundStyle(visible ? Theme.chromeForeground : Theme.chromeMuted)
+                    .foregroundStyle(Theme.chromeForeground)
                 Spacer(minLength: 14)
                 disclosureButton
-                Toggle("", isOn: Binding(get: { visible }, set: { _ in onToggleVisible() }))
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .labelsHidden()
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 10)

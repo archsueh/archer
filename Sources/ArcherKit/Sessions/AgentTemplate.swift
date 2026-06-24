@@ -73,6 +73,30 @@ struct AgentTemplate: Identifiable, Hashable {
         initialCommand == nil
     }
 
+    /// True when the agent's CLI binary is found in common install locations.
+    /// Shell templates (no `initialCommand`) are always considered installed.
+    /// Custom agents are always considered installed (user added them explicitly).
+    var isInstalled: Bool {
+        guard let cmd = initialCommand else { return true }
+        return AgentTemplate.binaryExists(cmd)
+    }
+
+    private static let installPaths: [String] = {
+        let home = NSHomeDirectory()
+        return [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "\(home)/.local/bin",
+            "\(home)/.npm-global/bin",
+            "\(home)/.cargo/bin",
+        ]
+    }()
+
+    static func binaryExists(_ cmd: String) -> Bool {
+        installPaths.contains { FileManager.default.isExecutableFile(atPath: "\($0)/\(cmd)") }
+    }
+
     init(
         id: String,
         title: String,
