@@ -14,6 +14,8 @@ struct SkillsView: View {
     @State private var totalCount = 0
     @State private var activeCount = 0
     @State private var inactiveCount = 0
+    @State private var contextUsed = 0
+    @State private var contextBudget = 15000
 
     @State private var hoverBack = false
     @State private var hoverClean = false
@@ -31,6 +33,8 @@ struct SkillsView: View {
         let name: String
         let source: String // "~/.claude", "~/.agents", "~/.codex", "项目"
         let path: String
+        let skillDirName: String // e.g. "archviz-diagram"
+        let canonicalDirPath: String // parent directory of SKILL.md
         var description: String
         var triggerCount: Int
         var lastTriggered: String
@@ -38,7 +42,16 @@ struct SkillsView: View {
         var duplicateCount: Int
         var hasIssue: Bool
         var issueDescription: String?
+        var agentPresence: Set<String> // "claude", "codex", "agents", "hermes", "gemini"
     }
+
+    static let agentDefs: [(key: String, label: String, icon: String, subdir: String)] = [
+        ("claude", "Claude", "c.circle.fill", ".claude/skills"),
+        ("agents", "Agents", "person.2.circle.fill", ".agents/skills"),
+        ("codex", "Codex", "terminal.fill", ".codex/skills"),
+        ("gemini", "Gemini", "g.circle.fill", ".gemini/skills"),
+        ("hermes", "Hermes", "h.circle.fill", ".hermes/skills"),
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -248,33 +261,40 @@ struct SkillsView: View {
                 }
             )
 
-            // Stat 5: Budget
+            // Stat 5: Budget (real calculation)
             VStack(alignment: .leading, spacing: 8) {
+                let ratio = contextBudget > 0 ? Double(contextUsed) / Double(contextBudget) : 0
+                let overLimit = contextUsed > contextBudget
                 HStack(alignment: .lastTextBaseline) {
                     Text("Claude 常驻预算")
                         .font(Theme.display(13))
                         .foregroundStyle(Theme.chromeForeground)
                     Spacer()
-                    Text("≈超限 2.4×")
+                    Text(overLimit ? "超限 \(String(format: "%.1f", ratio))×" : "\(Int(ratio * 100))%")
                         .font(Theme.mono(13, weight: .bold))
-                        .foregroundStyle(Theme.activityAttention)
+                        .foregroundStyle(overLimit ? Theme.activityAttention : Theme.gitInsertion)
                 }
 
                 GeometryReader { geo in
+                    let fillRatio = min(ratio, 1.0)
+                    let overFillRatio = max(ratio - 1.0, 0)
                     HStack(spacing: 0) {
                         Rectangle()
-                            .fill(Theme.activityAttention)
-                            .frame(width: geo.size.width * 0.42)
-                        Rectangle()
-                            .fill(Theme.activityFailure)
-                            .frame(width: geo.size.width * 0.58)
+                            .fill(overLimit ? Theme.activityAttention : Theme.gitInsertion)
+                            .frame(width: geo.size.width * fillRatio)
+                        if overFillRatio > 0 {
+                            Rectangle()
+                                .fill(Theme.activityFailure)
+                                .frame(width: geo.size.width * min(overFillRatio, 1.0))
+                        }
+                        Spacer()
                     }
                 }
                 .frame(height: 14)
                 .bracketBorder()
                 .padding(.vertical, 4)
 
-                Text("35,664 字 / 15,000 预算 — 超出部分被静默丢弃，对应 skill 不会触发")
+                Text("\(contextUsed.formatted()) 字 / \(contextBudget.formatted()) 预算\(overLimit ? " — 超出部分被静默丢弃" : "")")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
                     .lineLimit(2)
@@ -381,7 +401,7 @@ struct SkillsView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(filtered) { skill in
-                        SkillRow(skill: skill, onReveal: revealInFinder, onCopy: copyPath, onDelete: deleteSkill)
+                        SkillRow(skill: skill, onReveal: revealInFinder, onCopy: copyPath, onDelete: deleteSkill, onToggleAgent: toggleAgent)
                             .overlay(
                                 VStack {
                                     Spacer()
@@ -512,24 +532,56 @@ struct SkillsView: View {
                     name: name,
                     source: entry.source,
                     path: skillFilePath.isEmpty ? skillDirPath : skillFilePath,
+                    skillDirName: subdir,
+                    canonicalDirPath: skillDirPath,
                     description: desc,
                     triggerCount: seed.count,
                     lastTriggered: seed.last,
                     isDuplicate: false,
                     duplicateCount: 1,
                     hasIssue: hasIssue,
-                    issueDescription: issueDesc
+                    issueDescription: issueDesc,
+                    agentPresence: []
                 ))
             }
         }
 
-        // Group by name to detect duplicates
+        // Group by name to detect duplicates and compute agentPresence
         var grouped: [String: [Int]] = [:]
         for (index, item) in items.enumerated() {
             grouped[item.name, default: []].append(index)
         }
 
-        for (_, indices) in grouped {
+        // Build agent presence: check each agent's skills dir for this skill's dirName
+        let agentDefs = SkillsView.agentDefs
+        for (name, indices) in grouped {
+            let dirName = items[indices[0]].skillDirName
+            var presence: Set<String> = []
+            for def in agentDefs {
+                let agentSkillPath = (home as NSString)
+                    .appendingPathComponent(def.subdir)
+                    .appending("/\(dirName)")
+                var isD: ObjCBool = false
+                if fm.fileExists(atPath: agentSkillPath, isDirectory: &isD) {
+                    presence.insert(def.key)
+                }
+            }
+            // Fallback: if agentPresence is empty, infer from source
+            if presence.isEmpty {
+                for idx in indices {
+                    switch items[idx].source {
+                    case "~/.claude": presence.insert("claude")
+                    case "~/.agents": presence.insert("agents")
+                    case "~/.codex": presence.insert("codex")
+                    default: break
+                    }
+                }
+            }
+            _ = name
+            for idx in indices {
+                items[idx].agentPresence = presence
+            }
+
             if indices.count > 1 {
                 for idx in indices {
                     items[idx].isDuplicate = true
@@ -546,13 +598,16 @@ struct SkillsView: View {
                     name: "pptx-export",
                     source: "~/.codex",
                     path: (home as NSString).appendingPathComponent(".codex/skills/pptx-export/SKILL.md"),
+                    skillDirName: "pptx-export",
+                    canonicalDirPath: (home as NSString).appendingPathComponent(".codex/skills/pptx-export"),
                     description: "Export editable PPTX — skill body present but YAML frontmatter missing.",
                     triggerCount: 0,
                     lastTriggered: "—",
                     isDuplicate: false,
                     duplicateCount: 1,
                     hasIssue: true,
-                    issueDescription: "缺 frontmatter"
+                    issueDescription: "缺 frontmatter",
+                    agentPresence: ["codex"]
                 ))
             }
 
@@ -561,13 +616,16 @@ struct SkillsView: View {
                     name: "db-migrate",
                     source: "~/.agents",
                     path: (home as NSString).appendingPathComponent(".agents/skills/db-migrate/SKILL.md"),
+                    skillDirName: "db-migrate",
+                    canonicalDirPath: (home as NSString).appendingPathComponent(".agents/skills/db-migrate"),
                     description: "Plan and run schema migrations — description exceeds 1024 chars, truncated.",
                     triggerCount: 0,
                     lastTriggered: "—",
                     isDuplicate: false,
                     duplicateCount: 1,
                     hasIssue: true,
-                    issueDescription: "描述截断"
+                    issueDescription: "描述截断",
+                    agentPresence: ["agents"]
                 ))
             }
         }
@@ -633,6 +691,28 @@ struct SkillsView: View {
         return (name, description, false, nil)
     }
 
+    private func toggleAgent(skill: SkillItem, agentKey: String) {
+        guard let def = SkillsView.agentDefs.first(where: { $0.key == agentKey }) else { return }
+        let home = NSHomeDirectory()
+        let agentSkillsDir = (home as NSString).appendingPathComponent(def.subdir)
+        let targetPath = (agentSkillsDir as NSString).appendingPathComponent(skill.skillDirName)
+        let fm = FileManager.default
+
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: targetPath, isDirectory: &isDir) {
+            // Already present → remove (disable for this agent)
+            try? fm.removeItem(atPath: targetPath)
+        } else {
+            // Not present → create symlink pointing to canonical dir
+            try? fm.createDirectory(atPath: agentSkillsDir, withIntermediateDirectories: true, attributes: nil)
+            try? fm.createSymbolicLink(
+                at: URL(fileURLWithPath: targetPath),
+                withDestinationURL: URL(fileURLWithPath: skill.canonicalDirPath)
+            )
+        }
+        loadSkills(silent: true)
+    }
+
     private func seedTriggerInfo(name: String) -> (count: Int, last: String) {
         let hash = abs(name.hashValue)
         let count = hash % 6
@@ -651,6 +731,25 @@ struct SkillsView: View {
         issueCount = skills.filter { $0.hasIssue }.count
         activeCount = skills.filter { $0.triggerCount > 0 }.count
         inactiveCount = skills.filter { $0.triggerCount == 0 }.count
+
+        // Real context budget: count chars in ~/.claude/skills/**/(SKILL|README).md
+        let home = NSHomeDirectory()
+        let claudeSkillsPath = (home as NSString).appendingPathComponent(".claude/skills")
+        let fm = FileManager.default
+        var used = 0
+        if let subdirs = try? fm.contentsOfDirectory(atPath: claudeSkillsPath) {
+            for subdir in subdirs where !subdir.hasPrefix(".") {
+                let dirPath = (claudeSkillsPath as NSString).appendingPathComponent(subdir)
+                for filename in ["SKILL.md", "README.md", "SKILL_CN.md"] {
+                    let fp = (dirPath as NSString).appendingPathComponent(filename)
+                    if let content = try? String(contentsOfFile: fp, encoding: .utf8) {
+                        used += content.count
+                        break
+                    }
+                }
+            }
+        }
+        contextUsed = used
     }
 
     private func performCleanup() {
@@ -766,6 +865,7 @@ private struct SkillRow: View {
     let onReveal: (SkillsView.SkillItem) -> Void
     let onCopy: (SkillsView.SkillItem) -> Void
     let onDelete: (SkillsView.SkillItem) -> Void
+    let onToggleAgent: (SkillsView.SkillItem, String) -> Void
 
     @State private var isHovered = false
 
@@ -782,25 +882,6 @@ private struct SkillRow: View {
                             Text(skill.name)
                                 .font(Theme.mono(13, weight: .bold))
                                 .foregroundStyle(Theme.chromeForeground)
-
-                            Text(skill.source)
-                                .font(Theme.mono(10))
-                                .foregroundStyle(Theme.chromeMuted)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .bracketBorder()
-
-                            if skill.isDuplicate {
-                                Text("跨端 ×\(skill.duplicateCount)")
-                                    .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.activityAttention)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 1)
-                                    .overlay(
-                                        Rectangle()
-                                            .stroke(Theme.activityAttention.opacity(0.4), lineWidth: 1)
-                                    )
-                            }
 
                             if skill.hasIssue, let issue = skill.issueDescription {
                                 Text(issue)
@@ -822,6 +903,20 @@ private struct SkillRow: View {
                             .truncationMode(.tail)
                     }
                     Spacer()
+
+                    // Agent presence toggles (cc-switch AppToggleGroup equivalent)
+                    HStack(spacing: 4) {
+                        ForEach(SkillsView.agentDefs, id: \.key) { def in
+                            let active = skill.agentPresence.contains(def.key)
+                            Button(action: { onToggleAgent(skill, def.key) }) {
+                                Image(systemName: def.icon)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(active ? Theme.activityRunning : Theme.chromeMuted.opacity(0.35))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .help("\(def.label)\(active ? " ✓ 已启用（点击禁用）" : "（点击启用）")")
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
