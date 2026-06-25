@@ -5,7 +5,7 @@ import Foundation
 /// About panel matches the latest CHANGELOG `vX.Y` tag.
 enum ArcherApp {
     static let name = "Archer" // [archer] display name; internal id stays ArcherApp
-    static let displayVersion = "1.0.3"
+    static let displayVersion = "1.0.4"
     static let tagline = "A minimal modern terminal for AI coding"
     static let author = "archsueh"
     static let authorURL = URL(string: "https://github.com/archsueh/archer")!
