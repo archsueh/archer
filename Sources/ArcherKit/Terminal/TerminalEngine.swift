@@ -22,6 +22,20 @@ struct TerminalSessionConfig {
     static func bashShell(launcher: String) -> TerminalSessionConfig {
         TerminalSessionConfig(command: launcher, arguments: [], workingDirectory: nil, environment: [:])
     }
+
+    /// Fish shell with XDG_DATA_DIRS pointing at archer's vendor data root so
+    /// fish auto-sources `fish/vendor_conf.d/archer.fish` on startup. Avoids
+    /// `-C` injection (autocomplete wrappers like Fig/kiro swallow that flag).
+    static func fishShell(dataRoot: String) -> TerminalSessionConfig {
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/usr/local/bin/fish"
+        let parentXDG = ProcessInfo.processInfo.environment["XDG_DATA_DIRS"] ?? "/usr/local/share:/usr/share"
+        return TerminalSessionConfig(
+            command: shell,
+            arguments: [],
+            workingDirectory: nil,
+            environment: ["XDG_DATA_DIRS": "\(dataRoot):\(parentXDG)"]
+        )
+    }
 }
 
 @MainActor

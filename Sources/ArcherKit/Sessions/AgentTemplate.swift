@@ -153,9 +153,9 @@ struct AgentTemplate: Identifiable, Hashable {
         resumeId: String? = nil,
         initialPrompt: String? = nil
     ) -> TerminalSessionConfig {
-        // Pick a shell that has a archer integration wrapper. Plain terminal
-        // sessions respect $SHELL where we have a wrapper (zsh/bash); other
-        // shells (fish/nu/...) get $SHELL too, just without cwd tracking.
+        // Pick a shell that has an archer integration wrapper. Plain terminal
+        // sessions respect $SHELL where we have a wrapper (zsh/bash/fish);
+        // other shells get $SHELL too, just without full cwd tracking.
         // Agent sessions force a wrapped shell so ARCHER_AGENT auto-launch
         // works — `.other` users get zsh as a working fallback.
         var config: TerminalSessionConfig
@@ -164,6 +164,8 @@ struct AgentTemplate: Identifiable, Hashable {
             config = .bashShell(launcher: ArcherShellIntegration.bashLauncherPath)
         case (.zsh, _):
             config = .zshShell()
+        case (.fish, _):
+            config = .fishShell(dataRoot: ArcherShellIntegration.fishVendorDataRoot.path)
         case (.other, .none):
             config = .defaultShell()
         case (.other, .some):

@@ -34,18 +34,21 @@ final class AgentTemplateTests: XCTestCase {
             XCTAssertEqual(cmd, ArcherShellIntegration.zshPath)
         case .bash:
             XCTAssertTrue(cmd.contains("archer-bash-launch-"), "bash terminal must use the launcher wrapper: \(cmd)")
+        case .fish:
+            XCTAssertEqual(cmd, ProcessInfo.processInfo.environment["SHELL"] ?? "/usr/local/bin/fish")
         case .other:
             XCTAssertEqual(cmd, ProcessInfo.processInfo.environment["SHELL"] ?? ArcherShellIntegration.zshPath)
         }
     }
 
     func testAgentTemplatesPickAShellWithIntegrationWrapper() {
-        // Agent must run under one of our wrappers (zsh ZDOTDIR or bash
-        // --rcfile) — anything else means ARCHER_AGENT never fires.
+        // Agent must run under one of our wrappers (zsh ZDOTDIR, bash --rcfile,
+        // or fish XDG_DATA_DIRS) — anything else means ARCHER_AGENT never fires.
         for template in AgentTemplate.all where template.id != "terminal" {
             let cmd = template.makeSessionConfig().command
+            let isFish = cmd.hasSuffix("/fish")
             XCTAssertTrue(
-                cmd == "/bin/zsh" || cmd.contains("archer-bash-launch-"),
+                cmd == "/bin/zsh" || cmd.contains("archer-bash-launch-") || isFish,
                 "agent template \(template.id) launched without a archer shell wrapper: \(cmd)"
             )
         }

@@ -332,6 +332,10 @@ enum ArcherShellIntegration {
         writeWrapper(name: "kimi", script: bracketWrapperScript(slug: "kimi"))
         writeWrapper(name: "pi", script: bracketWrapperScript(slug: "pi"))
         writeWrapper(name: "kiro-cli", script: bracketWrapperScript(slug: "kiro-cli"))
+        // Gemini needs a bracket wrapper so the agent icon lights on manual
+        // `gemini` launch. GEMINI_CLI_SYSTEM_SETTINGS_PATH alone only fires
+        // BeforeAgent/AfterAgent hooks (first message), not on CLI startup.
+        writeWrapper(name: "gemini", script: bracketWrapperScript(slug: "gemini"))
         refreshSshRemoteAgentDetection(enabled: sshRemoteAgentDetection)
 
         let hookCmd = archerHookBinaryPath
@@ -339,6 +343,7 @@ enum ArcherShellIntegration {
         writeJSON(at: geminiDefaultsPath, object: geminiDefaultsObject(hookCmd: hookCmd))
         installCopilotHooksIfPresent(hookCmd: hookCmd)
         writeManagedFile(at: opencodePluginPath, contents: opencodePluginScript)
+        installFishVendorConf()
         installPiExtensionIfPresent()
         // Grok CLI has no JSON hook file like Claude — its `~/.grok/hooks/`
         // is a script directory driven by env vars (GROK_HOOK_EVENT /
@@ -404,6 +409,111 @@ enum ArcherShellIntegration {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         writeManagedFile(at: dir.appendingPathComponent("archer.ts").path, contents: piExtensionScript)
     }
+
+    /// Writes the fish vendor_conf.d script that archer sources on every fish
+    /// shell startup via XDG_DATA_DIRS injection. Idempotent — skips if the
+    /// user has a non-archer file at the same path.
+    private static func installFishVendorConf() {
+        let confDir = fishVendorDataRoot.appendingPathComponent("fish/vendor_conf.d", isDirectory: true)
+        try? FileManager.default.createDirectory(at: confDir, withIntermediateDirectories: true)
+        writeManagedFile(at: fishVendorConfPath, contents: fishInitScript)
+    }
+
+    /// Fish integration script — sourced automatically via XDG_DATA_DIRS →
+    /// fish/vendor_conf.d/archer.fish. Registers OSC 7 (cwd), OSC 133 (prompt
+    /// boundaries), env-status IPC, and ARCHER_AGENT auto-launch. Only activates
+    /// inside interactive sessions that carry ARCHER_SURFACE_ID.
+    static let fishInitScript = """
+    # \(managedFileMarker) — archer fish integration
+    # Sourced via XDG_DATA_DIRS → fish/vendor_conf.d/archer.fish. Do not edit;
+    # this file is regenerated on every archer launch.
+
+    if status is-interactive; and not set -q ARCHER_FISH_INTEGRATED; and set -q ARCHER_SURFACE_ID
+
+    set -gx ARCHER_FISH_INTEGRATED 1
+
+    # Re-prepend archer's bin dir so wrapper shims stay first even if the
+    # user's rc rewrites PATH (fish_add_path is idempotent on duplicates).
+    if set -q ARCHER_BIN_DIR
+        fish_add_path --prepend --global "$ARCHER_BIN_DIR"
+    end
+
+    # ── OSC 7: cwd tracking ──────────────────────────────────────────────────
+    function __archer_osc7 --on-variable PWD --description "archer: report cwd via OSC 7"
+        status is-interactive; or return
+        printf '\\e]7;file://%s%s\\e\\\\' (hostname) $PWD
+    end
+    __archer_osc7
+
+    # ── OSC 133 + title: prompt/command boundaries ───────────────────────────
+    set -g __archer_133_first 1
+
+    function __archer_fish_prompt --on-event fish_prompt --description "archer: OSC 133 prompt markers + title"
+        # Capture $status immediately — any test/command in this function
+        # would overwrite it, masking the real last-command exit code.
+        set -l _s $status
+        if test $__archer_133_first -eq 0
+            printf '\\e]133;D;%s\\a' $_s
+        end
+        set -g __archer_133_first 0
+        printf '\\e]2;%s\\a' $PWD
+        printf '\\e]133;A;cl=line\\a'
+        __archer_env_status
+    end
+
+    function __archer_fish_preexec --on-event fish_preexec --description "archer: OSC 133 command start"
+        printf '\\e]133;C\\a'
+    end
+
+    # ── Env-status IPC ───────────────────────────────────────────────────────
+    function __archer_env_status --description "archer: send env snapshot to ArcherHook"
+        set -q ARCHER_SURFACE_ID; or return 0
+        set -q ARCHER_HOOK_BIN; or return 0
+        test -x "$ARCHER_HOOK_BIN"; or return 0
+        set -l node_path (command -v node 2>/dev/null; or echo "")
+        set -l node_key "$node_path|$NVM_BIN"
+        if test "$node_key" != "$_ARCHER_NODE_KEY_LAST"
+            set -g _ARCHER_NODE_VERSION_LAST ""
+            if test -n "$node_path"
+                set -g _ARCHER_NODE_VERSION_LAST ($node_path --version 2>/dev/null; or echo "")
+            end
+            set -g _ARCHER_NODE_KEY_LAST "$node_key"
+        end
+        set -l https_p (set -q https_proxy; and echo $https_proxy; or set -q HTTPS_PROXY; and echo $HTTPS_PROXY; or echo "")
+        set -l http_p  (set -q http_proxy;  and echo $http_proxy;  or set -q HTTP_PROXY;  and echo $HTTP_PROXY;  or echo "")
+        set -l all_p   (set -q all_proxy;   and echo $all_proxy;   or set -q ALL_PROXY;   and echo $ALL_PROXY;   or echo "")
+        set -l env_now "$VIRTUAL_ENV|$CONDA_DEFAULT_ENV|$NVM_BIN|$NVM_DIR|$_ARCHER_NODE_VERSION_LAST|$https_p|$http_p|$all_p"
+        test "$env_now" = "$_ARCHER_ENV_LAST"; and return 0
+        "$ARCHER_HOOK_BIN" env "$VIRTUAL_ENV" "$CONDA_DEFAULT_ENV" "$NVM_BIN" "$NVM_DIR" "$_ARCHER_NODE_VERSION_LAST" "$https_p" "$http_p" "$all_p" 2>/dev/null
+        and set -g _ARCHER_ENV_LAST "$env_now"
+        return 0
+    end
+
+    # ── ARCHER_AGENT auto-launch ─────────────────────────────────────────────
+    if set -q ARCHER_AGENT; and not set -q ARCHER_AGENT_LAUNCHED
+        set -gx ARCHER_AGENT_LAUNCHED 1
+        set -l _archer_cmd $ARCHER_AGENT
+        set -l _archer_agent_bin (string split " " "$_archer_cmd")[1]
+        set -e ARCHER_AGENT
+        # Strip --resume <id> when the session file is missing — same guard as
+        # the zsh/bash wrappers; missing sessions cause agents to error and exit.
+        if string match -q "* --resume *" "$_archer_cmd"
+            set -l _archer_resume_id (string replace -r '.* --resume (\\S+).*' '$1' "$_archer_cmd")
+            if test -n "$_archer_resume_id"
+                if not find ~/.claude/projects -name "$_archer_resume_id.jsonl" -maxdepth 2 2>/dev/null | grep -q .
+                    set _archer_cmd (string replace " --resume $_archer_resume_id" "" "$_archer_cmd")
+                end
+            end
+        end
+        eval "$_archer_cmd"
+        set -l _archer_exit $status
+        if set -q ARCHER_SURFACE_ID; and set -q ARCHER_HOOK_BIN
+            "$ARCHER_HOOK_BIN" "$_archer_agent_bin" ended 2>/dev/null
+        end
+    end
+
+    end # if status is-interactive; and not ARCHER_FISH_INTEGRATED; and ARCHER_SURFACE_ID
+    """
 
     /// Pi extension (TypeScript, auto-loaded from `~/.pi/agent/extensions/`).
     /// Subscribes to pi's lifecycle events and pings ArcherHook so the sidebar
@@ -1136,13 +1246,31 @@ enum ArcherShellIntegration {
     }
     """
 
-    enum DetectedUserShell { case zsh, bash, other }
+    enum DetectedUserShell { case zsh, bash, fish, other }
 
     static var detectedUserShell: DetectedUserShell {
         let path = ProcessInfo.processInfo.environment["SHELL"] ?? zshPath
         if path.hasSuffix("/zsh") { return .zsh }
         if path.hasSuffix("/bash") { return .bash }
+        if path.hasSuffix("/fish") { return .fish }
         return .other
+    }
+
+    /// Application Support base for Archer (~/Library/Application Support/archer).
+    static let archerAppSupportURL: URL = {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return support.appendingPathComponent("archer", isDirectory: true)
+    }()
+
+    /// Root data directory exposed via XDG_DATA_DIRS to fish shells so fish
+    /// can locate `fish/vendor_conf.d/archer.fish` without any user rc edits.
+    static let fishVendorDataRoot: URL = archerAppSupportURL.appendingPathComponent("fish-data", isDirectory: true)
+
+    /// Absolute path of the fish init script that archer writes on every launch.
+    static var fishVendorConfPath: String {
+        fishVendorDataRoot
+            .appendingPathComponent("fish/vendor_conf.d/archer.fish")
+            .path
     }
 
     /// Path to a tiny launcher script that re-execs bash as an interactive,
