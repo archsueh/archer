@@ -48,8 +48,13 @@ struct FilePanelView: View {
         watcher?.add(dir)
     }
 
+    /// Move source (or all selected items if source is in the selection) into dest.
     private func move(_ source: URL, into dest: URL) {
-        _ = try? model.move(source, into: dest)
+        let targets = model.selection.contains(source) ? Array(model.selection) : [source]
+        for url in targets {
+            _ = try? model.move(url, into: dest)
+        }
+        model.clearSelection()
     }
 
     // MARK: Header
@@ -129,10 +134,20 @@ struct FilePanelView: View {
         return ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 10) {
                 ForEach(items, id: \.id) { item in
-                    FileGridCell(item: item, onOpen: {
-                        if item.isDirectory { currentDir = item.url }
-                        else { pasteFilePath(item.url.path) }
-                    }, onMove: move)
+                    FileGridCell(
+                        item: item,
+                        isSelected: model.selection.contains(item.url),
+                        onOpen: {
+                            if item.isDirectory { currentDir = item.url }
+                            else { pasteFilePath(item.url.path) }
+                        },
+                        onMove: move,
+                        onSelect: { extend in
+                            if extend { model.toggleSelect(item.url) }
+                            else { model.setSelection(item.url) }
+                        },
+                        onDuplicate: { _ = try? model.duplicate(item.url) }
+                    )
                 }
             }
             .padding(10)
@@ -169,6 +184,10 @@ private struct FileTreeNodeView: View {
         }
     }
 
+    private var isSelected: Bool {
+        model.selection.contains(item.url)
+    }
+
     private var row: some View {
         HStack(spacing: 6) {
             Image(systemName: item.isDirectory ? (isExpanded ? "folder.fill" : "folder") : iconName(item.url))
@@ -180,17 +199,46 @@ private struct FileTreeNodeView: View {
                 .foregroundStyle(Theme.chromeForeground.opacity(item.isDirectory ? 0.9 : 0.72))
                 .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
+            if isSelected && model.selection.count > 1 {
+                Text("\(model.selection.count)")
+                    .font(Theme.mono(9))
+                    .foregroundStyle(Theme.chromeMuted)
+                    .padding(.trailing, 4)
+            }
         }
         .padding(.leading, CGFloat(depth) * 12 + 8)
         .padding(.vertical, 4).padding(.trailing, 8)
-        .background(targeted ? Theme.chromeHover : (hovered ? Theme.chromeHover.opacity(0.5) : Color.clear))
+        .background(
+            targeted ? Theme.chromeHover
+                : isSelected ? Theme.chromeHover.opacity(0.75)
+                : hovered ? Theme.chromeHover.opacity(0.5)
+                : Color.clear
+        )
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .onTapGesture {
-            if item.isDirectory {
-                isExpanded ? model.collapse(item.url) : model.expand(item.url)
+            if NSEvent.modifierFlags.contains(.command) {
+                model.toggleSelect(item.url)
             } else {
-                pasteFilePath(item.url.path)
+                model.setSelection(item.url)
+                if item.isDirectory {
+                    isExpanded ? model.collapse(item.url) : model.expand(item.url)
+                } else {
+                    pasteFilePath(item.url.path)
+                }
+            }
+        }
+        .contextMenu {
+            if !item.isDirectory {
+                Button("Duplicate") { _ = try? model.duplicate(item.url) }
+                Divider()
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.selectFile(item.url.path, inFileViewerRootedAtPath: "")
+            }
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(item.url.path, forType: .string)
             }
         }
         .onDrag { NSItemProvider(object: item.url as NSURL) }
@@ -202,8 +250,11 @@ private struct FileTreeNodeView: View {
 
 private struct FileGridCell: View {
     let item: FileTreeItem
+    let isSelected: Bool
     let onOpen: () -> Void
     let onMove: (URL, URL) -> Void
+    let onSelect: (_ extend: Bool) -> Void
+    let onDuplicate: () -> Void
     @State private var targeted = false
 
     var body: some View {
@@ -219,10 +270,31 @@ private struct FileGridCell: View {
         }
         .frame(width: 74, height: 66)
         .padding(4)
-        .background(targeted ? Theme.chromeHover : Color.clear)
+        .background(
+            targeted ? Theme.chromeHover
+                : isSelected ? Theme.chromeHover.opacity(0.75)
+                : Color.clear
+        )
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
-        .onTapGesture { onOpen() }
+        .onTapGesture {
+            let extend = NSEvent.modifierFlags.contains(.command)
+            onSelect(extend)
+            if !extend { onOpen() }
+        }
+        .contextMenu {
+            if !item.isDirectory {
+                Button("Duplicate") { onDuplicate() }
+                Divider()
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.selectFile(item.url.path, inFileViewerRootedAtPath: "")
+            }
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(item.url.path, forType: .string)
+            }
+        }
         .onDrag { NSItemProvider(object: item.url as NSURL) }
         .modifier(FolderDrop(isDir: item.isDirectory, dest: item.url, targeted: $targeted, onMove: onMove))
     }

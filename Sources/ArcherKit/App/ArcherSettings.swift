@@ -83,6 +83,14 @@ enum ArcherSettings {
               let terminal = parsed["terminal"] as? [String: Any],
               !terminal.isEmpty else { return }
         var lines: [String] = []
+        // Non-theme terminal keys first — theme lines come last so
+        // foreground / background from the preset always win (ghostty
+        // last-write-wins within a single load_string call).
+        for key in terminal.keys.sorted() where key != "theme" && key != "autoLightTheme" && key != "autoDarkTheme" {
+            if let value = terminal[key] {
+                lines.append(contentsOf: formatGhosttyLines(key: key, value: value))
+            }
+        }
         if let rawTheme = terminal["theme"] as? String {
             var actualTheme = rawTheme
             if rawTheme == "__archer-auto-theme" {
@@ -96,11 +104,6 @@ enum ArcherSettings {
                 // Raw JSON users can still point at a custom Ghostty theme
                 // path or name. The Settings UI only writes bundled preset ids.
                 lines.append(contentsOf: formatGhosttyLines(key: "theme", value: actualTheme))
-            }
-        }
-        for key in terminal.keys.sorted() where key != "theme" && key != "autoLightTheme" && key != "autoDarkTheme" {
-            if let value = terminal[key] {
-                lines.append(contentsOf: formatGhosttyLines(key: key, value: value))
             }
         }
         let text = lines.joined(separator: "\n")
