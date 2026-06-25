@@ -213,8 +213,6 @@ struct UsageView: View {
     @Bindable var store: WorkspaceStore
     @StateObject private var viewModel = UsageViewModel()
     @State private var selectedAgentId: String = ""
-    @State private var hoverBack = false
-
     var availableAgents: [AgentTemplate] {
         var usedIds = Set<String>()
 
@@ -325,30 +323,6 @@ struct UsageView: View {
     private var titlebar: some View {
         HStack(spacing: Theme.space3) {
             Color.clear.frame(width: 82)
-
-            Button(action: {
-                withAnimation(Theme.chromeTransition) {
-                    store.activeScreen = .cockpit
-                }
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("Archer")
-                        .font(Theme.mono(11.5))
-                }
-                .foregroundStyle(Theme.chromeForeground)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(hoverBack ? Theme.chromeHover : Color.clear)
-                .bracketBorder()
-            }
-            .buttonStyle(PlainButtonStyle())
-            .onHover { hoverBack = $0 }
-
-            Rectangle()
-                .fill(Theme.chromeHairline)
-                .frame(width: 1, height: 20)
 
             HStack(spacing: 6) {
                 Image(systemName: "gauge.medium")

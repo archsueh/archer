@@ -17,7 +17,6 @@ struct SkillsView: View {
     @State private var contextUsed = 0
     @State private var contextBudget = 15000
 
-    @State private var hoverBack = false
     @State private var hoverClean = false
     @State private var hoverSort = false
 
@@ -96,30 +95,6 @@ struct SkillsView: View {
     private var titlebar: some View {
         HStack(spacing: Theme.space3) {
             Color.clear.frame(width: 82)
-
-            Button(action: {
-                withAnimation(Theme.chromeTransition) {
-                    store.activeScreen = .cockpit
-                }
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("Archer")
-                        .font(Theme.mono(11.5))
-                }
-                .foregroundStyle(Theme.chromeForeground)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(hoverBack ? Theme.chromeHover : Color.clear)
-                .bracketBorder()
-            }
-            .buttonStyle(PlainButtonStyle())
-            .onHover { hoverBack = $0 }
-
-            Rectangle()
-                .fill(Theme.chromeHairline)
-                .frame(width: 1, height: 20)
 
             HStack(spacing: 6) {
                 Image(systemName: "square.stack.3d.up")
