@@ -212,6 +212,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // synchronously inside windowWillClose can crash AppKit mid-close.
         DispatchQueue.main.async { [weak self] in
             self?.windowControllers.removeAll { $0 === controller }
+            // Panel windows (Skills, Usage) are not in windowControllers, so
+            // applicationShouldTerminateAfterLastWindowClosed never fires when
+            // only a panel is left — the app would become a zombie with no way
+            // back to a main window. Terminate explicitly here.
+            if isLastWindow, self?.isTerminating == false {
+                NSApp.terminate(nil)
+            }
         }
     }
 
