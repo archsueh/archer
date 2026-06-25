@@ -212,12 +212,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // synchronously inside windowWillClose can crash AppKit mid-close.
         DispatchQueue.main.async { [weak self] in
             self?.windowControllers.removeAll { $0 === controller }
-            // Panel windows (Skills, Usage) are not in windowControllers, so
-            // applicationShouldTerminateAfterLastWindowClosed never fires when
-            // only a panel is left — the app would become a zombie with no way
-            // back to a main window. Terminate explicitly here.
-            if isLastWindow, self?.isTerminating == false {
-                NSApp.terminate(nil)
+            // Panel windows (Skills, Usage) sit outside windowControllers, so
+            // applicationShouldTerminateAfterLastWindowClosed never fires while
+            // they're open. Close them explicitly here so AppKit sees a true
+            // "all windows gone" state and terminates normally. Each panel's
+            // own windowWillClose still runs, letting isReleasedWhenClosed=false
+            // clean up correctly.
+            guard let self, isLastWindow, !self.isTerminating else { return }
+            for window in NSApp.windows where !self.windowControllers.contains(where: { $0.window === window }) {
+                window.close()
             }
         }
     }

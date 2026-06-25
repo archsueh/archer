@@ -33,7 +33,7 @@ final class SkillsPanelWindowController: NSWindowController {
         self.host = host
         let window = NSWindow(contentViewController: host)
         window.title = "Skills"
-        window.styleMask = [.titled]
+        window.styleMask = [.titled, .closable]
         window.setContentSize(NSSize(width: 860, height: 560))
         window.isReleasedWhenClosed = false
         window.appearance = Theme.windowAppearance
