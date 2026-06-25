@@ -120,12 +120,6 @@ swift test                           # 383 unit tests
         <sub><b>archsueh</b></sub>
       </a>
     </td>
-    <td align="center" width="120">
-      <a href="https://claude.com/claude-code">
-        <img src="https://github.com/claude.png" width="72" alt="Claude"/><br/>
-        <sub><b>Claude</b></sub>
-      </a>
-    </td>
   </tr>
 </table>
 
