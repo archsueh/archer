@@ -13,9 +13,32 @@ final class FileTreeModel: ObservableObject {
     @Published private(set) var childrenByDir: [URL: [FileTreeItem]] = [:]
     /// Directories currently expanded in the UI.
     @Published var expanded: Set<URL> = []
+    /// Currently selected items (cmd-click to multi-select).
+    @Published var selection: Set<URL> = []
 
     init(rootURL: URL) {
         self.rootURL = rootURL
+    }
+
+    func setSelection(_ url: URL) {
+        selection = [url]
+    }
+
+    func toggleSelect(_ url: URL) {
+        if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
+    }
+
+    func clearSelection() {
+        selection = []
+    }
+
+    /// Copy `source` in-place with a collision-free name, then refresh the parent dir.
+    @discardableResult
+    func duplicate(_ source: URL) throws -> URL {
+        let dest = collisionFreeURL(for: source.lastPathComponent, in: source.deletingLastPathComponent())
+        try FileManager.default.copyItem(at: source, to: dest)
+        refresh(source.deletingLastPathComponent())
+        return dest
     }
 
     /// Directory listing: directories first, then files, each localized-standard
