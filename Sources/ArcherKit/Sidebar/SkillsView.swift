@@ -851,38 +851,23 @@ private struct SkillRow: View {
                     }
                     Spacer()
 
-                    // Agent presence indicators + one-click relay
-                    HStack(spacing: 8) {
-                        HStack(spacing: 4) {
-                            ForEach(SkillsView.agentDefs, id: \.key) { def in
-                                Image(systemName: def.icon)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(
-                                        skill.agentPresence.contains(def.key)
-                                            ? Theme.activityRunning
-                                            : Theme.chromeMuted.opacity(0.25)
-                                    )
-                                    .help(def.label + (skill.agentPresence.contains(def.key) ? " ✓" : ""))
+                    // One-click relay to all missing agents
+                    let missingAgents = SkillsView.agentDefs.filter { !skill.agentPresence.contains($0.key) }
+                    if !missingAgents.isEmpty {
+                        Button(action: {
+                            for def in missingAgents {
+                                onToggleAgent(skill, def.key)
                             }
+                        }) {
+                            Text("中继")
+                                .font(Theme.mono(10))
+                                .foregroundStyle(Theme.chromeMuted)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
                         }
-
-                        let missingAgents = SkillsView.agentDefs.filter { !skill.agentPresence.contains($0.key) }
-                        if !missingAgents.isEmpty {
-                            Button(action: {
-                                for def in missingAgents {
-                                    onToggleAgent(skill, def.key)
-                                }
-                            }) {
-                                Text("中继")
-                                    .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.chromeMuted)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("中继到所有缺失 agent（\(missingAgents.map(\.label).joined(separator: "、"))）")
-                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("中继到所有缺失 agent（\(missingAgents.map(\.label).joined(separator: "、"))）")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
