@@ -39,6 +39,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// every window during ⌘Q) can tell "app quitting" from "user closed
     /// one window" — the former keeps each window's persisted slot.
     private var isTerminating = false
+    private var cliDetectionController: CLIDetectionWindowController?
     /// Walks the macOS window cascade so a `⌘⇧N` window doesn't land
     /// exactly on top of the previous one.
     private var cascadePoint = NSPoint.zero
@@ -97,6 +98,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         installMainMenu()
+        showCLIDetectionIfNeeded()
         hookServer.start()
         notificationManager.onActivate = { [weak self] sessionId in
             self?.activateFromNotification(sessionId)
@@ -1043,6 +1045,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // NSWindow.center() takes no sender arg, so it can't be a direct
         // first-responder selector — wrap it.
         NSApp.keyWindow?.center()
+    }
+
+    private func showCLIDetectionIfNeeded() {
+        let key = "archer.cliDetectionShown"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let ctrl = CLIDetectionWindowController { [weak self] in
+            self?.cliDetectionController = nil
+        }
+        cliDetectionController = ctrl
+        ctrl.show()
     }
 
     @objc private func handleSwitchTab(_ sender: NSMenuItem) {

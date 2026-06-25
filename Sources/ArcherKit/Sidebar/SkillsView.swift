@@ -53,6 +53,12 @@ struct SkillsView: View {
         ("hermes", "Hermes", "h.circle.fill", ".hermes/skills"),
     ]
 
+    /// Derives the source label (e.g. "~/.hermes") from an agentDef's subdir.
+    static func sourceKey(for def: (key: String, label: String, icon: String, subdir: String)) -> String {
+        let top = def.subdir.split(separator: "/").first.map(String.init) ?? def.subdir
+        return "~/\(top)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             titlebar
@@ -144,7 +150,7 @@ struct SkillsView: View {
                 .font(Theme.display(24, weight: .semibold))
                 .foregroundStyle(Theme.chromeForeground)
 
-            Text("~/.claude · ~/.codex · ~/.agents — 触发统计 / 健康检查 / context 预算")
+            Text("~/.claude · ~/.agents · ~/.codex · ~/.hermes · ~/.gemini — 触发统计 / 健康检查 / context 预算")
                 .font(Theme.mono(11))
                 .foregroundStyle(Theme.chromeMuted)
         }
@@ -308,10 +314,11 @@ struct SkillsView: View {
     private var filterBar: some View {
         HStack(spacing: 8) {
             filterChip(title: "全部", count: totalCount, filterId: "all")
-            filterChip(title: "Claude 全局", count: skills.filter { $0.source == "~/.claude" }.count, filterId: "claude")
+            ForEach(SkillsView.agentDefs, id: \.key) { def in
+                let src = SkillsView.sourceKey(for: def)
+                filterChip(title: def.label, count: skills.filter { $0.source == src }.count, filterId: def.key)
+            }
             filterChip(title: "项目", count: skills.filter { $0.source == "项目" }.count, filterId: "project")
-            filterChip(title: "插件", count: skills.filter { $0.source == "插件" }.count, filterId: "plugin")
-            filterChip(title: "Codex", count: skills.filter { $0.source == "~/.codex" }.count, filterId: "codex")
             filterChip(title: "跨端重复", count: skills.filter { $0.isDuplicate }.count, filterId: "dup")
             filterChip(title: "仅看问题", count: skills.filter { $0.hasIssue }.count, filterId: "issue", isWarn: true)
 
@@ -419,20 +426,17 @@ struct SkillsView: View {
         var result = skills
 
         switch activeFilter {
-        case "claude":
-            result = result.filter { $0.source == "~/.claude" }
         case "project":
             result = result.filter { $0.source == "项目" }
-        case "plugin":
-            result = result.filter { $0.source == "插件" }
-        case "codex":
-            result = result.filter { $0.source == "~/.codex" }
         case "dup":
             result = result.filter { $0.isDuplicate }
         case "issue":
             result = result.filter { $0.hasIssue }
         default:
-            break
+            if let def = SkillsView.agentDefs.first(where: { $0.key == activeFilter }) {
+                let src = SkillsView.sourceKey(for: def)
+                result = result.filter { $0.source == src }
+            }
         }
 
         result.sort { a, b in
@@ -470,13 +474,12 @@ struct SkillsView: View {
         var watchDirs: [URL] = []
         let home = NSHomeDirectory()
 
-        let paths = [
-            (source: "~/.claude", path: (home as NSString).appendingPathComponent(".claude/skills")),
-            (source: "~/.agents", path: (home as NSString).appendingPathComponent(".agents/skills")),
-            (source: "~/.codex", path: (home as NSString).appendingPathComponent(".codex/skills")),
-        ]
+        let agentPaths = SkillsView.agentDefs.map { def -> (source: String, path: String) in
+            let src = SkillsView.sourceKey(for: def)
+            return (source: src, path: (home as NSString).appendingPathComponent(def.subdir))
+        }
 
-        var allPaths = paths
+        var allPaths = agentPaths
         if let workspace = store.active {
             let projectSkillsPath = workspace.workingDirectory.appendingPathComponent(".agents/skills").path
             allPaths.append((source: "项目", path: projectSkillsPath))
@@ -569,11 +572,9 @@ struct SkillsView: View {
             // Fallback: if agentPresence is empty, infer from source
             if presence.isEmpty {
                 for idx in indices {
-                    switch items[idx].source {
-                    case "~/.claude": presence.insert("claude")
-                    case "~/.agents": presence.insert("agents")
-                    case "~/.codex": presence.insert("codex")
-                    default: break
+                    let src = items[idx].source
+                    if let def = SkillsView.agentDefs.first(where: { SkillsView.sourceKey(for: $0) == src }) {
+                        presence.insert(def.key)
                     }
                 }
             }
@@ -587,46 +588,6 @@ struct SkillsView: View {
                     items[idx].isDuplicate = true
                     items[idx].duplicateCount = indices.count
                 }
-            }
-        }
-
-        // Seed two specific issues to showcase "有问题" and "一键清理" if there are none or very few issues
-        let issueItems = items.filter { $0.hasIssue }
-        if issueItems.count < 2 {
-            if !items.contains(where: { $0.name == "pptx-export" }) {
-                items.append(SkillItem(
-                    name: "pptx-export",
-                    source: "~/.codex",
-                    path: (home as NSString).appendingPathComponent(".codex/skills/pptx-export/SKILL.md"),
-                    skillDirName: "pptx-export",
-                    canonicalDirPath: (home as NSString).appendingPathComponent(".codex/skills/pptx-export"),
-                    description: "Export editable PPTX — skill body present but YAML frontmatter missing.",
-                    triggerCount: 0,
-                    lastTriggered: "—",
-                    isDuplicate: false,
-                    duplicateCount: 1,
-                    hasIssue: true,
-                    issueDescription: "缺 frontmatter",
-                    agentPresence: ["codex"]
-                ))
-            }
-
-            if !items.contains(where: { $0.name == "db-migrate" }) {
-                items.append(SkillItem(
-                    name: "db-migrate",
-                    source: "~/.agents",
-                    path: (home as NSString).appendingPathComponent(".agents/skills/db-migrate/SKILL.md"),
-                    skillDirName: "db-migrate",
-                    canonicalDirPath: (home as NSString).appendingPathComponent(".agents/skills/db-migrate"),
-                    description: "Plan and run schema migrations — description exceeds 1024 chars, truncated.",
-                    triggerCount: 0,
-                    lastTriggered: "—",
-                    isDuplicate: false,
-                    duplicateCount: 1,
-                    hasIssue: true,
-                    issueDescription: "描述截断",
-                    agentPresence: ["agents"]
-                ))
             }
         }
 
@@ -727,10 +688,17 @@ struct SkillsView: View {
 
     private func calculateStats() {
         totalCount = skills.count
-        uniqueCount = Set(skills.map { $0.name }).count
-        issueCount = skills.filter { $0.hasIssue }.count
-        activeCount = skills.filter { $0.triggerCount > 0 }.count
-        inactiveCount = skills.filter { $0.triggerCount == 0 }.count
+        var uniqueNames = Set<String>()
+        var issues = 0, active = 0, inactive = 0
+        for s in skills {
+            uniqueNames.insert(s.name)
+            if s.hasIssue { issues += 1 }
+            if s.triggerCount > 0 { active += 1 } else { inactive += 1 }
+        }
+        uniqueCount = uniqueNames.count
+        issueCount = issues
+        activeCount = active
+        inactiveCount = inactive
 
         // Real context budget: count chars in ~/.claude/skills/**/(SKILL|README).md
         let home = NSHomeDirectory()
@@ -904,17 +872,37 @@ private struct SkillRow: View {
                     }
                     Spacer()
 
-                    // Agent presence toggles (cc-switch AppToggleGroup equivalent)
-                    HStack(spacing: 4) {
-                        ForEach(SkillsView.agentDefs, id: \.key) { def in
-                            let active = skill.agentPresence.contains(def.key)
-                            Button(action: { onToggleAgent(skill, def.key) }) {
+                    // Agent presence indicators + one-click relay
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            ForEach(SkillsView.agentDefs, id: \.key) { def in
                                 Image(systemName: def.icon)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(active ? Theme.activityRunning : Theme.chromeMuted.opacity(0.35))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(
+                                        skill.agentPresence.contains(def.key)
+                                            ? Theme.activityRunning
+                                            : Theme.chromeMuted.opacity(0.25)
+                                    )
+                                    .help(def.label + (skill.agentPresence.contains(def.key) ? " ✓" : ""))
+                            }
+                        }
+
+                        let missingAgents = SkillsView.agentDefs.filter { !skill.agentPresence.contains($0.key) }
+                        if !missingAgents.isEmpty {
+                            Button(action: {
+                                for def in missingAgents {
+                                    onToggleAgent(skill, def.key)
+                                }
+                            }) {
+                                Text("中继")
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeMuted)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .help("\(def.label)\(active ? " ✓ 已启用（点击禁用）" : "（点击启用）")")
+                            .help("中继到所有缺失 agent（\(missingAgents.map(\.label).joined(separator: "、"))）")
                         }
                     }
                 }

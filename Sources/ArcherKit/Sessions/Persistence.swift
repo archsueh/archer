@@ -309,6 +309,15 @@ final class AppPersistence {
     }
 }
 
+/// No-op persistence for panel windows (Skills, Usage) that don't save state.
+final class NullPersistence: Persistence {
+    func load() -> PersistedState? {
+        nil
+    }
+
+    func save(_: PersistedState) {}
+}
+
 /// A `Persistence` scoped to one window's slice of the shared `state.json`.
 /// `WorkspaceStore` uses it like any `Persistence` and never knows it's one
 /// window among several.

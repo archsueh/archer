@@ -26,27 +26,17 @@ final class UsagePanelWindowController: NSWindowController {
 
     private func buildWindowIfNeeded() {
         guard window == nil else { return }
-        let store = WorkspaceStore(
-            persistence: InMemoryPersistence()
-        )
+        let store = WorkspaceStore(persistence: NullPersistence())
         store.activeScreen = .cockpit
         let view = UsageView(store: store)
         let host = NSHostingController(rootView: view)
         self.host = host
         let window = NSWindow(contentViewController: host)
         window.title = "Agent Usage"
-        window.styleMask = [.titled, .closable]
+        window.styleMask = [.titled]
         window.setContentSize(NSSize(width: 860, height: 560))
         window.isReleasedWhenClosed = false
         window.appearance = Theme.windowAppearance
         self.window = window
     }
-}
-
-private final class InMemoryPersistence: Persistence {
-    func load() -> PersistedState? {
-        nil
-    }
-
-    func save(_: PersistedState) {}
 }
