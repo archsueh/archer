@@ -18,7 +18,7 @@ final class LibghosttyApp {
             ghostty_init(0, $0.baseAddress)
         }
         guard initResult == 0 else {
-            NSLog("archer: ghostty_init failed (\(initResult))")
+            ArcherLogger.terminal.fault("ghostty_init failed (\(initResult))")
             return
         }
 
@@ -34,12 +34,12 @@ final class LibghosttyApp {
         )
 
         guard let config = ArcherSettings.makeGhosttyConfig() else {
-            NSLog("archer: ghostty_config_new failed")
+            ArcherLogger.terminal.fault("ghostty_config_new failed")
             return
         }
         app = ghostty_app_new(&runtime, config)
         if app == nil {
-            NSLog("archer: ghostty_app_new failed")
+            ArcherLogger.terminal.fault("ghostty_app_new failed")
         }
     }
 
@@ -52,7 +52,7 @@ final class LibghosttyApp {
         // parses for a window with many panes.
         let parsed = ArcherSettings.loadParsed()
         guard let config = ArcherSettings.makeGhosttyConfig(parsed: parsed) else {
-            NSLog("archer: ghostty_config_new failed during reload")
+            ArcherLogger.terminal.error("ghostty_config_new failed during reload")
             return
         }
         ghostty_app_update_config(app, config)

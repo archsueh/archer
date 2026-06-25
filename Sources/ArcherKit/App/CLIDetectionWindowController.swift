@@ -210,11 +210,13 @@ struct CLIDetectionView: View {
     private func scan() {
         Task.detached(priority: .userInitiated) {
             let found = cliToolDefs.map { tool in
-                ToolResult(
-                    name: tool.name,
-                    command: tool.command,
-                    path: cliResolvedPath(for: tool.command)
-                )
+                let path = cliResolvedPath(for: tool.command)
+                if let p = path {
+                    ArcherLogger.cli.info("\(tool.command, privacy: .public) → \(p, privacy: .public)")
+                } else {
+                    ArcherLogger.cli.info("\(tool.command, privacy: .public) not found")
+                }
+                return ToolResult(name: tool.name, command: tool.command, path: path)
             }
             await MainActor.run {
                 results = found

@@ -65,7 +65,7 @@ enum ArcherSettings {
     static func loadParsed() -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard let obj = try? JSONSerialization.jsonObject(with: data, options: [.json5Allowed]) else {
-            NSLog("archer: settings.json parse failed")
+            ArcherLogger.settings.error("settings.json parse failed")
             return nil
         }
         return obj as? [String: Any]

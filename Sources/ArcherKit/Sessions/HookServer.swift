@@ -88,7 +88,7 @@ final class HookServer {
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
-            NSLog("archer: HookServer socket() failed")
+            ArcherLogger.hooks.fault("HookServer socket() failed")
             return
         }
 
@@ -97,7 +97,7 @@ final class HookServer {
         let pathBytes = Array(path.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
             close(fd)
-            NSLog("archer: HookServer socket path too long")
+            ArcherLogger.hooks.fault("HookServer socket path too long")
             return
         }
         withUnsafeMutableBytes(of: &addr.sun_path) { dst in
@@ -113,12 +113,12 @@ final class HookServer {
             }
         }
         guard bound == 0 else {
-            NSLog("archer: HookServer bind() failed errno=\(errno)")
+            ArcherLogger.hooks.fault("HookServer bind() failed errno=\(errno)")
             close(fd)
             return
         }
         guard listen(fd, 8) == 0 else {
-            NSLog("archer: HookServer listen() failed errno=\(errno)")
+            ArcherLogger.hooks.fault("HookServer listen() failed errno=\(errno)")
             close(fd)
             return
         }

@@ -457,6 +457,7 @@ struct SkillsView: View {
                 self.calculateStats()
                 self.isLoading = false
                 self.setupWatcher(skillDirs: result.watchDirs)
+                ArcherLogger.skills.info("loaded \(result.items.count) skills (\(self.uniqueCount) unique)")
             }
         }
     }
@@ -661,15 +662,15 @@ struct SkillsView: View {
 
         var isDir: ObjCBool = false
         if fm.fileExists(atPath: targetPath, isDirectory: &isDir) {
-            // Already present → remove (disable for this agent)
             try? fm.removeItem(atPath: targetPath)
+            ArcherLogger.skills.info("unlinked \(skill.skillDirName, privacy: .public) from \(agentKey, privacy: .public)")
         } else {
-            // Not present → create symlink pointing to canonical dir
             try? fm.createDirectory(atPath: agentSkillsDir, withIntermediateDirectories: true, attributes: nil)
             try? fm.createSymbolicLink(
                 at: URL(fileURLWithPath: targetPath),
                 withDestinationURL: URL(fileURLWithPath: skill.canonicalDirPath)
             )
+            ArcherLogger.skills.info("relayed \(skill.skillDirName, privacy: .public) → \(agentKey, privacy: .public)")
         }
         loadSkills(silent: true)
     }
@@ -718,6 +719,9 @@ struct SkillsView: View {
             }
         }
         contextUsed = used
+        if used > contextBudget {
+            ArcherLogger.skills.warning("context budget exceeded: \(used) / \(contextBudget) chars")
+        }
     }
 
     private func performCleanup() {

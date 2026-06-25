@@ -306,12 +306,12 @@ enum ArcherFonts {
         registered = true
         for name in ["Onest", "JetBrainsMono-Regular"] {
             guard let url = bundleResourceURL(name: name, ext: "ttf", subdirectory: "Fonts") else {
-                NSLog("archer: missing font \(name).ttf")
+                ArcherLogger.fonts.error("missing font \(name, privacy: .public).ttf")
                 continue
             }
             var error: Unmanaged<CFError>?
             if !CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error) {
-                NSLog("archer: font register failed for \(name): \(String(describing: error?.takeRetainedValue()))")
+                ArcherLogger.fonts.error("font register failed for \(name, privacy: .public): \(String(describing: error?.takeRetainedValue()), privacy: .public)")
             }
         }
     }
