@@ -70,6 +70,19 @@ struct ContentView: View {
                             .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
                             .transition(.move(edge: .trailing))
                     }
+                    if store.chatPanelMode != .hidden { // [archer]
+                        PanelResizer(
+                            width: Binding(
+                                get: { store.panelWidths.rightPanel },
+                                set: { store.resizePanel(.rightPanel, to: $0) }
+                            ),
+                            range: PanelWidths.rightRange,
+                            panelSide: .trailing
+                        )
+                        .transition(.move(edge: .trailing))
+                        ChatPanelView(width: store.panelWidths.rightPanel)
+                            .transition(.move(edge: .trailing))
+                    }
                 }
             } else {
                 mainPane
@@ -133,6 +146,16 @@ struct ContentView: View {
                     store.setFilePanelMode(store.filePanelMode.next)
                 }
             }
+            HoverableIconButton( // [archer]
+                systemName: "message",
+                fontSize: 12,
+                size: 28,
+                help: "Quick chat"
+            ) {
+                withAnimation(Theme.chromeTransition) {
+                    store.setChatPanelMode(store.chatPanelMode.next)
+                }
+            }
             InboxBell()
                 .padding(.trailing, 8)
         }
@@ -182,7 +205,7 @@ struct ContentView: View {
     }
 
     private enum RightPanelType {
-        case rightSidebar, filePanel, diffPanel, downloaderPanel
+        case rightSidebar, filePanel, diffPanel, downloaderPanel, chatPanel
     }
 
     private var firstActiveRightPanel: RightPanelType? {
@@ -190,6 +213,7 @@ struct ContentView: View {
         if store.filePanelMode != .hidden { return .filePanel }
         if store.diffPanelMode != .hidden { return .diffPanel }
         if store.downloaderPanelMode != .hidden { return .downloaderPanel }
+        if store.chatPanelMode != .hidden { return .chatPanel }
         return nil
     }
 

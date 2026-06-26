@@ -78,6 +78,7 @@ final class WorkspaceStore {
     var filePanelMode: SidebarMode = .hidden // [archer] right-side file panel
     var diffPanelMode: SidebarMode = .hidden // [archer] right-side diff panel
     var downloaderPanelMode: SidebarMode = .hidden // [archer] right-side downloader panel
+    var chatPanelMode: SidebarMode = .hidden // [archer] right-side quick-chat panel
     var usageStripVisible: Bool = false // [archer] top Claude-usage strip
     var panelWidths: PanelWidths = .init() // [archer]
     /// Fired when the last workspace closes. `ArcherWindowController` wires
@@ -112,6 +113,12 @@ final class WorkspaceStore {
     func setDownloaderPanelMode(_ mode: SidebarMode) { // [archer]
         guard downloaderPanelMode != mode else { return }
         downloaderPanelMode = mode
+        scheduleSave()
+    }
+
+    func setChatPanelMode(_ mode: SidebarMode) { // [archer]
+        guard chatPanelMode != mode else { return }
+        chatPanelMode = mode
         scheduleSave()
     }
 
@@ -1397,6 +1404,7 @@ final class WorkspaceStore {
         filePanelMode = state.filePanelMode ?? .hidden
         diffPanelMode = state.diffPanelMode ?? .hidden // [archer]
         downloaderPanelMode = state.downloaderPanelMode ?? .hidden // [archer]
+        chatPanelMode = state.chatPanelMode ?? .hidden // [archer]
         usageStripVisible = state.usageStripVisible ?? false
         panelWidths = state.panelWidths ?? PanelWidths() // [archer]
     }
@@ -1691,6 +1699,7 @@ final class WorkspaceStore {
             filePanelMode: filePanelMode,
             diffPanelMode: diffPanelMode, // [archer]
             downloaderPanelMode: downloaderPanelMode, // [archer]
+            chatPanelMode: chatPanelMode, // [archer]
             usageStripVisible: usageStripVisible,
             panelWidths: panelWidths // [archer]
         )
