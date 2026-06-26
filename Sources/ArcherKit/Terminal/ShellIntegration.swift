@@ -764,6 +764,12 @@ enum ArcherShellIntegration {
     private static func writeJSON(at path: String, object: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         else { return }
+        // Skip write if content is identical — avoids redundant IO on every launch
+        if let existing = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           existing == data
+        {
+            return
+        }
         try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 
@@ -802,6 +808,12 @@ enum ArcherShellIntegration {
 
     private static func writeWrapper(name: String, script: String) {
         let path = (archerBinDirectory as NSString).appendingPathComponent(name)
+        // Skip write if content is identical — avoids redundant IO on every launch
+        if let existing = try? String(contentsOfFile: path, encoding: .utf8),
+           existing == script
+        {
+            return
+        }
         try? script.write(toFile: path, atomically: true, encoding: .utf8)
         chmod(path, 0o755)
     }

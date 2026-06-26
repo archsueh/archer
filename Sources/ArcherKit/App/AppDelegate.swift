@@ -90,8 +90,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // at process init when the first surface is created.
         ArcherOnboarding.runIfNeeded()
         let settings = ArcherSettingsModel.shared
-        ArcherShellIntegration.installAgentHooks(sshRemoteAgentDetection: settings.sshRemoteAgentDetection)
-        ArcherShellIntegration.refreshClaudeCustomSettings(customAgents: settings.customAgents)
+        // Capture value-typed settings before leaving the main actor so the
+        // detached task can't race on @Observable state.
+        let sshRemote = settings.sshRemoteAgentDetection
+        let customAgents = settings.customAgents
+        // Hook file writes are pure disk I/O and don't need to block the
+        // window. Shell processes that read these files only spawn after the
+        // window is visible, so running in parallel with restoreWindows() is
+        // safe — and the previous on-disk files remain valid in the meantime.
+        Task.detached(priority: .userInitiated) {
+            ArcherShellIntegration.installAgentHooks(sshRemoteAgentDetection: sshRemote)
+            ArcherShellIntegration.refreshClaudeCustomSettings(customAgents: customAgents)
+        }
 
         restoreWindows()
 

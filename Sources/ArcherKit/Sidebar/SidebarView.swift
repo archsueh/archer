@@ -4,6 +4,7 @@ import SwiftUI
 
 private enum SidebarSheet: Identifiable {
     case createWorktree(Workspace)
+    case parallelTask(Workspace)
     case confirmRemoveWorktree(Workspace)
     case confirmCloseOthers(WorkspaceStore.BulkRemovalRequest)
     case confirmCloseSource(WorkspaceStore.CloseSourceRequest)
@@ -11,6 +12,7 @@ private enum SidebarSheet: Identifiable {
     var id: String {
         switch self {
         case let .createWorktree(ws): return "create-\(ws.id.uuidString)"
+        case let .parallelTask(ws): return "parallel-\(ws.id.uuidString)"
         case let .confirmRemoveWorktree(ws): return "remove-\(ws.id.uuidString)"
         case let .confirmCloseOthers(req): return "close-others-\(req.keeping.id.uuidString)"
         case let .confirmCloseSource(req): return "close-source-\(req.source.id.uuidString)"
@@ -381,6 +383,9 @@ struct SidebarView: View {
         .onChange(of: store.pendingCreateWorktreeRequest?.id) { _, _ in
             if let ws = store.pendingCreateWorktreeRequest { sheet = .createWorktree(ws) }
         }
+        .onChange(of: store.pendingParallelTaskRequest?.id) { _, _ in
+            if let ws = store.pendingParallelTaskRequest { sheet = .parallelTask(ws) }
+        }
         .onAppear {
             if let ws = store.pendingCreateWorktreeRequest { sheet = .createWorktree(ws) }
         }
@@ -408,6 +413,7 @@ struct SidebarView: View {
                         isCompact: true,
                         draggingId: $draggingWorkspaceId,
                         onCreateWorktree: canCreate ? { presentCreateWorktree(workspace) } : nil,
+                        onParallelTask: canCreate ? { presentParallelTask(workspace) } : nil,
                         onGoToSource: goToSource
                     )
                 }
@@ -460,7 +466,8 @@ struct SidebarView: View {
             disclosure: hasWorktrees
                 ? SidebarWorkspaceRow.WorktreeDisclosure(isCollapsed: isCollapsed, toggle: { toggleCollapsed(parent.id) })
                 : nil,
-            onCreateWorktree: canCreate ? { presentCreateWorktree(parent) } : nil
+            onCreateWorktree: canCreate ? { presentCreateWorktree(parent) } : nil,
+            onParallelTask: canCreate ? { presentParallelTask(parent) } : nil
         )
 
         if hasWorktrees && !isCollapsed {
@@ -559,6 +566,14 @@ struct SidebarView: View {
                 create: { await store.createWorktree(source: source, request: $0) },
                 dismiss: { store.pendingCreateWorktreeRequest = nil; sheet = nil }
             )
+        case let .parallelTask(source):
+            ParallelTaskSheet(
+                source: source,
+                launchTemplates: AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared),
+                defaultLaunchTemplate: AgentTemplate.defaultLaunchTemplate(model: ArcherSettingsModel.shared) ?? .terminal,
+                launch: { await store.launchParallelTask(source: source, request: $0) },
+                dismiss: { store.pendingParallelTaskRequest = nil; sheet = nil }
+            )
         case let .confirmRemoveWorktree(workspace):
             ConfirmRemoveWorktreeSheet(
                 workspace: workspace,
@@ -596,6 +611,10 @@ struct SidebarView: View {
 
     private func presentCreateWorktree(_ workspace: Workspace) {
         store.pendingCreateWorktreeRequest = workspace
+    }
+
+    private func presentParallelTask(_ workspace: Workspace) {
+        store.pendingParallelTaskRequest = workspace
     }
 
     private func revealWorkspaceForRename(_ workspace: Workspace, using proxy: ScrollViewProxy) {
@@ -713,6 +732,7 @@ private struct SectionView: View {
 
     let onActivate: (Workspace) -> Void
     let onCreateWorktree: ((Workspace) -> Void)?
+    let onParallelTask: ((Workspace) -> Void)?
     let onGoToSource: (Workspace) -> Void
     let onRevealForRename: ((Workspace) -> Void)?
     @Binding var collapsedParents: Set<UUID>
@@ -756,6 +776,7 @@ private struct SectionView: View {
                         ? SidebarWorkspaceRow.WorktreeDisclosure(isCollapsed: isCollapsed, toggle: { toggleCollapsed(workspace.id) })
                         : nil,
                     onCreateWorktree: canCreate ? { onCreateWorktree?(workspace) } : nil,
+                    onParallelTask: canCreate ? { onParallelTask?(workspace) } : nil,
                     onGoToSource: { onGoToSource(workspace) }
                 )
 
@@ -811,6 +832,7 @@ private struct DraggableWorkspaceRow: View {
     @Binding var draggingId: UUID?
     var disclosure: SidebarWorkspaceRow.WorktreeDisclosure? = nil
     var onCreateWorktree: (() -> Void)? = nil
+    var onParallelTask: (() -> Void)? = nil
     var onGoToSource: (() -> Void)? = nil
 
     @State private var isTargeted = false
@@ -836,6 +858,7 @@ private struct DraggableWorkspaceRow: View {
             onRename: { store.renameWorkspace(workspace, to: $0) },
             disclosure: disclosure,
             onCreateWorktree: onCreateWorktree,
+            onParallelTask: onParallelTask,
             onGoToSource: onGoToSource
         )
         .dropIndicator(active: isTargeted && !isSelfDrag, on: edge)

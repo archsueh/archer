@@ -240,7 +240,8 @@ final class WorkspaceStore {
         workingDirectory: URL? = nil,
         worktreeParent: Workspace? = nil,
         worktreeBranch: String? = nil,
-        template: AgentTemplate = .terminal
+        template: AgentTemplate = .terminal,
+        initialPrompt: String? = nil
     ) -> Workspace {
         let dir = workingDirectory
             ?? active?.workingDirectory
@@ -258,7 +259,7 @@ final class WorkspaceStore {
         if worktreeParent != nil {
             workspace.worktreePath = dir.standardizedFileURL
         }
-        let session = spawnSession(template: template, initialCwd: dir)
+        let session = spawnSession(template: template, initialCwd: dir, initialPrompt: initialPrompt)
         wireSessionCallbacks(engine: session.engine, session: session, workspace: workspace)
         pane.tabs.append(session)
         pane.activeTabId = session.id
@@ -326,6 +327,40 @@ final class WorkspaceStore {
         }
     }
 
+    /// Creates N git worktrees (one per slot) and spawns a Claude session
+    /// with the slot's initial prompt in each. Runs sequentially so each
+    /// worktree directory exists before archer materializes the workspace.
+    /// Returns nil on success, an error string on first failure.
+    func launchParallelTask(
+        source: Workspace,
+        request: ParallelTaskSheet.Request
+    ) async -> String? {
+        guard let repoPath = WorktreeManager.repoRoot(near: source.workingDirectory) else {
+            return "not inside a git repository"
+        }
+        let parentDir = repoPath.deletingLastPathComponent()
+        let repoName = repoPath.lastPathComponent
+        for slot in request.agents {
+            let branchName = slot.branchName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let dirName = WorktreeManager.defaultDirectoryName(sourceName: repoName, branch: branchName)
+            let path = parentDir.appendingPathComponent(dirName)
+            let result = await Task.detached(priority: .userInitiated) {
+                WorktreeManager.add(repoPath: repoPath, path: path,
+                                    mode: .newBranch(name: branchName, base: nil))
+            }.value
+            if case let .failure(err) = result { return err.description }
+            let prompt = slot.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            addWorkspace(
+                workingDirectory: path,
+                worktreeParent: source,
+                worktreeBranch: branchName,
+                template: request.template,
+                initialPrompt: prompt.isEmpty ? nil : prompt
+            )
+        }
+        return nil
+    }
+
     /// Worktree workspaces close through this request first so the
     /// sidebar can pop the brutalist confirm sheet before anything
     /// destructive runs. Plain workspaces skip the prompt and go
@@ -339,6 +374,10 @@ final class WorkspaceStore {
     /// sidebar to host the sheet, especially when the sidebar was hidden and
     /// has to be shown first.
     var pendingCreateWorktreeRequest: Workspace?
+
+    /// Parallel-task sheet request — right-click → "Parallel Task…" sets
+    /// this so the sidebar can anchor the sheet on the row.
+    var pendingParallelTaskRequest: Workspace?
 
     /// ⌘⇧R rename request, parked for `SidebarView` to act on. The active
     /// workspace's row may be unmounted — nested under a collapsed worktree

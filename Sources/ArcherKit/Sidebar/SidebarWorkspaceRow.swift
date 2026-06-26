@@ -24,6 +24,9 @@ struct SidebarWorkspaceRow: View {
     /// sidebar wires to a sheet. Nil on worktree rows so worktree
     /// nesting stays disabled.
     var onCreateWorktree: (() -> Void)? = nil
+    /// Non-nil for source workspaces inside a git repo — opens the
+    /// "Parallel Task…" sheet to spawn N Claude agents in N worktrees.
+    var onParallelTask: (() -> Void)? = nil
     /// Non-nil for worktree rows — jumps the active selection back to the
     /// source workspace this worktree was forked from. Cheap navigation
     /// shortcut when the user is deep in a worktree and wants the main
@@ -80,6 +83,12 @@ struct SidebarWorkspaceRow: View {
                         // dismissing before the sheet anchors — back-to-back
                         // popovers/sheets off the same view glitch otherwise.
                         DispatchQueue.main.async { onCreateWorktree() }
+                    }
+                }
+                if let onParallelTask {
+                    ArcherMenuRow(title: "Parallel Task…") {
+                        isContextMenuOpen = false
+                        DispatchQueue.main.async { onParallelTask() }
                     }
                 }
                 if let onGoToSource {
@@ -177,6 +186,17 @@ struct SidebarWorkspaceRow: View {
                     .opacity(isHovered ? 1 : 0)
                     .allowsHitTesting(isHovered)
                 }
+                if let onParallelTask {
+                    HoverableIconButton(
+                        systemName: "square.split.2x1",
+                        fontSize: 10,
+                        size: 20,
+                        help: "Parallel task",
+                        action: onParallelTask
+                    )
+                    .opacity(isHovered ? 1 : 0)
+                    .allowsHitTesting(isHovered)
+                }
                 ZStack {
                     if let dotColor {
                         Circle().fill(dotColor).frame(width: 6, height: 6)
@@ -256,13 +276,14 @@ struct SidebarWorkspaceRow: View {
     }
 
     /// Trailing hover icon strip min width — accommodates each optional
-    /// hover button (chevron, create-worktree) plus the always-present
-    /// close × slot so the trailing edge doesn't shift when a hover
-    /// icon appears.
+    /// hover button (chevron, create-worktree, parallel-task) plus the
+    /// always-present close × slot so the trailing edge doesn't shift
+    /// when a hover icon appears.
     private var trailingHoverMinWidth: CGFloat {
         var width: CGFloat = 20
         if disclosure != nil { width += 22 }
         if onCreateWorktree != nil { width += 22 }
+        if onParallelTask != nil { width += 22 }
         return width
     }
 
