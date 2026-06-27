@@ -18,19 +18,32 @@ public struct PanelResizer: View {
         self.onCommit = onCommit
     }
 
+    private var isVertical: Bool {
+        panelSide == .top || panelSide == .bottom
+    }
+
     public var body: some View {
         Color.clear
-            .frame(width: 6)
+            .frame(width: isVertical ? nil : 6, height: isVertical ? 6 : nil)
             .contentShape(Rectangle())
             .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+                if inside {
+                    (isVertical ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
+                } else {
+                    NSCursor.arrow.set()
+                }
             }
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
                         let start = dragStart ?? width
                         if dragStart == nil { dragStart = start }
-                        let delta = panelSide == .leading ? value.translation.width : -value.translation.width
+                        let delta: Double
+                        if isVertical {
+                            delta = panelSide == .top ? value.translation.height : -value.translation.height
+                        } else {
+                            delta = panelSide == .leading ? value.translation.width : -value.translation.width
+                        }
                         width = PanelWidths.clamp(start + delta, to: range)
                     }
                     .onEnded { _ in

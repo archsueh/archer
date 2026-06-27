@@ -23,8 +23,24 @@ struct ContentView: View {
                         )
                         .transition(.move(edge: .leading))
                     }
-                    mainPane
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 0) {
+                        mainPane
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if store.chatPanelMode != .hidden { // [archer]
+                            PanelResizer(
+                                width: Binding(
+                                    get: { store.panelWidths.chatPanelHeight },
+                                    set: { store.resizePanel(.chatPanel, to: $0) }
+                                ),
+                                range: PanelWidths.chatPanelHeightRange,
+                                panelSide: .bottom
+                            )
+                            .transition(.move(edge: .bottom))
+                            ChatPanelView(height: store.panelWidths.chatPanelHeight)
+                                .transition(.move(edge: .bottom))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     if store.rightSidebarMode != .hidden {
                         PanelResizer(
                             width: Binding(
@@ -68,19 +84,6 @@ struct ContentView: View {
                             ?? FileManager.default.homeDirectoryForCurrentUser,
                             width: store.panelWidths.rightPanel)
                             .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
-                            .transition(.move(edge: .trailing))
-                    }
-                    if store.chatPanelMode != .hidden { // [archer]
-                        PanelResizer(
-                            width: Binding(
-                                get: { store.panelWidths.rightPanel },
-                                set: { store.resizePanel(.rightPanel, to: $0) }
-                            ),
-                            range: PanelWidths.rightRange,
-                            panelSide: .trailing
-                        )
-                        .transition(.move(edge: .trailing))
-                        ChatPanelView(width: store.panelWidths.rightPanel)
                             .transition(.move(edge: .trailing))
                     }
                 }
@@ -205,7 +208,7 @@ struct ContentView: View {
     }
 
     private enum RightPanelType {
-        case rightSidebar, filePanel, diffPanel, downloaderPanel, chatPanel
+        case rightSidebar, filePanel, diffPanel, downloaderPanel
     }
 
     private var firstActiveRightPanel: RightPanelType? {
@@ -213,7 +216,6 @@ struct ContentView: View {
         if store.filePanelMode != .hidden { return .filePanel }
         if store.diffPanelMode != .hidden { return .diffPanel }
         if store.downloaderPanelMode != .hidden { return .downloaderPanel }
-        if store.chatPanelMode != .hidden { return .chatPanel }
         return nil
     }
 

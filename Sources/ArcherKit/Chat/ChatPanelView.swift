@@ -75,10 +75,10 @@ final class ChatPanelModel: ObservableObject {
 public struct ChatPanelView: View {
     @StateObject private var model = ChatPanelModel()
     @State private var inputText = ""
-    var width: Double
+    var height: Double
 
-    public init(width: Double = 280) {
-        self.width = width
+    public init(height: Double = 200) {
+        self.height = height
     }
 
     public var body: some View {
@@ -89,7 +89,7 @@ public struct ChatPanelView: View {
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
             inputRow
         }
-        .frame(width: CGFloat(width))
+        .frame(maxWidth: .infinity, minHeight: CGFloat(height), maxHeight: CGFloat(height))
         .background(Theme.chromeBackground)
         .preferredColorScheme(Theme.chromeColorScheme)
     }
