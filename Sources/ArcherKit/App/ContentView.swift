@@ -23,24 +23,8 @@ struct ContentView: View {
                         )
                         .transition(.move(edge: .leading))
                     }
-                    VStack(spacing: 0) {
-                        mainPane
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        if store.chatPanelMode != .hidden { // [archer]
-                            PanelResizer(
-                                width: Binding(
-                                    get: { store.panelWidths.chatPanelHeight },
-                                    set: { store.resizePanel(.chatPanel, to: $0) }
-                                ),
-                                range: PanelWidths.chatPanelHeightRange,
-                                panelSide: .bottom
-                            )
-                            .transition(.move(edge: .bottom))
-                            ChatPanelView(height: store.panelWidths.chatPanelHeight)
-                                .transition(.move(edge: .bottom))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    mainPane
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     if store.rightSidebarMode != .hidden {
                         PanelResizer(
                             width: Binding(
@@ -147,16 +131,6 @@ struct ContentView: View {
             ) {
                 withAnimation(Theme.chromeTransition) {
                     store.setFilePanelMode(store.filePanelMode.next)
-                }
-            }
-            HoverableIconButton( // [archer]
-                systemName: "message",
-                fontSize: 12,
-                size: 28,
-                help: "Quick chat"
-            ) {
-                withAnimation(Theme.chromeTransition) {
-                    store.setChatPanelMode(store.chatPanelMode.next)
                 }
             }
             InboxBell()
