@@ -620,6 +620,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             responderRow("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
             responderRow("Zoom", #selector(NSWindow.performZoom(_:))),
             selfRow("Center", #selector(handleCenterWindow)),
+            .separator,
+            selfRow("Cockpit", #selector(handleShowCockpit), "k", modifiers: [.command, .shift]),
         ])
         mainMenu.addItem(submenu(windowMenu))
 
@@ -1065,6 +1067,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // NSWindow.center() takes no sender arg, so it can't be a direct
         // first-responder selector — wrap it.
         NSApp.keyWindow?.center()
+    }
+
+    @objc private func handleShowCockpit() {
+        CockpitPanelWindowController.show()
     }
 
     private func showCLIDetectionIfNeeded() {
