@@ -1,0 +1,32 @@
+/* Archer — global design tokens & brand fonts.
+   The DS compiler reads @font-face + tokens from this file. */
+@import url("https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  color-scheme: dark;
+
+  /* ── Brand type ── */
+  --font-sans: "Onest", -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* ── Chrome ── */
+  --primary:        #EFEFF1;   /* chrome-foreground */
+  --secondary:      #9E9EA0;   /* chrome-muted */
+  --neutral:        #282C34;   /* terminal-surface */
+  --surface-2:      #21242b;
+  --chrome-hairline: rgba(255,255,255,.07);
+  --chrome-hover:    rgba(255,255,255,.07);
+  --chrome-active:   rgba(255,255,255,.15);
+
+  /* ── Activity status ── */
+  --active-running:   #69B0D6;  /* cool blue */
+  --active-attention: #E8B068;  /* warm amber */
+  --active-failure:   #E86666;  /* warm red */
+
+  /* ── Git diff ── */
+  --git-insertion: #73C780;
+  --git-deletion:  #E86666;
+
+  /* ── Glass ── */
+  --glass-opacity: 0.72; /* @kind other */
+}

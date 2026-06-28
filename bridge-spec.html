@@ -1,0 +1,97 @@
+<!-- @dsCard group="Docs" name="Agent Bridge — Spec" viewport="860x1180" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Archer · Agent Bridge Spec</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;padding:44px 48px;background:#161a22;color:var(--primary);
+    font-family:var(--font-sans);-webkit-font-smoothing:antialiased;line-height:1.6;}
+  .doc{max-width:760px;margin:0 auto;}
+  .kicker{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--active-running);margin:0 0 8px;}
+  h1{font-size:30px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em;}
+  .sub{font-family:var(--font-mono);font-size:12px;color:var(--secondary);margin:0 0 4px;}
+  .meta{font-family:var(--font-mono);font-size:11px;color:var(--secondary);padding-bottom:22px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:30px;}
+  h2{font-size:14px;font-family:var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--secondary);
+    margin:34px 0 14px;padding-top:22px;border-top:1px solid rgba(255,255,255,.06);}
+  h2:first-of-type{border-top:none;padding-top:0;}
+  p{font-size:14px;margin:0 0 14px;color:#d7d8db;}
+  p b{color:var(--primary);font-weight:600;}
+  code{font-family:var(--font-mono);font-size:12.5px;background:rgba(255,255,255,.06);padding:1px 6px;color:#e7e3da;}
+  .accent{color:var(--active-running);}
+  pre{font-family:var(--font-mono);font-size:12px;line-height:1.65;background:rgba(0,0,0,.32);border:1px solid rgba(255,255,255,.08);
+    padding:14px 16px;overflow:auto;margin:0 0 18px;color:#cdd0d4;}
+  pre .c{color:var(--secondary);}
+  pre .k{color:var(--active-running);}
+  pre .s{color:var(--git-insertion);}
+  /* mapping table */
+  .map{border:1px solid rgba(255,255,255,.08);margin:0 0 20px;}
+  .map .r{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid rgba(255,255,255,.08);}
+  .map .r:last-child{border-bottom:none;}
+  .map .c1,.map .c2{padding:11px 14px;font-family:var(--font-mono);font-size:12px;}
+  .map .c1{border-right:1px solid rgba(255,255,255,.08);color:var(--secondary);}
+  .map .c2{color:var(--primary);}
+  .map .head .c1,.map .head .c2{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--secondary);background:rgba(255,255,255,.03);}
+  ol{margin:0 0 18px;padding-left:20px;}
+  li{font-size:14px;margin-bottom:10px;color:#d7d8db;}
+  li b{color:var(--primary);}
+  .note{font-family:var(--font-mono);font-size:11.5px;color:var(--secondary);line-height:1.6;
+    border-left:2px solid var(--active-attention);padding:10px 0 10px 14px;margin:0 0 18px;}
+  .note b{color:var(--active-attention);}
+  .pill{display:inline-block;font-family:var(--font-mono);font-size:10px;padding:2px 7px;border:1px solid rgba(255,255,255,.12);color:var(--secondary);margin-right:6px;}
+</style>
+</head>
+<body>
+  <div class="doc">
+    <p class="kicker">Architecture Note</p>
+    <h1>Agent Bridge</h1>
+    <p class="sub">Cross-pane agent-to-agent orchestration for Archer</p>
+    <p class="meta">基于 <span class="accent">ShawnPana/smux</span>(MIT)的模型 · 适配 Archer / libghostty · v1 草案</p>
+
+    <h2>1 · 核心思想</h2>
+    <p>smux 不是一个独立 app,而是<b>在 tmux 之上加一层寻址</b>。每个 agent(Claude Code / Codex / Hermes…)就是跑在一个 pane 里的普通终端进程;smux 不接管进程,只提供一个 CLI 把"读屏 / 发键"包装成<b>带 label 的命令</b>,让任意能跑 bash 的 agent 都能操作隔壁 pane。</p>
+    <p class="note"><b>没有后端、没有数据库、没有消息总线。</b>协作 = 一个 agent 把另一个 pane 当成可读写的终端。</p>
+
+    <h2>2 · smux 的三个零件</h2>
+    <ol>
+      <li><b>tmux.conf</b> — 给人用的键位(Option 无前缀、鼠标、pane 标签、状态栏),全部落在 <code>~/.smux/</code>。</li>
+      <li><b>tmux-bridge CLI</b> — 唯一的"胶水"。把 tmux 两个原语 <code>capture-pane</code>(读)和 <code>send-keys</code>(写)包成带 label 寻址的命令。</li>
+      <li><b>smux skill</b> — 一份 SKILL.md,教 agent "要找隔壁 agent 就调 tmux-bridge"。</li>
+    </ol>
+    <pre><span class="c"># tmux-bridge 内部就是这两条 tmux 原语</span>
+<span class="k">read</span>  codex 20   <span class="c">→</span> tmux capture-pane -t codex -p | tail -20
+<span class="k">type</span>  codex <span class="s">"review src/auth.ts"</span>   <span class="c">→</span> tmux send-keys -t codex <span class="s">"…"</span>
+<span class="k">keys</span>  codex Enter   <span class="c">→</span> tmux send-keys -t codex Enter</pre>
+
+    <h2>3 · agent 之间怎么对话</h2>
+    <p>没有协议握手。Claude Code 想让 Codex 干活,就是它<b>自己在 shell 里</b>执行 <code>tmux-bridge type codex "…"</code> + <code>keys codex Enter</code>,再 <code>read codex</code> 把屏幕读回当结果。一次协作 = 三步:<span class="accent">type → keys → read</span>。</p>
+
+    <h2>4 · 映射到 Archer</h2>
+    <p>Archer 的 pane 系统 = tmux 的 pane;`bridge.html` = tmux-bridge 的可视化层。真正落地只需在 Swift / libghostty 侧暴露等价能力:</p>
+    <div class="map">
+      <div class="r head"><div class="c1">smux / tmux</div><div class="c2">Archer 实现</div></div>
+      <div class="r"><div class="c1">capture-pane -t %id</div><div class="c2">读 libghostty pane 的屏幕缓冲</div></div>
+      <div class="r"><div class="c1">send-keys -t %id</div><div class="c2">向 pane 注入 input(已有输入管线)</div></div>
+      <div class="r"><div class="c1">pane label (name)</div><div class="c2">PaneRegistry: @label → SurfaceID</div></div>
+      <div class="r"><div class="c1">tmux-bridge CLI</div><div class="c2">ArcherBridge 命令 + 可选 MCP 工具</div></div>
+      <div class="r"><div class="c1">smux skill</div><div class="c2">Archer skill:教 agent 调 read/type/keys</div></div>
+    </div>
+
+    <h2>5 · 落地步骤</h2>
+    <ol>
+      <li><b>PaneRegistry</b> — 给每个 surface 一个稳定 <code>@label</code>(claude / codex / hermes),维护 label → SurfaceID 映射,UI 上可重命名。</li>
+      <li><b>三个原语</b> — <code>bridge.read(label, n)</code> / <code>bridge.type(label, text)</code> / <code>bridge.keys(label, key…)</code>,直接走 libghostty 的缓冲读取与输入注入。</li>
+      <li><b>暴露给 agent</b> — 包成 CLI(`archer-bridge …`)<span class="pill">P0</span> 或 MCP server <span class="pill">P1</span>,让 agent 在自己的 shell/工具里调用。</li>
+      <li><b>skill</b> — 写一份 Archer skill 描述这三条命令与 @label 约定,装进 ~/.claude·~/.codex,agent 即学会跨 pane 协作。</li>
+      <li><b>可视化</b> — `bridge.html` 作为 Bridge Log 面板接真实事件流(read/type/keys/reply),驾驶舱可从右键 pane 打开。</li>
+    </ol>
+
+    <h2>6 · 安全约束</h2>
+    <p class="note"><b>注入是高权限操作。</b>type/keys 等于替用户敲键 —— 必须:① 仅限当前 workspace 内的 pane;② 危险按键(C-c、rm 回车)默认需确认或加白名单;③ Bridge Log 全量留痕,可审计"谁对谁发了什么"。</p>
+
+    <p class="meta" style="border-top:1px solid rgba(255,255,255,.08);border-bottom:none;padding:18px 0 0;margin-top:30px;">参考 · <span class="accent">github.com/ShawnPana/smux</span> · 相关卡:Agent Bridge(交互演示)、Sessions、Cockpit</p>
+  </div>
+</body>
+</html>
