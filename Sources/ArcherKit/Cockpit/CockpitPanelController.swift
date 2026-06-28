@@ -34,10 +34,14 @@ final class CockpitPanelWindowController: NSWindowController {
         self.host = host
         let window = NSWindow(contentViewController: host)
         window.title = "Cockpit"
-        window.styleMask = [.titled, .closable, .resizable]
+        window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 1200, height: 760))
         window.minSize = NSSize(width: 900, height: 600)
         window.isReleasedWhenClosed = false
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
         window.appearance = Theme.windowAppearance
         self.window = window
     }
