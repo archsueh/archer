@@ -54,8 +54,6 @@ enum SidebarMode: String, Codable, Equatable {
 
 enum ActiveScreen: String, Codable, Equatable {
     case cockpit
-    case skills
-    case usage
 }
 
 @MainActor

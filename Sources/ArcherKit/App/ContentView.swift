@@ -6,74 +6,69 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if store.activeScreen == .cockpit {
-                topStrip
-                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-                HStack(spacing: 0) {
-                    if store.sidebarMode != .hidden {
-                        SidebarView(store: store)
-                            .transition(.move(edge: .leading))
-                        PanelResizer(
-                            width: Binding(
-                                get: { store.panelWidths.sidebar },
-                                set: { store.resizePanel(.sidebar, to: $0) }
-                            ),
-                            range: PanelWidths.sidebarRange,
-                            panelSide: .leading
-                        )
+            topStrip
+            Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+            HStack(spacing: 0) {
+                if store.sidebarMode != .hidden {
+                    SidebarView(store: store)
                         .transition(.move(edge: .leading))
-                    }
-                    mainPane
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if store.rightSidebarMode != .hidden {
-                        PanelResizer(
-                            width: Binding(
-                                get: { store.panelWidths.rightPanel },
-                                set: { store.resizePanel(.rightPanel, to: $0) }
-                            ),
-                            range: PanelWidths.rightRange,
-                            panelSide: .trailing
-                        )
-                        .transition(.move(edge: .trailing))
-                        AgentOverviewSidebar(mode: store.rightSidebarMode, width: store.panelWidths.rightPanel)
-                            .transition(.move(edge: .trailing))
-                    }
-                    if store.filePanelMode != .hidden { // [archer]
-                        PanelResizer(
-                            width: Binding(
-                                get: { store.panelWidths.rightPanel },
-                                set: { store.resizePanel(.rightPanel, to: $0) }
-                            ),
-                            range: PanelWidths.rightRange,
-                            panelSide: .trailing
-                        )
-                        .transition(.move(edge: .trailing))
-                        FilePanelView(rootURL: store.active?.workingDirectory
-                            ?? FileManager.default.homeDirectoryForCurrentUser,
-                            width: store.panelWidths.rightPanel)
-                            .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
-                            .transition(.move(edge: .trailing))
-                    }
-                    if store.diffPanelMode != .hidden { // [archer]
-                        PanelResizer(
-                            width: Binding(
-                                get: { store.panelWidths.rightPanel },
-                                set: { store.resizePanel(.rightPanel, to: $0) }
-                            ),
-                            range: PanelWidths.rightRange,
-                            panelSide: .trailing
-                        )
-                        .transition(.move(edge: .trailing))
-                        DiffPanelView(rootURL: store.active?.workingDirectory
-                            ?? FileManager.default.homeDirectoryForCurrentUser,
-                            width: store.panelWidths.rightPanel)
-                            .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
-                            .transition(.move(edge: .trailing))
-                    }
+                    PanelResizer(
+                        width: Binding(
+                            get: { store.panelWidths.sidebar },
+                            set: { store.resizePanel(.sidebar, to: $0) }
+                        ),
+                        range: PanelWidths.sidebarRange,
+                        panelSide: .leading
+                    )
+                    .transition(.move(edge: .leading))
                 }
-            } else {
                 mainPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if store.rightSidebarMode != .hidden {
+                    PanelResizer(
+                        width: Binding(
+                            get: { store.panelWidths.rightPanel },
+                            set: { store.resizePanel(.rightPanel, to: $0) }
+                        ),
+                        range: PanelWidths.rightRange,
+                        panelSide: .trailing
+                    )
+                    .transition(.move(edge: .trailing))
+                    AgentOverviewSidebar(mode: store.rightSidebarMode, width: store.panelWidths.rightPanel)
+                        .transition(.move(edge: .trailing))
+                }
+                if store.filePanelMode != .hidden { // [archer]
+                    PanelResizer(
+                        width: Binding(
+                            get: { store.panelWidths.rightPanel },
+                            set: { store.resizePanel(.rightPanel, to: $0) }
+                        ),
+                        range: PanelWidths.rightRange,
+                        panelSide: .trailing
+                    )
+                    .transition(.move(edge: .trailing))
+                    FilePanelView(rootURL: store.active?.workingDirectory
+                        ?? FileManager.default.homeDirectoryForCurrentUser,
+                        width: store.panelWidths.rightPanel)
+                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                        .transition(.move(edge: .trailing))
+                }
+                if store.diffPanelMode != .hidden { // [archer]
+                    PanelResizer(
+                        width: Binding(
+                            get: { store.panelWidths.rightPanel },
+                            set: { store.resizePanel(.rightPanel, to: $0) }
+                        ),
+                        range: PanelWidths.rightRange,
+                        panelSide: .trailing
+                    )
+                    .transition(.move(edge: .trailing))
+                    DiffPanelView(rootURL: store.active?.workingDirectory
+                        ?? FileManager.default.homeDirectoryForCurrentUser,
+                        width: store.panelWidths.rightPanel)
+                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
+                        .transition(.move(edge: .trailing))
+                }
             }
         }
         .background(chromeBackground.opacity(Theme.glassOpacity)) // [archer] glass
@@ -141,29 +136,17 @@ struct ContentView: View {
 
     private var mainPane: some View {
         VStack(spacing: 0) {
-            switch store.activeScreen {
-            case .cockpit:
-                VStack(spacing: 0) {
-                    if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
-                        UsageStripView()
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    if let workspace = store.active {
-                        PaneTreeView(node: workspace.root, workspace: workspace, store: store)
-                            .id(workspace.id)
-                    } else {
-                        Color.clear
-                    }
-                }
-                .transition(.opacity)
-            case .skills:
-                SkillsView(store: store)
-                    .transition(.opacity)
-            case .usage:
-                UsageView(store: store)
-                    .transition(.opacity)
+            if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
+                UsageStripView()
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if let workspace = store.active {
+                PaneTreeView(node: workspace.root, workspace: workspace, store: store)
+                    .id(workspace.id)
+            } else {
+                Color.clear
             }
         }
     }

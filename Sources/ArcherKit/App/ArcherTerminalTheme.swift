@@ -152,9 +152,9 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
             selectionBackground: "#CBD9E8",
             selectionForeground: "#1C1410",
             palette: [
-                "#1C1410", "#A6444C", "#5E865E", "#9A7234",
+                "#1C1410", "#A6444C", "#5E865E", "#6B5010",
                 "#286096", "#7A5870", "#3E7E78", "#ACA9A4",
-                "#77706C", "#BE5A60", "#6B9A6B", "#B0853F",
+                "#77706C", "#BE5A60", "#6B9A6B", "#7A5B1E",
                 "#3B76AC", "#8E6A84", "#4E948D", "#D8D4CF",
             ]
         ),

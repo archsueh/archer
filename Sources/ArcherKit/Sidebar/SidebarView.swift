@@ -643,11 +643,8 @@ struct SidebarView: View {
                         size: 28,
                         help: "Skills"
                     ) {
-                        withAnimation(Theme.chromeTransition) {
-                            store.activeScreen = .skills
-                        }
+                        SkillsPanelWindowController.show()
                     }
-                    .background(store.activeScreen == .skills ? Theme.chromeActive : Color.clear)
 
                     HoverableIconButton(
                         systemName: "gauge.medium",
@@ -655,32 +652,25 @@ struct SidebarView: View {
                         size: 28,
                         help: L10n.string("Agent usage")
                     ) {
-                        withAnimation(Theme.chromeTransition) {
-                            store.activeScreen = .usage
-                        }
+                        UsagePanelWindowController.show()
                     }
-                    .background(store.activeScreen == .usage ? Theme.chromeActive : Color.clear)
                 }
             } else {
                 VStack(spacing: 4) {
                     HoverableNavButton(
                         title: "SKILLS",
                         iconName: "square.stack.3d.up",
-                        isActive: store.activeScreen == .skills
+                        isActive: false
                     ) {
-                        withAnimation(Theme.chromeTransition) {
-                            store.activeScreen = .skills
-                        }
+                        SkillsPanelWindowController.show()
                     }
 
                     HoverableNavButton(
                         title: "AGENT 用量",
                         iconName: "gauge.medium",
-                        isActive: store.activeScreen == .usage
+                        isActive: false
                     ) {
-                        withAnimation(Theme.chromeTransition) {
-                            store.activeScreen = .usage
-                        }
+                        UsagePanelWindowController.show()
                     }
                 }
                 .padding(.horizontal, Theme.space2)
