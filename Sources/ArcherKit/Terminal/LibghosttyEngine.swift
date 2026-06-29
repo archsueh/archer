@@ -336,6 +336,10 @@ final class LibghosttyEngine: TerminalEngine {
     func paste(_ text: String) {
         surfaceView.paste(text)
     }
+
+    func readScreen(lines: Int = 20) -> String? {
+        surfaceView.readScreen(lines: lines)
+    }
 }
 
 @MainActor
@@ -915,6 +919,30 @@ final class GhosttySurfaceView: NSView {
         // Pill-injected commands (nvm use, git checkout, unset proxy) are the
         // next command too; sendInputBytes fires onUserInput to clear the dot.
         sendInputBytes(text, to: surface)
+    }
+
+    func readScreen(lines: Int = 20) -> String? {
+        guard let surface else { return nil }
+        let sz = ghostty_surface_size(surface)
+        let rows = Int(sz.rows)
+        let cols = Int(sz.columns)
+        guard rows > 0, cols > 0 else { return nil }
+        let startRow = max(0, rows - lines)
+        var sel = ghostty_selection_s()
+        sel.top_left.tag = GHOSTTY_POINT_ACTIVE
+        sel.top_left.coord = GHOSTTY_POINT_COORD_TOP_LEFT
+        sel.top_left.x = 0
+        sel.top_left.y = UInt32(startRow)
+        sel.bottom_right.tag = GHOSTTY_POINT_ACTIVE
+        sel.bottom_right.coord = GHOSTTY_POINT_COORD_BOTTOM_RIGHT
+        sel.bottom_right.x = UInt32(max(0, cols - 1))
+        sel.bottom_right.y = UInt32(max(0, rows - 1))
+        sel.rectangle = false
+        var text = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
+        defer { ghostty_surface_free_text(surface, &text) }
+        guard let ptr = text.text, text.text_len > 0 else { return nil }
+        return String(bytes: Data(bytes: ptr, count: Int(text.text_len)), encoding: .utf8)
     }
 
     /// Physical keys whose output depends on libghostty's terminal mode state.

@@ -27,6 +27,14 @@ let package = Package(
             dependencies: ["ArcherHookKit"],
             path: "Sources/ArcherHook"
         ),
+        // Thin CLI that connects to the BridgeServer Unix socket in the running
+        // Archer.app and sends JSON commands: list / read / type / keys / sync.
+        // No ArcherKit dependency — pure Darwin + Foundation, keeps binary small.
+        .executableTarget(
+            name: "ArcherBridge",
+            dependencies: [],
+            path: "Sources/ArcherBridge"
+        ),
         // Payload builders + stdin parsing extracted out of `main.swift` so
         // they're unit-testable without spawning a subprocess. Foundation /
         // Darwin only — must not depend on ArcherKit (would bloat the CLI).

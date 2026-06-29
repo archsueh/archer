@@ -8,6 +8,7 @@ enum ArcherLogger {
     static let terminal = Logger(subsystem: subsystem, category: "terminal")
     static let hooks = Logger(subsystem: subsystem, category: "hooks")
     static let skills = Logger(subsystem: subsystem, category: "skills")
+    static let bridge = Logger(subsystem: subsystem, category: "bridge")
     static let usage = Logger(subsystem: subsystem, category: "usage")
     static let cli = Logger(subsystem: subsystem, category: "cli")
     static let fonts = Logger(subsystem: subsystem, category: "fonts")
