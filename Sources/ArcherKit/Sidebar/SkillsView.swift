@@ -1,4 +1,5 @@
 import AppKit
+import SQLite3
 import SwiftUI
 
 struct SkillsView: View {
@@ -21,6 +22,29 @@ struct SkillsView: View {
     @State private var hoverSort = false
     @State private var activeTab: SkillsTab = .installed
     @State private var updateCount = 0
+    @State private var ccSwitchSkills: [CCSkillRow] = []
+    @State private var discoverQuery = ""
+    @State private var discoverResults: [SkillsShResult] = []
+    @State private var isSearching = false
+
+    struct CCSkillRow: Identifiable {
+        let id: String
+        let name: String
+        let description: String
+        let repoOwner: String
+        let repoName: String
+        let updatedAt: Int64
+        var isGitHubBacked: Bool {
+            !repoOwner.isEmpty
+        }
+    }
+
+    struct SkillsShResult: Identifiable {
+        let id: String
+        let name: String
+        let source: String // "owner/repo"
+        let installs: Int
+    }
 
     @State private var watcher: DirectoryWatcher?
 
@@ -241,85 +265,169 @@ struct SkillsView: View {
     }
 
     private var discoverView: some View {
-        let notInClaude = skills.filter { !$0.agentPresence.contains("claude") }
-        return VStack(spacing: 0) {
-            HStack {
-                Text("可中继到 Claude")
-                    .font(Theme.mono(10, weight: .semibold))
+        VStack(spacing: 0) {
+            // Search bar
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
                     .foregroundStyle(Theme.chromeMuted)
-                    .textCase(.uppercase).kerning(0.5)
-                Spacer()
-                Text("\(notInClaude.count) 项")
-                    .font(Theme.mono(10))
-                    .foregroundStyle(Theme.chromeFaint)
+                TextField("搜索 skills.sh 市场…", text: $discoverQuery)
+                    .font(Theme.mono(12))
+                    .foregroundStyle(Theme.chromeForeground)
+                    .textFieldStyle(.plain)
+                    .onSubmit { searchSkillsSh() }
+                if isSearching {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                }
+                if !discoverQuery.isEmpty {
+                    Button {
+                        discoverQuery = ""
+                        discoverResults = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .padding(.horizontal, 20).padding(.vertical, 12)
+            .padding(.horizontal, 14).padding(.vertical, 10)
             .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
 
-            if notInClaude.isEmpty {
+            if discoverResults.isEmpty && !isSearching {
                 VStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle")
+                    Image(systemName: "magnifyingglass")
                         .font(.system(size: 22))
-                        .foregroundStyle(Theme.gitInsertion)
-                    Text("所有 skill 均已在 Claude")
+                        .foregroundStyle(Theme.chromeMuted.opacity(0.4))
+                    Text("从 skills.sh 发现技能")
                         .font(Theme.mono(12))
                         .foregroundStyle(Theme.chromeMuted)
+                    Text("输入关键词后按 Return 搜索")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeFaint)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(40)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(notInClaude) { skill in
+                    ForEach(discoverResults) { result in
                         HStack(spacing: 12) {
-                            Circle()
-                                .fill(skill.hasIssue ? Theme.activityFailure : Theme.chromeMuted)
-                                .frame(width: 6, height: 6)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(skill.name)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(result.name)
                                     .font(Theme.mono(12, weight: .medium))
                                     .foregroundStyle(Theme.chromeForeground)
-                                Text(skill.source)
+                                Text(result.source)
                                     .font(Theme.mono(10))
                                     .foregroundStyle(Theme.chromeFaint)
                             }
                             Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.system(size: 9))
+                                Text("\(result.installs)")
+                                    .font(Theme.mono(10))
+                            }
+                            .foregroundStyle(Theme.chromeMuted)
                             Button {
-                                toggleAgent(skill: skill, agentKey: "claude")
+                                NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/CC Switch.app"))
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.right.circle").font(.system(size: 10))
-                                    Text("中继到 Claude").font(Theme.mono(10))
-                                }
-                                .foregroundStyle(Theme.activityRunning)
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                                Text("安装")
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.activityRunning)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
                             }
                             .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 20).padding(.vertical, 12)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
                         .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
                     }
                 }
             }
         }
         .bracketBorder()
+        .onAppear {
+            if ccSwitchSkills.isEmpty { loadCCSwitchSkills() }
+        }
     }
 
     private var updatesView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "arrow.2.circlepath")
-                .font(.system(size: 22))
-                .foregroundStyle(Theme.chromeMuted)
-            Text("暂无可用更新")
-                .font(Theme.mono(13))
-                .foregroundStyle(Theme.chromeMuted)
-            Text("上游 git 版本检查功能待接入")
-                .font(Theme.mono(10.5))
-                .foregroundStyle(Theme.chromeFaint)
+        VStack(spacing: 0) {
+            // Header row
+            HStack {
+                Text("已安装的 GitHub 技能")
+                    .font(Theme.mono(10, weight: .semibold))
+                    .foregroundStyle(Theme.chromeMuted)
+                    .textCase(.uppercase)
+                Spacer()
+                Button {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/CC Switch.app"))
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.2.circlepath").font(.system(size: 9))
+                        Text("在 CC Switch 中更新")
+                    }
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.activityRunning)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.3), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+
+            let githubSkills = ccSwitchSkills.filter { $0.isGitHubBacked }
+            if githubSkills.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.chromeMuted.opacity(0.4))
+                    Text("未读取到 GitHub 技能")
+                        .font(Theme.mono(12))
+                        .foregroundStyle(Theme.chromeMuted)
+                    Text("通过 CC Switch 安装 GitHub 技能后在此显示")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeFaint)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(40)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(githubSkills) { skill in
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(Theme.activityRunning)
+                                .frame(width: 6, height: 6)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(skill.name)
+                                    .font(Theme.mono(12, weight: .medium))
+                                    .foregroundStyle(Theme.chromeForeground)
+                                Text("\(skill.repoOwner)/\(skill.repoName)")
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeFaint)
+                            }
+                            Spacer()
+                            if skill.updatedAt > 0 {
+                                let date = Date(timeIntervalSince1970: TimeInterval(skill.updatedAt) / 1000)
+                                Text(date, style: .relative)
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeMuted)
+                            } else {
+                                Text("从未更新")
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeFaint)
+                            }
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+                    }
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(48)
         .bracketBorder()
+        .onAppear { loadCCSwitchSkills() }
     }
 
     private var filterBar: some View {
@@ -455,6 +563,56 @@ struct SkillsView: View {
         }
 
         return result
+    }
+
+    // MARK: - CC Switch DB + skills.sh
+
+    private func loadCCSwitchSkills() {
+        let dbPath = (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch/cc-switch.db")
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return }
+        defer { sqlite3_close(db) }
+
+        let query = "SELECT id, name, COALESCE(description,''), COALESCE(repo_owner,''), COALESCE(repo_name,''), updated_at FROM skills ORDER BY name ASC"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        var rows: [CCSkillRow] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let id = String(cString: sqlite3_column_text(stmt, 0))
+            let name = String(cString: sqlite3_column_text(stmt, 1))
+            let desc = String(cString: sqlite3_column_text(stmt, 2))
+            let owner = String(cString: sqlite3_column_text(stmt, 3))
+            let repo = String(cString: sqlite3_column_text(stmt, 4))
+            let updatedAt = sqlite3_column_int64(stmt, 5)
+            rows.append(CCSkillRow(id: id, name: name, description: desc, repoOwner: owner, repoName: repo, updatedAt: updatedAt))
+        }
+        Task { @MainActor in ccSwitchSkills = rows }
+    }
+
+    private func searchSkillsSh() {
+        guard !discoverQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        isSearching = true
+        discoverResults = []
+        let q = discoverQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? discoverQuery
+        guard let url = URL(string: "https://skills.sh/api/search?q=\(q)&limit=20") else {
+            isSearching = false; return
+        }
+        Task {
+            defer { Task { @MainActor in isSearching = false } }
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let list = json["skills"] as? [[String: Any]] else { return }
+            let results: [SkillsShResult] = list.compactMap { item in
+                guard let skillId = item["skillId"] as? String,
+                      let name = item["name"] as? String,
+                      let source = item["source"] as? String else { return nil }
+                let installs = item["installs"] as? Int ?? 0
+                return SkillsShResult(id: skillId, name: name, source: source, installs: installs)
+            }
+            await MainActor.run { discoverResults = results }
+        }
     }
 
     // MARK: - Logic / Actions
