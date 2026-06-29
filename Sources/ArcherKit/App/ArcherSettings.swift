@@ -137,7 +137,10 @@ enum ArcherSettings {
         // cursor there. The shell wrapper emits OSC 133 prompt markers with
         // the `cl=line` metadata libghostty needs to recognise it.
         // Also align terminal/TUI background opacity with window glass theme.
-        let baseline = "cursor-click-to-move = true\nbackground-opacity = \(Theme.glassOpacity)\nbackground-blur = 20\n"
+        // minimum-contrast clamps every resolved ANSI glyph color to at least
+        // 1.4 Lc vs the current background — catches CLIs that hard-code a
+        // near-background grey (e.g. --quiet dim output) regardless of theme.
+        let baseline = "cursor-click-to-move = true\nbackground-opacity = \(Theme.glassOpacity)\nbackground-blur = 20\nminimum-contrast = 1.4\n"
         baseline.withCString { cstr in
             "archer-baseline".withCString { source in
                 ghostty_config_load_string(config, cstr, UInt(strlen(cstr)), source)
