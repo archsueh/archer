@@ -109,16 +109,6 @@ struct ContentView: View {
                     }
                 }
             HoverableIconButton( // [archer]
-                systemName: "gauge.medium",
-                fontSize: 12,
-                size: 28,
-                help: L10n.string("Usage strip")
-            ) {
-                withAnimation(Theme.chromeTransition) {
-                    store.toggleUsageStrip()
-                }
-            }
-            HoverableIconButton( // [archer]
                 systemName: "folder",
                 fontSize: 12,
                 size: 28,
@@ -136,12 +126,6 @@ struct ContentView: View {
 
     private var mainPane: some View {
         VStack(spacing: 0) {
-            if store.usageStripVisible { // [archer] single usage strip, aligned to the main column
-                UsageStripView()
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                Rectangle().fill(Theme.chromeHairline).frame(height: 1)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
             if let workspace = store.active {
                 PaneTreeView(node: workspace.root, workspace: workspace, store: store)
                     .id(workspace.id)

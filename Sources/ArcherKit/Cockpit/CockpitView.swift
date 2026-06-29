@@ -18,11 +18,28 @@ struct BridgeEvent: Identifiable {
     let id = UUID(); let kind: BridgeEventKind; let route: String; let detail: String
 }
 
+struct WorkspaceEntry: Identifiable {
+    let id = UUID()
+    let name: String
+    let path: String
+    let icon: String
+    let color: Color
+}
+
 // MARK: - Cockpit View
 
 struct CockpitView: View {
     @StateObject private var vm = CockpitViewModel()
     @State private var bridgeOpen = false
+    @State private var activeWorkspaceName = "Antigravity CLI"
+
+    let workspaces: [WorkspaceEntry] = [
+        WorkspaceEntry(name: "Hermes", path: "~/dev/hermes", icon: "antenna.radiowaves.left.and.right", color: .mint),
+        WorkspaceEntry(name: "Claude Code", path: "~/dev/archer", icon: "sparkle", color: .orange),
+        WorkspaceEntry(name: "Grok Build", path: "~/dev/grok", icon: "xmark", color: .green),
+        WorkspaceEntry(name: "Antigravity CLI", path: "~", icon: "arrowshape.up.fill", color: .blue),
+        WorkspaceEntry(name: "Codex", path: "~/dev/api", icon: "hexagon", color: .blue),
+    ]
 
     let panes: [CockpitPane] = [
         CockpitPane(agent: .claude, drivenBy: nil),
@@ -53,6 +70,9 @@ struct CockpitView: View {
                     .textCase(.uppercase)
                     .kerning(0.6)
                 Spacer()
+                Image(systemName: "plus")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.chromeFaint)
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
 
@@ -60,28 +80,61 @@ struct CockpitView: View {
 
             ScrollView {
                 VStack(spacing: 0) {
-                    wsRow("~/archer", active: true)
-                    wsRow("~/hermes", active: false)
-                    wsRow("~/archviz", active: false)
+                    ForEach(workspaces) { ws in
+                        wsRow(ws)
+                    }
                 }
             }
+
+            Spacer()
+
+            Divider().background(Theme.chromeHairline)
+
+            sidebarFooterItem("Skills", icon: "wand.and.stars")
+            sidebarFooterItem("Usage", icon: "chart.bar.xaxis")
         }
         .frame(width: 200)
     }
 
-    func wsRow(_ name: String, active: Bool) -> some View {
-        HStack(spacing: 8) {
+    func wsRow(_ ws: WorkspaceEntry) -> some View {
+        let isActive = ws.name == activeWorkspaceName
+        return HStack(spacing: 10) {
+            Image(systemName: ws.icon)
+                .font(.system(size: 11))
+                .foregroundStyle(isActive ? ws.color : Theme.chromeMuted)
+                .frame(width: 16, alignment: .center)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ws.name)
+                    .font(Theme.mono(11, weight: isActive ? .medium : .regular))
+                    .foregroundStyle(isActive ? Theme.chromeForeground : Theme.chromeMuted)
+                    .lineLimit(1)
+                Text(ws.path)
+                    .font(Theme.mono(9))
+                    .foregroundStyle(Theme.chromeFaint)
+            }
+            Spacer()
             Circle()
-                .fill(active ? Color.blue : Theme.chromeFaint)
+                .fill(ws.color)
                 .frame(width: 5, height: 5)
-            Text(name)
-                .font(Theme.mono(11))
-                .foregroundStyle(active ? Theme.chromeForeground : Theme.chromeMuted)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .background(isActive ? Theme.chromeHover : .clear)
+        .onTapGesture { activeWorkspaceName = ws.name }
+    }
+
+    func sidebarFooterItem(_ label: String, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.chromeFaint)
+            Text(label)
+                .font(Theme.mono(10))
+                .foregroundStyle(Theme.chromeFaint)
+                .kerning(0.4)
             Spacer()
         }
-        .padding(.horizontal, 12).padding(.vertical, 5)
-        .contentShape(Rectangle())
-        .background(active ? Theme.chromeHover : .clear)
+        .padding(.horizontal, 14).padding(.vertical, 8)
     }
 
     // MARK: Center

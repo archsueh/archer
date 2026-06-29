@@ -277,7 +277,6 @@ struct BrutalistSlider: View {
                 Rectangle()
                     .fill(Theme.chromeForeground)
                     .frame(width: handleWidth, height: handleHeight)
-                    .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
                     .offset(x: x)
             }
             .frame(maxHeight: .infinity, alignment: .center)

@@ -133,7 +133,6 @@ struct ToolCallActivityPill: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .overlay(border)
     }
 
     private func noToolNamePill(for event: ToolCallEvent) -> some View {
@@ -151,7 +150,6 @@ struct ToolCallActivityPill: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .overlay(border)
     }
 
     private func iconOnlyPill(for event: ToolCallEvent) -> some View {
@@ -161,7 +159,6 @@ struct ToolCallActivityPill: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
-        .overlay(border)
     }
 
     private var waitingPill: some View {
@@ -175,7 +172,6 @@ struct ToolCallActivityPill: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .overlay(border)
     }
 
     // MARK: Sub-views
@@ -194,10 +190,6 @@ struct ToolCallActivityPill: View {
         Text(event.state.presentation.glyph)
             .font(Theme.mono(11, weight: .medium))
             .foregroundStyle(event.state.presentation.glyphColor)
-    }
-
-    private var border: some View {
-        RoundedRectangle(cornerRadius: 4).stroke(Theme.chromeFaint, lineWidth: 1)
     }
 
     private var separator: some View {
