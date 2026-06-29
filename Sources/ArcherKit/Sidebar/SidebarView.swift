@@ -666,7 +666,7 @@ struct SidebarView: View {
                     }
 
                     HoverableNavButton(
-                        title: "AGENT 用量",
+                        title: "USAGE",
                         iconName: "gauge.medium",
                         isActive: false
                     ) {

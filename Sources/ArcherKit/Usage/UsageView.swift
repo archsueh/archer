@@ -328,7 +328,7 @@ struct UsageView: View {
                 Image(systemName: "gauge.medium")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.chromeMuted)
-                Text("Agent 用量")
+                Text("Usage")
                     .font(Theme.mono(12, weight: .bold))
                     .foregroundStyle(Theme.chromeForeground)
                 Text("· 配额 / token / 窗口重置")
@@ -349,7 +349,7 @@ struct UsageView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Agent 用量")
+            Text("Usage")
                 .font(Theme.display(24, weight: .semibold))
                 .foregroundStyle(Theme.chromeForeground)
 
