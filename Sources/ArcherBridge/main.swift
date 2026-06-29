@@ -27,6 +27,9 @@ func send(_ payload: [String: Any]) {
     var addr = sockaddr_un()
     addr.sun_family = sa_family_t(AF_UNIX)
     let pathBytes = Array(socketPath.utf8)
+    guard pathBytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
+        fputs("archer-bridge: socket path too long\n", stderr); exit(1)
+    }
     withUnsafeMutableBytes(of: &addr.sun_path) { dst in
         pathBytes.withUnsafeBufferPointer { src in
             dst.baseAddress?.copyMemory(from: src.baseAddress!, byteCount: src.count)

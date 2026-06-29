@@ -24,10 +24,17 @@ import Foundation
 /// so all surface access is main-actor-safe.
 @MainActor
 final class BridgeServer {
-    weak var store: WorkspaceStore?
+    /// Resolved at command time — avoids stale first-window pin and nil-after-close bugs.
+    var storeProvider: (() -> WorkspaceStore?)?
 
     private var listenFd: Int32 = -1
     private var source: DispatchSourceRead?
+
+    /// Concurrent queue for blocking client I/O — keeps read()/write() off the main actor
+    private static let ioQueue = DispatchQueue(
+        label: "ai.archer.bridge.io",
+        attributes: .concurrent
+    )
 
     static let socketPath: String = {
         let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".archer")
@@ -59,7 +66,9 @@ final class BridgeServer {
         let bound = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, len) }
         }
-        guard bound == 0, listen(fd, 8) == 0 else { close(fd); return }
+        guard bound == 0 else { close(fd); return }
+        fchmod(fd, S_IRUSR | S_IWUSR) // 0600 — owner-only; blocks same-UID injection via type/keys cmds
+        guard listen(fd, 8) == 0 else { close(fd); return }
 
         listenFd = fd
         let src = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
@@ -80,16 +89,29 @@ final class BridgeServer {
     private func acceptOne() {
         let clientFd = accept(listenFd, nil, nil)
         guard clientFd >= 0 else { return }
-        defer { close(clientFd) }
 
-        var buf = [UInt8](repeating: 0, count: 65536)
-        let n = buf.withUnsafeMutableBufferPointer { read(clientFd, $0.baseAddress, $0.count) }
-        guard n > 0 else { return }
+        // Blocking read/write moves off the main actor; handle() hops back via Task.
+        Self.ioQueue.async { [weak self] in
+            // 5-second receive timeout: hung client can't stall a queue thread indefinitely
+            var tv = timeval(tv_sec: 5, tv_usec: 0)
+            setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
-        let data = Data(bytes: buf, count: n)
-        let response = handle(data)
-        response.withUnsafeBytes { ptr in
-            _ = Darwin.write(clientFd, ptr.baseAddress!, ptr.count)
+            var buf = [UInt8](repeating: 0, count: 65536)
+            let n = buf.withUnsafeMutableBufferPointer { read(clientFd, $0.baseAddress!, $0.count) }
+            guard n > 0 else { close(clientFd); return }
+
+            let data = Data(bytes: buf, count: n)
+
+            Task { @MainActor [weak self] in
+                guard let self else { close(clientFd); return }
+                let response = self.handle(data)
+                Self.ioQueue.async {
+                    response.withUnsafeBytes { ptr in
+                        _ = Darwin.write(clientFd, ptr.baseAddress!, ptr.count)
+                    }
+                    close(clientFd)
+                }
+            }
         }
     }
 
@@ -99,7 +121,7 @@ final class BridgeServer {
         else { return error("invalid JSON or missing cmd") }
 
         // Sync registry from active workspace before every command.
-        PaneRegistry.shared.sync(workspace: store?.active)
+        PaneRegistry.shared.sync(workspace: storeProvider?()?.active)
 
         switch cmd {
         case "list":

@@ -53,11 +53,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// Agent hook events carry a global surface-UUID. Broadcast to every
     /// window's store — `applyHookEvent` & friends no-op when the session
     /// isn't theirs, so exactly the owning window reacts.
-    private lazy var bridgeServer: BridgeServer = {
-        let srv = BridgeServer()
-        srv.store = windowControllers.first?.store
-        return srv
-    }()
+    private lazy var bridgeServer: BridgeServer = .init()
 
     private lazy var hookServer = HookServer { [weak self] message in
         guard let self else { return }
@@ -116,7 +112,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         installMainMenu()
         showCLIDetectionIfNeeded()
         hookServer.start()
-        bridgeServer.store = windowControllers.first?.store
+        bridgeServer.storeProvider = { [weak self] in self?.activeController?.store }
         bridgeServer.start()
         notificationManager.onActivate = { [weak self] sessionId in
             self?.activateFromNotification(sessionId)

@@ -488,6 +488,14 @@ final class WorkspaceStore {
             guard let source = workspaces.first(where: { $0.id == result.sourceId }) else { continue }
             reconcile(source: source, sourceRoot: result.repoRoot, diskWorktrees: result.infos)
         }
+
+        // Guard: consecutive closeWorkspace calls inside reconcile() each update
+        // activeWorkspaceId for their own removal, but a later removal can leave
+        // it dangling if the id it was just set to is itself a zombie in the same
+        // batch. Fall back to the first surviving workspace.
+        if let id = activeWorkspaceId, !workspaces.contains(where: { $0.id == id }) {
+            activeWorkspaceId = workspaces.first?.id
+        }
     }
 
     /// `internal` so tests can drive it with synthetic `diskWorktrees`
