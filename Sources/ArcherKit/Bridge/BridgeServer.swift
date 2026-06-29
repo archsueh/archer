@@ -126,10 +126,12 @@ final class BridgeServer {
         switch cmd {
         case "list":
             let labels = Array(PaneRegistry.shared.entries.keys).sorted()
+            BridgeEventLog.shared.append(category: .bridge, summary: "list → [\(labels.joined(separator: ", "))]")
             return ok(["labels": labels])
 
         case "sync":
             let count = PaneRegistry.shared.entries.count
+            BridgeEventLog.shared.append(category: .bridge, summary: "sync → \(count) pane(s)")
             return ok(["count": count])
 
         case "read":
@@ -138,6 +140,7 @@ final class BridgeServer {
             guard let text = PaneRegistry.shared.read(label: label, lines: lines) else {
                 return error("label not found or surface unavailable: \(label)")
             }
+            BridgeEventLog.shared.append(category: .bridge, summary: "read \(label) \(lines)L → \(text.count)ch")
             return ok(["text": text])
 
         case "type":
@@ -147,6 +150,8 @@ final class BridgeServer {
                 return error("label not found: \(label)")
             }
             PaneRegistry.shared.type(label: label, text: text)
+            let preview = text.prefix(40).replacingOccurrences(of: "\n", with: "↵")
+            BridgeEventLog.shared.append(category: .bridge, summary: "type \(label) \"\(preview)\"")
             return ok([:])
 
         case "keys":
@@ -156,6 +161,7 @@ final class BridgeServer {
                 return error("label not found: \(label)")
             }
             PaneRegistry.shared.keys(label: label, keys: keys)
+            BridgeEventLog.shared.append(category: .bridge, summary: "keys \(label) [\(keys.joined(separator: ", "))]")
             return ok([:])
 
         default:

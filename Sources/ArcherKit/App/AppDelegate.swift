@@ -57,6 +57,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
 
     private lazy var hookServer = HookServer { [weak self] message in
         guard let self else { return }
+        switch message {
+        case let .agent(agent, event, _):
+            BridgeEventLog.shared.append(category: .hook, summary: "\(agent.id) \(event.rawValue)")
+        case let .toolCall(agent, toolName, identifier, event, success, _, _):
+            let result = success.map { $0 ? " ✓" : " ✗" } ?? ""
+            BridgeEventLog.shared.append(category: .hook,
+                                         summary: "\(agent.id) \(toolName)\(identifier.isEmpty ? "" : " \(identifier)")\(result) [\(event.rawValue)]")
+        default:
+            break
+        }
         for controller in self.windowControllers {
             let store = controller.store
             switch message {

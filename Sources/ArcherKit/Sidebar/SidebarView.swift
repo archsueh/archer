@@ -654,6 +654,15 @@ struct SidebarView: View {
                     ) {
                         UsagePanelWindowController.show()
                     }
+
+                    HoverableIconButton(
+                        systemName: "text.justify.left",
+                        fontSize: 12,
+                        size: 28,
+                        help: "Bridge & hook log"
+                    ) {
+                        LogPanelWindowController.show()
+                    }
                 }
             } else {
                 VStack(spacing: 4) {
@@ -671,6 +680,14 @@ struct SidebarView: View {
                         isActive: false
                     ) {
                         UsagePanelWindowController.show()
+                    }
+
+                    HoverableNavButton(
+                        title: "LOG",
+                        iconName: "text.justify.left",
+                        isActive: false
+                    ) {
+                        LogPanelWindowController.show()
                     }
                 }
                 .padding(.horizontal, Theme.space2)
