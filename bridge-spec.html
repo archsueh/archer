@@ -88,7 +88,20 @@
       <li><b>可视化</b> — `bridge.html` 作为 Bridge Log 面板接真实事件流(read/type/keys/reply),驾驶舱可从右键 pane 打开。</li>
     </ol>
 
-    <h2>6 · 安全约束</h2>
+    <h2>6 · MCO — 并行共识补充层</h2>
+    <p><b>Bridge 是串行交接</b>（A → B → A），<b>MCO 是并行扇出 + 共识</b>（A → [B‖C‖D] → 最优解回 A）。两者互补，不替换。</p>
+    <p class="note"><b>项目状态：</b>mco-org/mco 作者已转向 Hive 项目，MCO 本体可用但无主动维护。以下映射基于 MCO v0.x CLI + MCP server 模式。</p>
+    <div class="map">
+      <div class="r head"><div class="c1">MCO 能力</div><div class="c2">Archer 映射 / 价值</div></div>
+      <div class="r"><div class="c1">mco run --agents A,B,C "prompt"</div><div class="c2">同时向多个 pane 注入同一任务，Bridge 无需串行转发</div></div>
+      <div class="r"><div class="c1">并行扇出 + 等待</div><div class="c2">Cockpit 多 pane 模式天然承载：每个 pane 是一个 agent 实例</div></div>
+      <div class="r"><div class="c1">consensus scoring（投票）</div><div class="c2">读取各 pane 输出，Bridge.read 轮询 → 汇总给 Claude 做裁决</div></div>
+      <div class="r"><div class="c1">mco serve（MCP server 模式）</div><div class="c2">ArcherBridge MCP P1：agent 通过工具调用而非 CLI 发起多 pane 协作</div></div>
+      <div class="r"><div class="c1">mco_doctor / mco_review</div><div class="c2">可包装为 Archer skill：claude/codex 直接调 mco 诊断/评审工具</div></div>
+    </div>
+    <p>推荐用法：<code>bridge.type</code> 串行交接用于 A→B 单步委托；当需要"三个 agent 同时做，取最好结果"时，改用 <code>mco run</code> + <code>bridge.read</code> 轮询收集。Bridge Log 面板应同时记录两类事件。</p>
+
+    <h2>7 · 安全约束</h2>
     <p class="note"><b>注入是高权限操作。</b>type/keys 等于替用户敲键 —— 必须:① 仅限当前 workspace 内的 pane;② 危险按键(C-c、rm 回车)默认需确认或加白名单;③ Bridge Log 全量留痕,可审计"谁对谁发了什么"。</p>
 
     <p class="meta" style="border-top:1px solid rgba(255,255,255,.08);border-bottom:none;padding:18px 0 0;margin-top:30px;">参考 · <span class="accent">github.com/ShawnPana/smux</span> · 相关卡:Agent Bridge(交互演示)、Sessions、Cockpit</p>

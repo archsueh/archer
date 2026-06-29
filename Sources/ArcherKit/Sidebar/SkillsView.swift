@@ -19,8 +19,12 @@ struct SkillsView: View {
 
     @State private var hoverClean = false
     @State private var hoverSort = false
+    @State private var activeTab: SkillsTab = .installed
+    @State private var updateCount = 0
 
     @State private var watcher: DirectoryWatcher?
+
+    enum SkillsTab { case installed, discover, updates }
 
     enum CleanState {
         case idle
@@ -73,8 +77,7 @@ struct SkillsView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         headerSection
                         statStrip
-                        filterBar
-                        skillsTable
+                        tabContent
                     }
                     .padding(32)
                 }
@@ -109,6 +112,13 @@ struct SkillsView: View {
             }
 
             Spacer()
+
+            HStack(spacing: 2) {
+                tabPill("已安装", tab: .installed)
+                tabPill("发现技能", tab: .discover, icon: "magnifyingglass")
+                tabPill("检查更新", tab: .updates, icon: "arrow.2.circlepath", badge: updateCount)
+            }
+            .padding(.trailing, 12)
         }
         .frame(height: 48)
         .overlay(
@@ -117,6 +127,32 @@ struct SkillsView: View {
                 Rectangle().fill(Theme.chromeHairline).frame(height: 1)
             }
         )
+    }
+
+    private func tabPill(_ label: String, tab: SkillsTab, icon: String? = nil, badge: Int = 0) -> some View {
+        let isActive = activeTab == tab
+        return Button {
+            withAnimation(Theme.chromeTransition) { activeTab = tab }
+        } label: {
+            HStack(spacing: 5) {
+                if let icon {
+                    Image(systemName: icon).font(.system(size: 10))
+                }
+                Text(label).font(Theme.mono(11))
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(Theme.mono(9, weight: .bold))
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.orange)
+                        .clipShape(Capsule())
+                }
+            }
+            .foregroundStyle(isActive ? Theme.chromeForeground : Theme.chromeMuted)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(isActive ? Theme.chromeActive : .clear)
+        }
+        .buttonStyle(.plain)
     }
 
     private var headerSection: some View {
@@ -152,12 +188,7 @@ struct SkillsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
-            .overlay(
-                HStack {
-                    Spacer()
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                }
-            )
+            .overlay(HStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(width: 1) })
 
             // Stat 2: Active
             VStack(alignment: .leading, spacing: 8) {
@@ -167,122 +198,127 @@ struct SkillsView: View {
                 Text("45 天内活跃")
                     .font(Theme.display(13))
                     .foregroundStyle(Theme.chromeForeground)
-                Text("共 \(skills.map(\.triggerCount).reduce(0, +)) 次触发")
+                Text("按触发记录统计")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
-            .overlay(
-                HStack {
-                    Spacer()
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                }
-            )
+            .overlay(HStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(width: 1) })
 
-            // Stat 3: Inactive
+            // Stat 3: Updates (orange — upstream version check)
             VStack(alignment: .leading, spacing: 8) {
-                Text("\(inactiveCount)")
+                Text(updateCount == 0 ? "—" : "\(updateCount)")
                     .font(Theme.display(38, weight: .semibold))
-                    .foregroundStyle(Theme.chromeForeground)
-                Text("在吃灰")
+                    .foregroundStyle(updateCount > 0 ? Color.orange : Theme.chromeMuted)
+                Text("可更新")
                     .font(Theme.display(13))
                     .foregroundStyle(Theme.chromeForeground)
-                Text("45 天零触发")
+                Text("检测到上游新版本")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
-            .overlay(
-                HStack {
-                    Spacer()
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                }
-            )
-
-            // Stat 4: Issues
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(issueCount)")
-                    .font(Theme.display(38, weight: .semibold))
-                    .foregroundStyle(issueCount > 0 ? Theme.activityFailure : Theme.gitInsertion)
-                Text("有问题")
-                    .font(Theme.display(13))
-                    .foregroundStyle(Theme.chromeForeground)
-                Text("截断 / 缺 frontmatter / 残留")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
-
-                Button(action: performCleanup) {
-                    HStack(spacing: 6) {
-                        Image(systemName: cleanBtnState.isDone ? "checkmark" : "trash")
-                        Text(cleanBtnState.buttonTitle(count: issueCount))
-                    }
-                    .font(Theme.mono(11))
-                    .foregroundStyle(cleanBtnState.isDone ? Theme.gitInsertion : Theme.activityFailure)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 6)
-                    .overlay(
-                        Rectangle().stroke(
-                            cleanBtnState.isDone ? Theme.gitInsertion.opacity(0.45) : Theme.activityFailure.opacity(0.45),
-                            lineWidth: 1
-                        )
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(cleanBtnState.isDone || issueCount == 0)
-                .padding(.top, 4)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .overlay(
-                HStack {
-                    Spacer()
-                    Rectangle().fill(Theme.chromeHairline).frame(width: 1)
-                }
-            )
-
-            // Stat 5: Budget (real calculation)
-            VStack(alignment: .leading, spacing: 8) {
-                let ratio = contextBudget > 0 ? Double(contextUsed) / Double(contextBudget) : 0
-                let overLimit = contextUsed > contextBudget
-                HStack(alignment: .lastTextBaseline) {
-                    Text("Claude 常驻预算")
-                        .font(Theme.display(13))
-                        .foregroundStyle(Theme.chromeForeground)
-                    Spacer()
-                    Text(overLimit ? "超限 \(String(format: "%.1f", ratio))×" : "\(Int(ratio * 100))%")
-                        .font(Theme.mono(13, weight: .bold))
-                        .foregroundStyle(overLimit ? Theme.activityAttention : Theme.gitInsertion)
-                }
-
-                GeometryReader { geo in
-                    let fillRatio = min(ratio, 1.0)
-                    let overFillRatio = max(ratio - 1.0, 0)
-                    HStack(spacing: 0) {
-                        Rectangle()
-                            .fill(overLimit ? Theme.activityAttention : Theme.gitInsertion)
-                            .frame(width: geo.size.width * fillRatio)
-                        if overFillRatio > 0 {
-                            Rectangle()
-                                .fill(Theme.activityFailure)
-                                .frame(width: geo.size.width * min(overFillRatio, 1.0))
-                        }
-                        Spacer()
-                    }
-                }
-                .frame(height: 14)
-                .bracketBorder()
-                .padding(.vertical, 4)
-
-                Text("\(contextUsed.formatted()) 字 / \(contextBudget.formatted()) 预算\(overLimit ? " — 超出部分被静默丢弃" : "")")
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(Theme.chromeMuted)
-                    .lineLimit(2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
+            .overlay(HStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(width: 1) })
         }
+        .bracketBorder()
+    }
+
+    // MARK: - Tab Content
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch activeTab {
+        case .installed:
+            filterBar
+            skillsTable
+        case .discover:
+            discoverView
+        case .updates:
+            updatesView
+        }
+    }
+
+    private var discoverView: some View {
+        let notInClaude = skills.filter { !$0.agentPresence.contains("claude") }
+        return VStack(spacing: 0) {
+            HStack {
+                Text("可中继到 Claude")
+                    .font(Theme.mono(10, weight: .semibold))
+                    .foregroundStyle(Theme.chromeMuted)
+                    .textCase(.uppercase).kerning(0.5)
+                Spacer()
+                Text("\(notInClaude.count) 项")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.chromeFaint)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 12)
+            .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+
+            if notInClaude.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.gitInsertion)
+                    Text("所有 skill 均已在 Claude")
+                        .font(Theme.mono(12))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(40)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(notInClaude) { skill in
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(skill.hasIssue ? Theme.activityFailure : Theme.chromeMuted)
+                                .frame(width: 6, height: 6)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(skill.name)
+                                    .font(Theme.mono(12, weight: .medium))
+                                    .foregroundStyle(Theme.chromeForeground)
+                                Text(skill.source)
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeFaint)
+                            }
+                            Spacer()
+                            Button {
+                                toggleAgent(skill: skill, agentKey: "claude")
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.right.circle").font(.system(size: 10))
+                                    Text("中继到 Claude").font(Theme.mono(10))
+                                }
+                                .foregroundStyle(Theme.activityRunning)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 20).padding(.vertical, 12)
+                        .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+                    }
+                }
+            }
+        }
+        .bracketBorder()
+    }
+
+    private var updatesView: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "arrow.2.circlepath")
+                .font(.system(size: 22))
+                .foregroundStyle(Theme.chromeMuted)
+            Text("暂无可用更新")
+                .font(Theme.mono(13))
+                .foregroundStyle(Theme.chromeMuted)
+            Text("上游 git 版本检查功能待接入")
+                .font(Theme.mono(10.5))
+                .foregroundStyle(Theme.chromeFaint)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(48)
         .bracketBorder()
     }
 
