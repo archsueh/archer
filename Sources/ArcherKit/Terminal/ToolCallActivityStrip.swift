@@ -284,11 +284,13 @@ struct ToolCallActivityPill: View {
 }
 
 /// Scrollable history popover anchored to `ToolCallActivityPill`. Top row
-/// is the session summary (per-kind counters + elapsed); below is the
-/// rolling 200-event list, newest first. Matches the brutalist vocabulary:
-/// mono font, 1pt hairline rows, sharp corners, chrome-tinted background.
+/// is the session summary (per-kind counters + elapsed); below is either
+/// the rolling 200-event list (newest first) or a directed-graph flow view
+/// toggled via the header button. Matches the brutalist vocabulary: mono
+/// font, 1pt hairline rows, sharp corners, chrome-tinted background.
 private struct ToolCallHistoryPopover: View {
     @Bindable var session: Session
+    @State private var showFlow = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -296,6 +298,8 @@ private struct ToolCallHistoryPopover: View {
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
             if session.toolCallEvents.isEmpty {
                 emptyState
+            } else if showFlow {
+                ToolCallFlowView(events: session.toolCallEvents)
             } else {
                 ScrollView(.vertical) {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -310,7 +314,7 @@ private struct ToolCallHistoryPopover: View {
                 }
             }
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 520, height: 400)
         .background(Theme.chromeBackground)
     }
 
@@ -332,6 +336,19 @@ private struct ToolCallHistoryPopover: View {
                     .font(Theme.mono(11, weight: .medium))
                     .foregroundStyle(Theme.chromeForeground)
             }
+            // Flow / list toggle
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { showFlow.toggle() }
+            } label: {
+                Image(systemName: showFlow ? "list.bullet" : "arrow.right.square")
+                    .imageScale(.small)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(showFlow ? Theme.activityRunning : Theme.chromeMuted)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(showFlow ? "Switch to list view" : "Switch to flow view")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
