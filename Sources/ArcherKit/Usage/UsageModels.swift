@@ -244,6 +244,7 @@ enum UsageRecordSource: String, Codable {
     case nativeCodexSQLite
     case nativeClaudeCode
     case nativeHermes
+    case nativeGrok
     case ccSwitchProxy
     case unknown
 }

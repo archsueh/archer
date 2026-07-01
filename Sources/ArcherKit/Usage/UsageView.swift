@@ -64,6 +64,33 @@ final class UsageViewModel: ObservableObject {
         var todayHermesOutput = 0
         var todayHermesCacheRead = 0
 
+        var todayGrokInput = 0
+        var todayGrokOutput = 0
+        var todayGrokCacheRead = 0
+        var grokUsageByDay: [String: (input: Int, output: Int, cacheRead: Int)] = [:]
+
+        let grokRecords = UsageCollector.grokRecords(
+            homeURL: URL(fileURLWithPath: home),
+            modifiedSince: Calendar.current.date(byAdding: .day, value: -8, to: Date())
+        )
+        let todayString = {
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd"
+            return formatter.string(from: Date())
+        }()
+        for record in grokRecords {
+            grokUsageByDay[record.date, default: (0, 0, 0)].input += record.usage.inputTokens
+            grokUsageByDay[record.date, default: (0, 0, 0)].output += record.usage.outputTokens + record.usage.reasoningOutputTokens
+            grokUsageByDay[record.date, default: (0, 0, 0)].cacheRead += record.usage.cacheReadInputTokens
+            if record.date == todayString {
+                todayGrokInput += record.usage.inputTokens
+                todayGrokOutput += record.usage.outputTokens + record.usage.reasoningOutputTokens
+                todayGrokCacheRead += record.usage.cacheReadInputTokens
+            }
+        }
+
         if fm.fileExists(atPath: hermesDbPath) {
             var db: OpaquePointer?
             if sqlite3_open_v2(hermesDbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
@@ -147,7 +174,7 @@ final class UsageViewModel: ObservableObject {
         weekdayFormatter.dateFormat = "E"
 
         var maxTotal = 0
-        var rawDays: [(dayName: String, claude: Int, hermes: Int)] = []
+        var rawDays: [(dayName: String, claude: Int, hermes: Int, grok: Int)] = []
 
         for i in (0 ..< 7).reversed() {
             if let date = calendar.date(byAdding: .day, value: -i, to: Date()) {
@@ -156,12 +183,15 @@ final class UsageViewModel: ObservableObject {
 
                 let claudeTokens = (claudeUsageByDay[dateStr]?.input ?? 0) + (claudeUsageByDay[dateStr]?.output ?? 0)
                 let hermesTokens = (hermesUsageByDay[dateStr]?.input ?? 0) + (hermesUsageByDay[dateStr]?.output ?? 0)
+                let grokTokens = (grokUsageByDay[dateStr]?.input ?? 0)
+                    + (grokUsageByDay[dateStr]?.output ?? 0)
+                    + (grokUsageByDay[dateStr]?.cacheRead ?? 0)
 
-                let total = claudeTokens + hermesTokens
+                let total = claudeTokens + hermesTokens + grokTokens
                 if total > maxTotal {
                     maxTotal = total
                 }
-                rawDays.append((dayName: dayName, claude: claudeTokens, hermes: hermesTokens))
+                rawDays.append((dayName: dayName, claude: claudeTokens, hermes: hermesTokens, grok: grokTokens))
             }
         }
 
@@ -169,11 +199,13 @@ final class UsageViewModel: ObservableObject {
         for item in rawDays {
             let claudeH = (CGFloat(item.claude) / scaleMax) * 110.0
             let hermesH = (CGFloat(item.hermes) / scaleMax) * 110.0
+            let grokH = (CGFloat(item.grok) / scaleMax) * 110.0
 
             dayItems.append(UsageStats.DayUsage(
                 dayName: item.dayName,
                 claudeHeight: max(claudeH, 4),
-                hermesHeight: max(hermesH, 4)
+                hermesHeight: max(hermesH, 4),
+                grokHeight: max(grokH, 4)
             ))
         }
 
@@ -184,6 +216,9 @@ final class UsageViewModel: ObservableObject {
             hermesTodayInput: todayHermesInput,
             hermesTodayOutput: todayHermesOutput,
             hermesTodayCacheRead: todayHermesCacheRead,
+            grokTodayInput: todayGrokInput,
+            grokTodayOutput: todayGrokOutput,
+            grokTodayCacheRead: todayGrokCacheRead,
             chartDays: dayItems
         )
     }
@@ -198,11 +233,16 @@ struct UsageStats {
     var hermesTodayOutput: Int = 0
     var hermesTodayCacheRead: Int = 0
 
+    var grokTodayInput: Int = 0
+    var grokTodayOutput: Int = 0
+    var grokTodayCacheRead: Int = 0
+
     struct DayUsage: Identifiable {
         let id = UUID()
         let dayName: String
         let claudeHeight: CGFloat
         let hermesHeight: CGFloat
+        let grokHeight: CGFloat
     }
 
     var chartDays: [DayUsage] = []
@@ -235,6 +275,11 @@ struct UsageView: View {
         if fm.fileExists(atPath: hermesDbPath) {
             usedIds.insert("hermes")
             usedIds.insert("antigravity")
+        }
+
+        let grokLogPath = (home as NSString).appendingPathComponent(".grok/logs/unified.jsonl")
+        if fm.fileExists(atPath: grokLogPath) {
+            usedIds.insert("grok")
         }
 
         // 3. Make sure the currently selected agent or active cockpit agent is in the list
@@ -353,7 +398,7 @@ struct UsageView: View {
                 .font(Theme.display(24, weight: .semibold))
                 .foregroundStyle(Theme.chromeForeground)
 
-            Text("Claude Code 官方 5h 窗口 + 周配额（与 /usage 同源） · Hermes 统计（与 state.db 同源）")
+            Text("Claude Code 官方 5h 窗口 + 周配额（与 /usage 同源） · Grok 统计（与 ~/.grok/logs/unified.jsonl 同源） · Hermes 统计（与 state.db 同源）")
                 .font(Theme.mono(11))
                 .foregroundStyle(Theme.chromeMuted)
         }
@@ -513,6 +558,80 @@ struct UsageView: View {
                         .font(Theme.display(13))
                         .foregroundStyle(Theme.chromeForeground)
                     Text("本地大模型 & API 计费")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+            } else if resolvedBaseAgentId == "grok" {
+                let totalInput = viewModel.stats.grokTodayInput + viewModel.stats.grokTodayCacheRead
+                let hitRate = totalInput > 0 ? Double(viewModel.stats.grokTodayCacheRead) / Double(totalInput) : 0.0
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(String(format: "%.0f", hitRate * 100))
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.activityRunning)
+                        Text("%")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("缓存命中率")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("基于 ~/.grok/logs/unified.jsonl")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    let totalGrokToday = Double(
+                        viewModel.stats.grokTodayInput
+                            + viewModel.stats.grokTodayOutput
+                            + viewModel.stats.grokTodayCacheRead
+                    ) / 1_000_000.0
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(String(format: "%.2f", totalGrokToday))
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.activityRunning)
+                        Text("M")
+                            .font(Theme.display(17, weight: .medium))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    Text("今日 Token")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("输入 \(formatTokens(viewModel.stats.grokTodayInput)) · 输出 \(formatTokens(viewModel.stats.grokTodayOutput))")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .overlay(
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Theme.chromeHairline).frame(width: 1)
+                    }
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(formatTokens(viewModel.stats.grokTodayCacheRead))
+                            .font(Theme.display(38, weight: .semibold))
+                            .foregroundStyle(Theme.chromeForeground)
+                    }
+                    Text("今日缓存读")
+                        .font(Theme.display(13))
+                        .foregroundStyle(Theme.chromeForeground)
+                    Text("Grok CLI 推理日志")
                         .font(Theme.mono(10.5))
                         .foregroundStyle(Theme.chromeMuted)
                 }
@@ -767,6 +886,72 @@ struct UsageView: View {
                 }
                 .padding(24)
                 .bracketBorder()
+            } else if resolvedBaseAgentId == "grok" {
+                let agent = AgentTemplate.all.first { $0.id == selectedAgentId }
+                let title = agent?.title ?? "Grok"
+
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 8) {
+                        AgentIconView(asset: agent?.iconAsset, fallbackSymbol: agent?.symbol ?? "bolt", size: 14)
+                        Text(title)
+                            .font(Theme.mono(12, weight: .bold))
+                        Text("grok · unified.jsonl 同源")
+                            .font(Theme.mono(9.5))
+                            .foregroundStyle(Theme.chromeMuted)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .bracketBorder()
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        let totalInput = viewModel.stats.grokTodayInput + viewModel.stats.grokTodayCacheRead
+                        let hitRate = totalInput > 0 ? Double(viewModel.stats.grokTodayCacheRead) / Double(totalInput) : 0.0
+                        HStack {
+                            Text("缓存命中率")
+                                .font(Theme.display(13))
+                            Spacer()
+                            Text(String(format: "%.0f%%", hitRate * 100))
+                                .font(Theme.mono(12))
+                                .foregroundStyle(Theme.chromeForeground)
+                        }
+
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(Theme.activityRunning)
+                                .frame(width: geo.size.width * CGFloat(hitRate))
+                        }
+                        .frame(height: 14)
+                        .background(Color.gray.opacity(0.1))
+                        .bracketBorder()
+                    }
+
+                    VStack(spacing: 8) {
+                        let maxVal = max(
+                            1,
+                            max(
+                                viewModel.stats.grokTodayInput,
+                                max(viewModel.stats.grokTodayOutput, viewModel.stats.grokTodayCacheRead)
+                            )
+                        )
+                        tokenRow(label: "输入", value: formatTokens(viewModel.stats.grokTodayInput), percent: CGFloat(viewModel.stats.grokTodayInput) / CGFloat(maxVal))
+                        tokenRow(label: "输出", value: formatTokens(viewModel.stats.grokTodayOutput), percent: CGFloat(viewModel.stats.grokTodayOutput) / CGFloat(maxVal))
+                        tokenRow(label: "缓存读", value: formatTokens(viewModel.stats.grokTodayCacheRead), percent: CGFloat(viewModel.stats.grokTodayCacheRead) / CGFloat(maxVal))
+                    }
+
+                    Divider().background(Theme.chromeHairline)
+
+                    Text("数据来源 ")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted) +
+                        Text("~/.grok/logs/unified.jsonl")
+                        .font(Theme.mono(10.5, weight: .bold))
+                        .foregroundStyle(Theme.chromeForeground) +
+                        Text(" 中的 shell.turn.inference_done 事件。")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .padding(24)
+                .bracketBorder()
             } else {
                 // Dynamic Panel for any other agent
                 let agent = AgentTemplate.all.first { $0.id == selectedAgentId }
@@ -859,12 +1044,21 @@ struct UsageView: View {
                         // Stack
                         VStack(spacing: 0) {
                             Spacer()
-                            Rectangle()
-                                .fill(Theme.gitInsertion)
-                                .frame(height: day.hermesHeight)
-                            Rectangle()
-                                .fill(Theme.activityRunning)
-                                .frame(height: day.claudeHeight)
+                            if resolvedBaseAgentId == "grok" {
+                                Rectangle()
+                                    .fill(Color(red: 0.18, green: 0.55, blue: 0.95))
+                                    .frame(height: day.grokHeight)
+                            } else {
+                                Rectangle()
+                                    .fill(Theme.gitInsertion)
+                                    .frame(height: day.hermesHeight)
+                                Rectangle()
+                                    .fill(Color(red: 0.18, green: 0.55, blue: 0.95))
+                                    .frame(height: day.grokHeight)
+                                Rectangle()
+                                    .fill(Theme.activityRunning)
+                                    .frame(height: day.claudeHeight)
+                            }
                         }
                         .frame(height: 120)
                         .frame(width: 60)
@@ -879,17 +1073,32 @@ struct UsageView: View {
 
             // Legend
             HStack(spacing: 18) {
-                HStack(spacing: 7) {
-                    Rectangle()
-                        .fill(Theme.activityRunning)
-                        .frame(width: 10, height: 10)
-                    Text("Claude Code")
-                }
-                HStack(spacing: 7) {
-                    Rectangle()
-                        .fill(Theme.gitInsertion)
-                        .frame(width: 10, height: 10)
-                    Text("Gemini / Hermes")
+                if resolvedBaseAgentId == "grok" {
+                    HStack(spacing: 7) {
+                        Rectangle()
+                            .fill(Color(red: 0.18, green: 0.55, blue: 0.95))
+                            .frame(width: 10, height: 10)
+                        Text("Grok")
+                    }
+                } else {
+                    HStack(spacing: 7) {
+                        Rectangle()
+                            .fill(Theme.activityRunning)
+                            .frame(width: 10, height: 10)
+                        Text("Claude Code")
+                    }
+                    HStack(spacing: 7) {
+                        Rectangle()
+                            .fill(Theme.gitInsertion)
+                            .frame(width: 10, height: 10)
+                        Text("Gemini / Hermes")
+                    }
+                    HStack(spacing: 7) {
+                        Rectangle()
+                            .fill(Color(red: 0.18, green: 0.55, blue: 0.95))
+                            .frame(width: 10, height: 10)
+                        Text("Grok")
+                    }
                 }
             }
             .font(Theme.mono(10.5))

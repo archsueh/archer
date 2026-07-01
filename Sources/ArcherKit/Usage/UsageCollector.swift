@@ -26,6 +26,7 @@ enum UsageCollector {
 
         let codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        let grok = collectGrok(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let hermes = collectHermes(modifiedSince: sourceCutoff)
 
         var ccSwitch = includeCCSwitchProxyUsage
@@ -35,7 +36,7 @@ enum UsageCollector {
         cache.files = cache.files.filter { livePaths.contains($0.key) }
         saveCache(cache)
 
-        let nativeRecords = codex.records + claude.records + hermes.records
+        let nativeRecords = codex.records + claude.records + grok.records + hermes.records
         let deduped = deduplicateCrossSource(
             nativeRecords: nativeRecords,
             proxyRecords: ccSwitch.records
@@ -48,6 +49,7 @@ enum UsageCollector {
             sources: [
                 "Codex": codex.source,
                 "Claude Code": claude.source,
+                "Grok": grok.source,
                 "Hermes": hermes.source,
                 ccSwitchSourceName: ccSwitch.source,
             ]
@@ -275,6 +277,186 @@ enum UsageCollector {
                 records: records.count
             )
         )
+    }
+
+    /// Grok logs per-turn token usage in `~/.grok/logs/unified.jsonl` as
+    /// `shell.turn.inference_done` events. Model ids come from session
+    /// `summary.json` files under `~/.grok/sessions/`.
+    private static func collectGrok(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        collectGrokFromHome(cache: &cache, livePaths: &livePaths, homeURL: homeURL, modifiedSince: cutoffDate)
+    }
+
+    static func grokRecords(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        modifiedSince cutoffDate: Date? = nil
+    ) -> [UsageRecord] {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        return collectGrokFromHome(
+            cache: &cache,
+            livePaths: &livePaths,
+            homeURL: homeURL,
+            modifiedSince: cutoffDate
+        ).records
+    }
+
+    static func collectGrokForTesting(
+        homeURL: URL,
+        modifiedSince cutoffDate: Date?
+    ) -> (records: [UsageRecord], source: SourceInfo) {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        let result = collectGrokFromHome(
+            cache: &cache,
+            livePaths: &livePaths,
+            homeURL: homeURL,
+            modifiedSince: cutoffDate
+        )
+        return (result.records, result.source)
+    }
+
+    private static func collectGrokFromHome(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        homeURL: URL,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let path = homeURL.appendingPathComponent(".grok/logs/unified.jsonl")
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+        if let cutoffDate,
+           let values = try? path.resourceValues(forKeys: [.contentModificationDateKey]),
+           let modificationDate = values.contentModificationDate,
+           modificationDate < cutoffDate
+        {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        let modelBySession = grokSessionModels(homeURL: homeURL)
+        livePaths.insert(path.path)
+        if let cached = cachedRecords(for: path, tool: "Grok", cache: cache) {
+            return CollectorResult(
+                records: cached,
+                source: SourceInfo(status: cached.isEmpty ? "missing" : "ok", files: 1, records: cached.count)
+            )
+        }
+
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+        var lineNumber = 0
+        guard FileManager.default.isReadableFile(atPath: path.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 1, records: 0)
+            )
+        }
+
+        try? forEachLine(in: path, matchingAny: ["shell.turn.inference_done"]) { line in
+            autoreleasepool {
+                lineNumber += 1
+                guard let obj = jsonObject(line),
+                      obj["msg"] as? String == "shell.turn.inference_done",
+                      let ctx = obj["ctx"] as? [String: Any]
+                else {
+                    return
+                }
+
+                let promptTokens = integerValue(ctx["prompt_tokens"] as Any)
+                let cachedPromptTokens = integerValue(ctx["cached_prompt_tokens"] as Any)
+                let completionTokens = integerValue(ctx["completion_tokens"] as Any)
+                let reasoningTokens = integerValue(ctx["reasoning_tokens"] as Any)
+                let totalTokens = promptTokens + completionTokens + reasoningTokens
+                guard totalTokens > 0,
+                      let timestamp = obj["ts"] as? String,
+                      let day = dayString(fromISO: timestamp)
+                else {
+                    return
+                }
+
+                let sessionID = nonEmptyString(obj["sid"] as? String)
+                let loopIndex = integerValue(ctx["loop_index"] as Any)
+                let dedupeKey = "\(sessionID ?? "unknown")|\(timestamp)|\(loopIndex)|\(totalTokens)"
+                guard !seen.contains(dedupeKey) else { return }
+                seen.insert(dedupeKey)
+
+                var usage = TokenUsageCounts()
+                usage.inputTokens = max(0, promptTokens - cachedPromptTokens)
+                usage.cacheReadInputTokens = cachedPromptTokens
+                usage.outputTokens = completionTokens
+                usage.reasoningOutputTokens = reasoningTokens
+                usage.totalTokens = totalTokens
+
+                let model = modelKey(sessionID.flatMap { modelBySession[$0] })
+                records.append(
+                    UsageRecord(
+                        date: day,
+                        timestamp: timestamp,
+                        tool: "Grok",
+                        model: model,
+                        usage: usage,
+                        source: .nativeGrok,
+                        requestID: dedupeKey,
+                        sessionID: sessionID,
+                        sourcePath: path.path,
+                        lineNumber: lineNumber
+                    )
+                )
+            }
+        }
+
+        updateCache(path: path, tool: "Grok", records: records, cache: &cache)
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing" : "ok",
+                files: 1,
+                records: records.count
+            )
+        )
+    }
+
+    private static func grokSessionModels(homeURL: URL) -> [String: String] {
+        let root = homeURL.appendingPathComponent(".grok/sessions", isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return [:]
+        }
+
+        var models: [String: String] = [:]
+        for case let url as URL in enumerator {
+            guard url.lastPathComponent == "summary.json",
+                  let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                continue
+            }
+            let sessionID = [
+                (obj["info"] as? [String: Any])?["id"] as? String,
+                obj["session_id"] as? String,
+            ].compactMap(nonEmptyString).first
+            guard let sessionID,
+                  let model = nonEmptyString(obj["current_model_id"] as? String)
+            else {
+                continue
+            }
+            models[sessionID] = model
+        }
+        return models
     }
 
     private static func collectHermes(modifiedSince cutoffDate: Date?) -> CollectorResult {
