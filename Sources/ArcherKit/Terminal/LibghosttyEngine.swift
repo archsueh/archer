@@ -409,6 +409,14 @@ final class GhosttySurfaceView: NSView {
     /// grab; set by `TerminalView` from the pane's active state. See
     /// `TerminalEngine.grabsFocusOnMount` for the why (issue #24).
     var grabsFocusOnMount = true
+    /// Kitty-protocol TUIs (Grok, Codex) enable focus reporting (`\x1b[?1004h`)
+    /// during startup. `ghostty_surface_set_focus(true)` then writes
+    /// `\x1bO\x1b[I` to the PTY, which crossterm/ratatui misreads as literal
+    /// composer text (e.g. `f8`). Fresh surfaces suppress all PTY focus reports
+    /// for a short mount window so "+ → agent" focus churn never injects bytes
+    /// mid-handshake. AppKit focus is unaffected.
+    private var suppressPtyFocusDuringMount = false
+    private var mountFocusSuppressionTimer: DispatchWorkItem?
     private(set) var surface: ghostty_surface_t? {
         didSet {
             if surface != nil { propagateSizeToSurface() }
@@ -535,6 +543,9 @@ final class GhosttySurfaceView: NSView {
 
     func releaseSurface() {
         guard let dying = surface else { return }
+        mountFocusSuppressionTimer?.cancel()
+        mountFocusSuppressionTimer = nil
+        suppressPtyFocusDuringMount = false
         // Null first so any guard-on-surface check post-free sees the cleared
         // state immediately; the local `dying` keeps the handle for free.
         surface = nil
@@ -552,12 +563,25 @@ final class GhosttySurfaceView: NSView {
             createSurfaceIfReady()
             // Defer until after SwiftUI's hosting finishes its current event
             // loop pass, otherwise the originating button click reclaims focus.
+            let freshMount = !reattaching
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window = self.window else { return }
                 // Only the active pane grabs focus on (re)mount — otherwise every
                 // pane's surface races on a workspace switch and the last one wins
                 // (issue #24). Size re-sync below runs regardless of focus.
-                if self.grabsFocusOnMount {
+                // Defer AppKit focus grab on a brand-new surface so the "+"
+                // popover click doesn't immediately reclaim the responder chain.
+                // PTY focus reports are suppressed in `schedulePtyFocusReport`
+                // during the fresh-mount window so Grok's handshake is clean.
+                let scheduleFocusGrab = { (delay: TimeInterval) in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                        guard let self, let window = self.window, self.grabsFocusOnMount else { return }
+                        window.makeFirstResponder(self)
+                    }
+                }
+                if freshMount, self.surface != nil {
+                    scheduleFocusGrab(0.15)
+                } else if self.grabsFocusOnMount {
                     window.makeFirstResponder(self)
                 }
                 // Re-sync size on reattach: propagateSizeToSurface no-ops while
@@ -639,8 +663,33 @@ final class GhosttySurfaceView: NSView {
             return
         }
         surface = new
+        beginMountFocusSuppression()
         pendingConfig = nil
         ghostty_surface_refresh(new)
+    }
+
+    /// How long to suppress `ghostty_surface_set_focus` PTY reports on a
+    /// brand-new surface. Covers Grok/Codex kitty + focus-report negotiation.
+    nonisolated static let ptyFocusReportSuppressionInterval: TimeInterval = 3.0
+
+    private func beginMountFocusSuppression() {
+        mountFocusSuppressionTimer?.cancel()
+        suppressPtyFocusDuringMount = true
+        let work = DispatchWorkItem { [weak self] in
+            self?.suppressPtyFocusDuringMount = false
+            self?.mountFocusSuppressionTimer = nil
+        }
+        mountFocusSuppressionTimer = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.ptyFocusReportSuppressionInterval,
+            execute: work
+        )
+    }
+
+    private func schedulePtyFocusReport(focused: Bool) {
+        guard let surface else { return }
+        guard !suppressPtyFocusDuringMount else { return }
+        ghostty_surface_set_focus(surface, focused)
     }
 
     func updateConfigFromSettings(parsed: [String: Any]?) {
@@ -716,7 +765,7 @@ final class GhosttySurfaceView: NSView {
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         if became {
-            if let surface { ghostty_surface_set_focus(surface, true) }
+            schedulePtyFocusReport(focused: true)
             onFocus?()
         }
         return became
@@ -724,8 +773,8 @@ final class GhosttySurfaceView: NSView {
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
-        if resigned, let surface {
-            ghostty_surface_set_focus(surface, false)
+        if resigned {
+            schedulePtyFocusReport(focused: false)
         }
         return resigned
     }
@@ -789,13 +838,13 @@ final class GhosttySurfaceView: NSView {
             return
         }
 
-        // Cursor keys are mode-aware: after a TUI enables DECCKM (`smkx`),
-        // libghostty must switch them from CSI (`ESC [ A`) to SS3
-        // (`ESC O A`). Route the physical key event through libghostty so
-        // old terminfo-strict programs (vim 7.2 on CentOS 6, etc.) see the
-        // active mode instead of archer hard-coding CSI forever. If libghostty
-        // declines the key — shouldn't happen for a focused surface — fall
-        // back to the CSI form; a non-mode-aware arrow still beats a dead one.
+        // Cursor and function keys are mode/protocol-aware: after a TUI enables
+        // DECCKM (`smkx`) or the kitty keyboard protocol (`\x1b[?u`), libghostty
+        // must emit the right escape form instead of archer hard-coding legacy
+        // CSI/SS3 bytes via `text_input`. Legacy xterm F8 (`ESC [ 19 ~`) injected
+        // that way is misread by ratatui/crossterm TUIs as literal "f8" text.
+        // Route unmodified physical keys through libghostty; fall back to the
+        // handwritten sequence if libghostty declines.
         if !hasMarkedText(),
            Self.shouldForwardModeAwareKeyToLibghostty(keyCode: event.keyCode, modifierFlags: mods)
         {
@@ -945,9 +994,10 @@ final class GhosttySurfaceView: NSView {
         return String(bytes: Data(bytes: ptr, count: Int(text.text_len)), encoding: .utf8)
     }
 
-    /// Physical keys whose output depends on libghostty's terminal mode state.
-    /// Keep these out of `handWrittenEscapeSequence`: hard-coded CSI cursor
-    /// bytes break applications that requested application cursor keys.
+    /// Physical keys whose PTY output depends on libghostty's mode/protocol
+    /// state (DECCKM, kitty keyboard enhancements). Keep unmodified forms out
+    /// of `handWrittenEscapeSequence` — hard-coded CSI bytes break TUIs that
+    /// negotiated a different encoding.
     nonisolated static func shouldForwardModeAwareKeyToLibghostty(
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags
@@ -957,6 +1007,9 @@ final class GhosttySurfaceView: NSView {
         }
         switch keyCode {
         case 123, 124, 125, 126: return true // left, right, down, up
+        // F1–F12 (macOS keyCodes). Modified function keys keep explicit CSI
+        // modifier forms in `handWrittenEscapeSequence`.
+        case 122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111: return true
         default: return false
         }
     }

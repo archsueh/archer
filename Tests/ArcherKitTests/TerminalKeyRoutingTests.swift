@@ -136,6 +136,80 @@ final class TerminalKeyRoutingTests: XCTestCase {
         )
     }
 
+    func testUnmodifiedFunctionKeysRouteThroughLibghostty() {
+        let functionKeyCodes: [UInt16] = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111]
+        for keyCode in functionKeyCodes {
+            XCTAssertTrue(
+                GhosttySurfaceView.shouldForwardModeAwareKeyToLibghostty(
+                    keyCode: keyCode,
+                    modifierFlags: []
+                )
+            )
+        }
+    }
+
+    func testModifiedFunctionKeysKeepExplicitCsiModifierSequences() {
+        XCTAssertFalse(
+            GhosttySurfaceView.shouldForwardModeAwareKeyToLibghostty(
+                keyCode: 100,
+                modifierFlags: [.shift]
+            )
+        )
+        XCTAssertEqual(
+            GhosttySurfaceView.handWrittenEscapeSequence(forKeyCode: 100, modifierFlags: [.shift]),
+            "\u{1B}[19;2~"
+        )
+    }
+
+    func testFocusReportHandshakeWritesFocusInAfterGrokEnablesReporting() throws {
+        guard let app = LibghosttyApp.shared.app else {
+            throw XCTSkip("libghostty app did not initialize")
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        window.contentView = view
+        let output = ManualGhosttyOutput()
+        var surfaceConfig = ghostty_surface_config_new()
+        surfaceConfig.platform_tag = GHOSTTY_PLATFORM_MACOS
+        surfaceConfig.platform.macos.nsview = Unmanaged.passUnretained(view).toOpaque()
+        surfaceConfig.scale_factor = 2
+        surfaceConfig.io_mode = GHOSTTY_SURFACE_IO_MANUAL
+        surfaceConfig.io_write_cb = manualGhosttyWrite
+        surfaceConfig.io_write_userdata = Unmanaged.passUnretained(output).toOpaque()
+
+        guard let surface = ghostty_surface_new(app, &surfaceConfig) else {
+            throw XCTSkip("manual libghostty surface did not initialize")
+        }
+        defer {
+            ghostty_surface_free(surface)
+            withExtendedLifetime(window) {}
+        }
+
+        ghostty_surface_set_size(surface, 800, 600)
+        ghostty_surface_set_focus(surface, true)
+        XCTAssertEqual(output.takeString(), "")
+
+        // Grok enables focus reporting during startup; libghostty then emits
+        // focus-in bytes when the host surface grabs focus — the source of the
+        // stray `f8` composer text Archer quarantines on fresh mounts.
+        "\u{1B}[?1004h".withCString { cstr in
+            ghostty_surface_process_output(surface, cstr, UInt(strlen(cstr)))
+        }
+        _ = output.takeString()
+        ghostty_surface_set_focus(surface, false)
+        ghostty_surface_set_focus(surface, true)
+        let focusInBytes = output.takeString()
+        XCTAssertTrue(focusInBytes.contains("\u{1B}[I"), "expected focus-in report, got: \(focusInBytes.debugDescription)")
+    }
+
+    func testFreshSurfacePtyFocusSuppressionCoversHandshakeWindow() {
+        XCTAssertGreaterThanOrEqual(GhosttySurfaceView.ptyFocusReportSuppressionInterval, 2.0)
+    }
+
     private static func pressArrowUp(on surface: ghostty_surface_t) -> Bool {
         var key = ghostty_input_key_s()
         key.action = GHOSTTY_ACTION_PRESS
