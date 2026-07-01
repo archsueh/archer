@@ -40,17 +40,18 @@ guard !surface.isEmpty else { exit(0) }
 let socketPath = ArcherHookKit.socketPath
 
 // Drain stdin once up-front so the tool-event parser (PreToolUse /
-// PostToolUse) and the conversationId mirror — both reading the same
-// Claude-supplied JSON — don't double-read a single-pass stream. Gated on
-// `agent == "claude"`: only Claude pipes JSON here, and it always writes one
-// object then closes. Every other caller (codex/bracket lifecycle pings, Pi's
-// argv modes, env snapshots) sends nothing on stdin, so draining is pointless
-// — and a detached caller can hand us a stdin pipe that never EOFs (a broker's
-// JSON-RPC stream that a spawned `app-server` inherits, pinged via the
-// wrapper), where readToEnd() would block forever. `isatty == 0` still guards
-// the tty case so the "binary not installed" branch never strands the tab.
+// PostToolUse) and the conversationId mirror — both reading the same hook
+// JSON — don't double-read a single-pass stream. Gated on agents that pipe
+// hook stdin (Claude, Grok): each writes one object then closes. Every other
+// caller (codex/bracket lifecycle pings, Pi's argv modes, env snapshots)
+// sends nothing on stdin, so draining is pointless — and a detached caller can
+// hand us a stdin pipe that never EOFs (a broker's JSON-RPC stream that a
+// spawned `app-server` inherits, pinged via the wrapper), where readToEnd()
+// would block forever. `isatty == 0` still guards the tty case so the "binary
+// not installed" branch never strands the tab.
 let agentArg = CommandLine.arguments.count >= 2 ? CommandLine.arguments[1] : ""
-let stdinData: Data = (agentArg == "claude" && isatty(fileno(stdin)) == 0)
+let hookStdinAgents: Set<String> = ["claude", "grok"]
+let stdinData: Data = (hookStdinAgents.contains(agentArg) && isatty(fileno(stdin)) == 0)
     ? ((try? FileHandle.standardInput.readToEnd()) ?? Data())
     : Data()
 
@@ -127,23 +128,28 @@ let eventSent = ArcherHookKit.sendPayload(payloadObject, to: socketPath)
 // Bonus payload: Claude pipes `session_id` on every hook (lifecycle +
 // tool). Mirror it so `WorkspaceStore` can persist the conversation id
 // on `Session` and prepend `--resume <id>` on next launch. Gated on:
-//   1. `agent == "claude"` — non-Claude agents skip it
-//   2. `kind != "tool"` — tool payloads fire 10-100× per Claude turn and
-//      each one ALSO carries session_id; mirroring on every Pre/PostToolUse
-//      would multiply IPC by N tool calls per turn. Lifecycle events
-//      (SessionStart/UserPromptSubmit/Stop/Notification/SessionEnd) carry
-//      the same id and fire 5× per turn — plenty to keep WorkspaceStore's
+//   1. Agent must pipe session ids on stdin (Claude, Grok)
+//   2. `kind != "tool"` — tool payloads fire 10-100× per turn and each one
+//      ALSO carries a session id; mirroring on every Pre/PostToolUse would
+//      multiply IPC by N tool calls per turn. Lifecycle events carry the
+//      same id and fire ~5× per turn — plenty to keep WorkspaceStore's
 //      `--resume` field fresh. applyConversationId dedups same-value writes
 //      but each call still pays a socket connect+write+close roundtrip.
-if payloadObject["agent"] == "claude",
-   payloadObject["kind"] != "tool",
-   let conversationId = ArcherHookKit.parseClaudeConversationId(from: stdinData)
+if payloadObject["kind"] != "tool",
+   let agent = payloadObject["agent"]
 {
-    let payload = ArcherHookKit.buildConversationIdPayload(
-        surface: surface,
-        conversationId: conversationId
-    )
-    _ = ArcherHookKit.sendPayload(payload, to: socketPath)
+    let conversationId: String? = switch agent {
+    case "claude": ArcherHookKit.parseClaudeConversationId(from: stdinData)
+    case "grok": ArcherHookKit.parseGrokConversationId(from: stdinData)
+    default: nil
+    }
+    if let conversationId {
+        let payload = ArcherHookKit.buildConversationIdPayload(
+            surface: surface,
+            conversationId: conversationId
+        )
+        _ = ArcherHookKit.sendPayload(payload, to: socketPath)
+    }
 }
 
 exit(eventSent ? 0 : 1)

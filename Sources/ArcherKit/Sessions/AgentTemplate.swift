@@ -38,7 +38,7 @@ struct AgentTemplate: Identifiable, Hashable {
     let promptLaunchFlag: String?
     /// CLI flag the agent's binary expects to resume a prior conversation.
     /// Nil = no resume support (archer doesn't have an id-capture path for
-    /// this agent yet). Claude Code = `--resume`; Grok = `--session`. Drives
+    /// this agent yet). Claude Code = `--resume`; Grok = `--resume`. Drives
     /// `makeSessionConfig(resumeId:)` and `supportsResume`.
     let resumeFlag: String?
     /// True when the agent feeds archer per-tool-call activity — Claude via
@@ -88,6 +88,7 @@ struct AgentTemplate: Identifiable, Hashable {
             "/usr/local/bin",
             "/usr/bin",
             "\(home)/.local/bin",
+            "\(home)/.grok/bin",
             "\(home)/.npm-global/bin",
             "\(home)/.cargo/bin",
         ]
@@ -332,13 +333,26 @@ extension AgentTemplate {
         promptLaunchFlag: "-p"
     )
 
+    /// Grok — xAI's coding CLI; binary `grok` (default install:
+    /// `~/.grok/bin/grok`). Hooks use Grok's Claude-compatible
+    /// `~/.grok/hooks/*.json` schema; archer installs `archer.json` when
+    /// `~/.grok/` exists. Lifecycle + tool-call events mirror Claude
+    /// (SessionStart → running, Stop/Notification → attention,
+    /// PreToolUse/PostToolUse → activity strip). Session ids from hook
+    /// stdin (`sessionId`) persist for `--resume <id>` on relaunch.
+    ///
+    /// `-p` (`--single`) is the one-shot Ask flag; interactive-with-prompt
+    /// uses a positional argv (`grok "fix this"`).
     static let grok = AgentTemplate(
         id: "grok",
-        title: "Grok Build",
+        title: "Grok",
         symbol: "x.square.fill",
         iconAsset: "grok",
         tintHex: "E8E8E8",
-        initialCommand: "grok"
+        initialCommand: "grok",
+        promptLaunchFlag: "-p",
+        resumeFlag: "--resume",
+        reportsToolCalls: true
     )
 
     /// Antigravity CLI — Google's Go-based successor to Gemini CLI; binary
@@ -568,8 +582,8 @@ extension AgentTemplate {
         let base = builtin.first { $0.id == data.baseAgentId }
         // `promptLaunchFlag` + `resumeFlag` + `reportsToolCalls` follow the
         // base unconditionally — they're properties of the binary (Copilot
-        // needs `-p`, Amp needs `-x`; Claude needs `--resume`, Grok needs
-        // `--session`; Claude / Pi feed tool-call activity), not something the
+        // needs `-p`, Amp needs `-x`; Claude / Grok need `--resume`; Claude /
+        // Grok / Pi feed tool-call activity), not something the
         // user could meaningfully override per custom. Without inheritance, a
         // "Copilot Beta" custom built on Copilot would lose the flag and
         // right-click Ask would feed the prompt as a positional argv that

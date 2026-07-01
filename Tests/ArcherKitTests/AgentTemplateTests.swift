@@ -193,17 +193,14 @@ final class AgentTemplateTests: XCTestCase {
     }
 
     func testMakeSessionConfigIgnoresResumeOnUnsupportedBuiltins() {
-        // Codex / Cursor / Gemini / OpenCode / Copilot / Amp / Grok /
-        // Antigravity all support a resume flag syntactically but archer
-        // doesn't have a reliable id-capture path for them yet, so we
-        // don't inject the flag — see AgentTemplate.supportsResume /
-        // resumeFlag.
+        // Codex / Cursor / Gemini / OpenCode / Copilot / Amp / Antigravity
+        // support resume flags syntactically but archer doesn't have a
+        // reliable id-capture path for them yet, so we don't inject the flag
+        // — see AgentTemplate.supportsResume / resumeFlag.
         let codexConfig = AgentTemplate.codex.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(codexConfig.environment["ARCHER_AGENT"], "codex")
         let copilotConfig = AgentTemplate.copilot.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(copilotConfig.environment["ARCHER_AGENT"], "copilot")
-        let grokConfig = AgentTemplate.grok.makeSessionConfig(resumeId: "abc-123")
-        XCTAssertEqual(grokConfig.environment["ARCHER_AGENT"], "grok")
         let antigravityConfig = AgentTemplate.antigravity.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(antigravityConfig.environment["ARCHER_AGENT"], "agy")
         let kimiConfig = AgentTemplate.kimi.makeSessionConfig(resumeId: "abc-123")
@@ -218,7 +215,7 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertTrue(AgentTemplate.claudeCode.supportsResume)
         XCTAssertFalse(AgentTemplate.codex.supportsResume)
         XCTAssertFalse(AgentTemplate.copilot.supportsResume)
-        XCTAssertFalse(AgentTemplate.grok.supportsResume)
+        XCTAssertTrue(AgentTemplate.grok.supportsResume)
         XCTAssertFalse(AgentTemplate.antigravity.supportsResume)
         XCTAssertFalse(AgentTemplate.kimi.supportsResume)
         XCTAssertFalse(AgentTemplate.kiro.supportsResume)
@@ -240,11 +237,17 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertEqual(config.environment["ARCHER_AGENT"], "pi --session abc-123")
     }
 
+    func testMakeSessionConfigInjectsResumeForGrok() {
+        let config = AgentTemplate.grok.makeSessionConfig(resumeId: "019f1c53-7719-7af1-afae-4f3ba33bb260")
+        XCTAssertEqual(config.environment["ARCHER_AGENT"], "grok --resume 019f1c53-7719-7af1-afae-4f3ba33bb260")
+    }
+
     func testReportsToolCallsOnlyForToolFeedingAgents() {
         // Claude (hooks) + Pi (extension tool_execution_* events) feed archer
         // per-tool-call activity; every other builtin (incl. shells) does not.
         XCTAssertTrue(AgentTemplate.claudeCode.reportsToolCalls)
         XCTAssertTrue(AgentTemplate.pi.reportsToolCalls)
+        XCTAssertTrue(AgentTemplate.grok.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.terminal.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.codex.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.gemini.reportsToolCalls)
@@ -259,6 +262,7 @@ final class AgentTemplateTests: XCTestCase {
         // on a non-reporting base (or none) does not — mirrors resumeFlag.
         XCTAssertTrue(AgentTemplate.fromCustom(CustomAgentData(id: "c1", baseAgentId: "claude-code")).reportsToolCalls)
         XCTAssertTrue(AgentTemplate.fromCustom(CustomAgentData(id: "c2", baseAgentId: "pi")).reportsToolCalls)
+        XCTAssertTrue(AgentTemplate.fromCustom(CustomAgentData(id: "c5", baseAgentId: "grok")).reportsToolCalls)
         XCTAssertFalse(AgentTemplate.fromCustom(CustomAgentData(id: "c3", baseAgentId: "codex")).reportsToolCalls)
         XCTAssertFalse(AgentTemplate.fromCustom(CustomAgentData(id: "c4", baseAgentId: "")).reportsToolCalls)
     }
@@ -300,6 +304,11 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertEqual(config.environment["ARCHER_AGENT"], "pi -p 'fix this error'")
     }
 
+    func testMakeSessionConfigFlagPromptForGrok() {
+        let config = AgentTemplate.grok.makeSessionConfig(initialPrompt: "fix this error")
+        XCTAssertEqual(config.environment["ARCHER_AGENT"], "grok -p 'fix this error'")
+    }
+
     // MARK: - Monochrome icon theming
 
     func testMonochromeIconSetReferencesRealBuiltinAssets() {
@@ -329,7 +338,6 @@ final class AgentTemplateTests: XCTestCase {
             (.cursor, "cursor-agent"),
             (.gemini, "gemini"),
             (.opencode, "opencode"),
-            (.grok, "grok"),
             (.kiro, "kiro-cli"),
         ]
         for (template, bin) in pairs {

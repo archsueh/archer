@@ -2,6 +2,10 @@
 
 Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 
+## Unreleased
+
+- **Grok full integration** — Renamed **Grok Build** → **Grok** across the agent menu and docs. Detects `~/.grok/bin/grok`, installs Claude-compatible lifecycle + tool-call hooks into `~/.grok/hooks/archer.json`, captures `sessionId` for `--resume` on relaunch, wires `-p` for Ask Grok, and feeds the activity strip from PreToolUse/PostToolUse events.
+
 ## v1.0.3 — 2026-06-22
 
 - **Screen-Edge Activity Glow** — Added an off-by-default screen-edge glow that mirrors the activity chime: a thin monochrome hairline on a click-through overlay window per screen, driven by the same hook signal as the notification sound. Color comes only from the activity tokens (running/attention/failure), with enable, screen-scope, brightness, and width controls in Settings → Notifications.
@@ -228,7 +232,7 @@ Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 
 ## v0.12.0 — 2026-05-19
 
-- Grok Build (xAI) joins the agent menu.
+- Grok (xAI) joins the agent menu.
 
 ## v0.11.6 — 2026-05-18
 

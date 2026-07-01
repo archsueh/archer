@@ -90,6 +90,18 @@ public enum ArcherHookKit {
         return sessionId
     }
 
+    /// Pulls `sessionId` out of Grok's hook stdin JSON (camelCase). Grok also
+    /// accepts Claude-shaped payloads in compat mode, so `session_id` is a
+    /// fallback. Caller gates on `agent == "grok"`.
+    public static func parseGrokConversationId(from data: Data) -> String? {
+        guard !data.isEmpty,
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        let sessionId = (parsed["sessionId"] as? String) ?? (parsed["session_id"] as? String)
+        guard let sessionId, !sessionId.isEmpty else { return nil }
+        return sessionId
+    }
+
     /// ConversationId payload routed to `HookServer` so `WorkspaceStore`
     /// can persist it on `Session` and prepend `--resume <id>` to
     /// `ARCHER_AGENT` on next launch.
@@ -143,21 +155,25 @@ public enum ArcherHookKit {
     ) -> [String: String]? {
         guard !data.isEmpty,
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let hookEventName = parsed["hook_event_name"] as? String,
-              let toolName = parsed["tool_name"] as? String,
+              let rawHookEventName = (parsed["hook_event_name"] as? String)
+              ?? (parsed["hookEventName"] as? String),
+              let toolName = (parsed["tool_name"] as? String)
+              ?? (parsed["toolName"] as? String),
               !toolName.isEmpty
         else { return nil }
 
         let event: String
         let postSuccessOverride: Bool? // nil → heuristic, true/false → forced
-        switch hookEventName {
+        switch normalizeToolHookEventName(rawHookEventName) {
         case "PreToolUse": event = "pre"; postSuccessOverride = nil
         case "PostToolUse": event = "post"; postSuccessOverride = nil
         case "PostToolUseFailure": event = "post"; postSuccessOverride = false
         default: return nil // not a tool event we handle
         }
 
-        let toolInput = parsed["tool_input"] as? [String: Any] ?? [:]
+        let toolInput = (parsed["tool_input"] as? [String: Any])
+            ?? (parsed["toolInput"] as? [String: Any])
+            ?? [:]
         let rawIdentifier = extractIdentifier(toolName: toolName, toolInput: toolInput)
 
         // PostToolUseFailure forces success=false (Claude's own signal);
@@ -173,9 +189,24 @@ public enum ArcherHookKit {
             toolName: toolName,
             identifier: rawIdentifier,
             event: event,
-            toolUseId: parsed["tool_use_id"] as? String,
+            toolUseId: (parsed["tool_use_id"] as? String) ?? (parsed["toolUseId"] as? String),
             success: success
         )
+    }
+
+    /// Normalises Claude (`PreToolUse`) and Grok (`pre_tool_use`) hook event
+    /// names to the PascalCase shape `parseToolEventPayload` dispatches on.
+    static func normalizeToolHookEventName(_ raw: String) -> String {
+        switch raw.lowercased().replacingOccurrences(of: "_", with: "") {
+        case "pretooluse": return "PreToolUse"
+        case "posttooluse": return "PostToolUse"
+        case "posttoolusefailure": return "PostToolUseFailure"
+        default:
+            switch raw {
+            case "PreToolUse", "PostToolUse", "PostToolUseFailure": return raw
+            default: return raw
+            }
+        }
     }
 
     /// Assemble the agent-agnostic `kind:"tool"` payload routed to
@@ -221,17 +252,19 @@ public enum ArcherHookKit {
     /// iteration order isn't stable). Empty if everything's empty.
     static func extractIdentifier(toolName: String, toolInput: [String: Any]) -> String {
         switch toolName {
-        case "Bash":
+        case "Bash", "run_terminal_command":
             return toolInput["command"] as? String ?? ""
-        case "Edit", "Write", "Read", "NotebookEdit", "MultiEdit":
-            return toolInput["file_path"] as? String ?? ""
-        case "Glob":
+        case "Edit", "Write", "Read", "NotebookEdit", "MultiEdit", "read_file", "search_replace":
+            return (toolInput["file_path"] as? String)
+                ?? (toolInput["path"] as? String)
+                ?? ""
+        case "Glob", "list_dir":
             return toolInput["pattern"] as? String ?? toolInput["path"] as? String ?? ""
-        case "Grep":
+        case "Grep", "grep":
             return toolInput["pattern"] as? String ?? ""
-        case "WebFetch", "WebSearch":
+        case "WebFetch", "WebSearch", "web_search":
             return (toolInput["url"] as? String) ?? (toolInput["query"] as? String) ?? ""
-        case "Task":
+        case "Task", "spawn_subagent":
             return (toolInput["description"] as? String) ?? (toolInput["prompt"] as? String) ?? ""
         default:
             // Unknown tool — pick the first non-empty String value, with

@@ -51,6 +51,30 @@ final class ShellIntegrationTests: XCTestCase {
     /// event name (`PreToolUse` / `PostToolUse`) because `main.swift` reads
     /// stdin and routes through `ArcherHookKit.parseToolEventPayload` for
     /// these — not a `HookEvent` rawValue.
+    func testGrokHooksObjectMirrorsClaudeLifecycleAndTools() throws {
+        let object = ArcherShellIntegration.grokHooksObject(hookCmd: Self.stubHook)
+        XCTAssertEqual(object["_archerManaged"] as? String, "archer-managed-do-not-edit")
+        let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
+
+        for (event, state) in [
+            "SessionStart": "running",
+            "UserPromptSubmit": "running",
+            "Stop": "attention",
+            "Notification": "attention",
+            "SessionEnd": "ended",
+        ] {
+            let entries = try XCTUnwrap(hooks[event] as? [[String: Any]], "missing event \(event)")
+            let inner = try XCTUnwrap((entries.first?["hooks"] as? [[String: Any]])?.first)
+            XCTAssertEqual(inner["command"] as? String, "'\(Self.stubHook)' grok \(state)")
+        }
+
+        for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
+            let entries = try XCTUnwrap(hooks[event] as? [[String: Any]], "missing event \(event)")
+            let inner = try XCTUnwrap((entries.first?["hooks"] as? [[String: Any]])?.first)
+            XCTAssertEqual(inner["command"] as? String, "'\(Self.stubHook)' grok \(event)")
+        }
+    }
+
     func testClaudeHooksObjectSubscribesToolCallEvents() throws {
         let object = ArcherShellIntegration.claudeHooksObject(hookCmd: Self.stubHook)
         let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
@@ -138,8 +162,8 @@ final class ShellIntegrationTests: XCTestCase {
     func testKimiWrapperBracketsRunningAndEnded() {
         // Kimi's lifecycle hooks are TOML-only with no system-settings
         // override, so it rides the generic bracket wrapper (running before
-        // exec, ended after exit) like grok / amp rather than a JSON hooks
-        // file. Regression guard for the v0.20.0 wiring.
+        // exec, ended after exit) like amp rather than a JSON hooks file.
+        // Regression guard for the v0.20.0 wiring.
         let script = ArcherShellIntegration.bracketWrapperScript(slug: "kimi")
 
         XCTAssertTrue(script.contains("\"$ARCHER_HOOK_BIN\" kimi running"))

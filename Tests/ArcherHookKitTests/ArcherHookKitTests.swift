@@ -103,6 +103,41 @@ final class ArcherHookKitTests: XCTestCase {
         XCTAssertNil(ArcherHookKit.parseClaudeConversationId(from: data))
     }
 
+    // MARK: Grok conversationId parsing
+
+    func testParseGrokConversationIdCamelCase() {
+        let json = #"{"hookEventName":"session_start","sessionId":"019f1c53-7719-7af1-afae-4f3ba33bb260"}"#
+        XCTAssertEqual(
+            ArcherHookKit.parseGrokConversationId(from: Data(json.utf8)),
+            "019f1c53-7719-7af1-afae-4f3ba33bb260"
+        )
+    }
+
+    func testParseGrokConversationIdSnakeFallback() {
+        let json = #"{"session_id":"sess_compat"}"#
+        XCTAssertEqual(ArcherHookKit.parseGrokConversationId(from: Data(json.utf8)), "sess_compat")
+    }
+
+    func testParseGrokToolEventPreToolUse() {
+        let json = #"""
+        {"hookEventName":"pre_tool_use","sessionId":"s1","toolName":"run_terminal_command","toolInput":{"command":"npm test"},"toolUseId":"tu_1"}
+        """#
+        let payload = ArcherHookKit.parseToolEventPayload(from: Data(json.utf8), surface: "s", agent: "grok")
+        XCTAssertEqual(payload?["event"], "pre")
+        XCTAssertEqual(payload?["tool_name"], "run_terminal_command")
+        XCTAssertEqual(payload?["identifier"], "npm test")
+        XCTAssertEqual(payload?["tool_use_id"], "tu_1")
+    }
+
+    func testParseGrokToolEventPostToolUseFailure() {
+        let json = #"""
+        {"hookEventName":"post_tool_use_failure","toolName":"grep","toolInput":{"pattern":"TODO"}}
+        """#
+        let payload = ArcherHookKit.parseToolEventPayload(from: Data(json.utf8), surface: "s", agent: "grok")
+        XCTAssertEqual(payload?["event"], "post")
+        XCTAssertEqual(payload?["success"], "false")
+    }
+
     // MARK: conversationId payload
 
     func testBuildConversationIdPayload() {

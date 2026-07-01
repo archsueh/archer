@@ -214,6 +214,13 @@ enum ArcherShellIntegration {
     static let copilotHooksPath: String = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".copilot/hooks/archer.json").path
 
+    /// Path to the archer-managed Grok hooks file. Grok merges every
+    /// `~/.grok/hooks/*.json` at startup (Claude-compatible schema), so
+    /// `archer.json` co-exists with user hooks. Materialised only when
+    /// `~/.grok/` already exists — same policy as Copilot hooks.
+    static let grokHooksPath: String = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".grok/hooks/archer.json").path
+
     /// XDG plugin directory OpenCode auto-loads at startup. Honors
     /// `XDG_CONFIG_HOME` when set (the OpenCode launch is a child of the same
     /// shell, so a user-relocated config dir routes consistently between us
@@ -342,13 +349,13 @@ enum ArcherShellIntegration {
         writeJSON(at: claudeHooksPath, object: claudeHooksObject(hookCmd: hookCmd))
         writeJSON(at: geminiDefaultsPath, object: geminiDefaultsObject(hookCmd: hookCmd))
         installCopilotHooksIfPresent(hookCmd: hookCmd)
+        installGrokHooksIfPresent(hookCmd: hookCmd)
         writeManagedFile(at: opencodePluginPath, contents: opencodePluginScript)
         installFishVendorConf()
         installPiExtensionIfPresent()
-        // Grok CLI has no JSON hook file like Claude — its `~/.grok/hooks/`
-        // is a script directory driven by env vars (GROK_HOOK_EVENT /
-        // GROK_SESSION_ID), so the bracket wrapper handles running/ended
-        // and full lifecycle integration requires a different code path.
+        // Grok hooks ride `~/.grok/hooks/archer.json` (Claude-compatible JSON).
+        // The bracket wrapper remains as running/ended fallback when hooks
+        // haven't loaded yet (first run before archer restart).
         //
         // Kimi Code's hooks are TOML-only (`~/.kimi-code/config.toml`
         // `[[hooks]]`) with no system-settings env-var override — so unlike
@@ -393,6 +400,20 @@ enum ArcherShellIntegration {
         let hooksDir = copilotHome.appendingPathComponent("hooks", isDirectory: true)
         try? FileManager.default.createDirectory(at: hooksDir, withIntermediateDirectories: true)
         writeManagedJSON(at: copilotHooksPath, object: copilotHooksObject(hookCmd: hookCmd))
+    }
+
+    /// Writes the Grok hooks JSON only when the user already has a `~/.grok/`
+    /// directory — i.e. they've run Grok at least once. Skips otherwise so
+    /// archer doesn't pre-stage a vendor namespace for users who may never
+    /// install Grok. Installing Grok later requires one archer restart to
+    /// pick up hooks (the bracket wrapper still gives running/ended on first run).
+    private static func installGrokHooksIfPresent(hookCmd: String) {
+        let grokHome = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".grok", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: grokHome.path) else { return }
+        let hooksDir = grokHome.appendingPathComponent("hooks", isDirectory: true)
+        try? FileManager.default.createDirectory(at: hooksDir, withIntermediateDirectories: true)
+        writeManagedJSON(at: grokHooksPath, object: grokHooksObject(hookCmd: hookCmd))
     }
 
     /// Writes the Pi extension only when the user already has a `~/.pi/`
@@ -500,7 +521,13 @@ enum ArcherShellIntegration {
         if string match -q "* --resume *" "$_archer_cmd"
             set -l _archer_resume_id (string replace -r '.* --resume (\\S+).*' '$1' "$_archer_cmd")
             if test -n "$_archer_resume_id"
-                if not find ~/.claude/projects -name "$_archer_resume_id.jsonl" -maxdepth 2 2>/dev/null | grep -q .
+                set -l _archer_resume_found 0
+                if find ~/.claude/projects -name "$_archer_resume_id.jsonl" -maxdepth 2 2>/dev/null | grep -q .
+                    set _archer_resume_found 1
+                else if find ~/.grok/sessions -type d -name "$_archer_resume_id" 2>/dev/null | grep -q .
+                    set _archer_resume_found 1
+                end
+                if test $_archer_resume_found -eq 0
                     set _archer_cmd (string replace " --resume $_archer_resume_id" "" "$_archer_cmd")
                 end
             end
@@ -690,6 +717,26 @@ enum ArcherShellIntegration {
     /// → attention; sessionEnd → ended). The `_archerManaged` sentinel is the
     /// JSON-friendly equivalent of the text marker — `writeManagedJSON` reads
     /// it back to decide whether the file is ours to overwrite.
+    /// Grok's hook schema matches Claude Code's (`{"hooks": {<Event>: [...]}}`).
+    /// Event mapping mirrors Claude; tool-call passthrough feeds the activity
+    /// strip. `_archerManaged` lets `writeManagedJSON` overwrite on upgrade.
+    static func grokHooksObject(hookCmd: String) -> [String: Any] {
+        var object = hooksObject(
+            slug: "grok",
+            hookCmd: hookCmd,
+            events: [
+                "SessionStart": .running,
+                "UserPromptSubmit": .running,
+                "Stop": .attention,
+                "Notification": .attention,
+                "SessionEnd": .ended,
+            ],
+            passthroughEvents: ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
+        )
+        object["_archerManaged"] = managedFileMarker
+        return object
+    }
+
     static func copilotHooksObject(hookCmd: String) -> [String: Any] {
         let events: [(String, HookEvent)] = [
             ("sessionStart", .running),
@@ -1460,18 +1507,26 @@ enum ArcherShellIntegration {
         _archer_cmd="$ARCHER_AGENT"
         _archer_agent_bin="${_archer_cmd%% *}"
         unset ARCHER_AGENT
-        # If the command carries --resume <id>, verify the session file
-        # exists before launching. A missing file means Claude will print
-        # "No conversation found" and exit non-zero, leaving the user at a
-        # bare prompt. Stripping --resume here lets the agent start fresh
-        # without an error, and the hook will capture the new session id.
+        # If the command carries --resume <id>, verify the session exists
+        # before launching. Missing Claude / Grok sessions cause the agent to
+        # error and exit, leaving the user at a bare prompt. Stripping
+        # --resume here lets the agent start fresh and the hook captures the
+        # new session id.
         if [[ "$_archer_cmd" == *" --resume "* ]]; then
             _archer_resume_id="${_archer_cmd##* --resume }"
             _archer_resume_id="${_archer_resume_id%% *}"
-            if [[ -n "$_archer_resume_id" ]] && ! find ~/.claude/projects -name "${_archer_resume_id}.jsonl" -maxdepth 2 2>/dev/null | grep -q .; then
-                _archer_cmd="${_archer_cmd/ --resume $_archer_resume_id/}"
+            if [[ -n "$_archer_resume_id" ]]; then
+                _archer_resume_found=0
+                if find ~/.claude/projects -name "${_archer_resume_id}.jsonl" -maxdepth 2 2>/dev/null | grep -q .; then
+                    _archer_resume_found=1
+                elif find ~/.grok/sessions -type d -name "${_archer_resume_id}" 2>/dev/null | grep -q .; then
+                    _archer_resume_found=1
+                fi
+                if [[ $_archer_resume_found -eq 0 ]]; then
+                    _archer_cmd="${_archer_cmd/ --resume $_archer_resume_id/}"
+                fi
             fi
-            unset _archer_resume_id
+            unset _archer_resume_id _archer_resume_found
         fi
         # `eval` lets ARCHER_AGENT carry multi-word commands (e.g. an
         # editor + file path); single-word agent commands like `claude`

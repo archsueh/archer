@@ -36,7 +36,7 @@ struct CockpitView: View {
     let workspaces: [WorkspaceEntry] = [
         WorkspaceEntry(name: "Hermes", path: "~/dev/hermes", icon: "antenna.radiowaves.left.and.right", color: .mint),
         WorkspaceEntry(name: "Claude Code", path: "~/dev/archer", icon: "sparkle", color: .orange),
-        WorkspaceEntry(name: "Grok Build", path: "~/dev/grok", icon: "xmark", color: .green),
+        WorkspaceEntry(name: "Grok", path: "~/dev/grok", icon: "xmark", color: .green),
         WorkspaceEntry(name: "Antigravity CLI", path: "~", icon: "arrowshape.up.fill", color: .blue),
         WorkspaceEntry(name: "Codex", path: "~/dev/api", icon: "hexagon", color: .blue),
     ]

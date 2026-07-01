@@ -24,7 +24,7 @@ A minimal modern terminal built for AI coding. Sidebar workspaces; horizontal / 
 
 ![Vertical tabs on the left, one pane split into four](img/screenshot-2.png)
 
-**One-click AI agent sessions.** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok Build · Antigravity CLI · Kimi Code · Pi · Kiro CLI. Pick one from the `+` menu; the agent boots before your first prompt prints. Claude conversations also auto-resume across archer restarts so closing and reopening a tab picks up where you left off.
+**One-click AI agent sessions.** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok · Antigravity CLI · Kimi Code · Pi · Kiro CLI. Pick one from the `+` menu; the agent boots before your first prompt prints. Claude conversations also auto-resume across archer restarts so closing and reopening a tab picks up where you left off.
 
 **Git worktrees.** Right-click any git workspace → "Create Worktree…" to spin one up on a new branch (or check out an existing one). Each worktree shows up nested under its source repo in the sidebar with its own tabs + agent — let Claude work on a feature branch without touching what's running on main. Worktrees you create from the command line show up automatically the next time you launch archer.
 
