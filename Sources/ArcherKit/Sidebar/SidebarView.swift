@@ -427,7 +427,7 @@ struct SidebarView: View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 2) {
-                    // Flat workspace list (Kooky parity) — no section header.
+                    // Flat workspace list (Archer parity) — no section header.
                     // A workspace is "top-level" when it has no parent, or its
                     // parent is gone (defensive: a stranded worktree still shows).
                     let parentIds = Set(store.workspaces.map(\.id))

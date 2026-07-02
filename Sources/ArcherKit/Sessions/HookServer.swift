@@ -77,7 +77,7 @@ final class HookServer {
     /// Support`, not via this property.
     static let socketPath: String = {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = support.appendingPathComponent("archer", isDirectory: true)
+        let dir = support.appendingPathComponent("Archer", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("socket").path
     }()
@@ -88,7 +88,7 @@ final class HookServer {
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
-            ArcherLogger.hooks.fault("HookServer socket() failed")
+            NSLog("archer: HookServer socket() failed")
             return
         }
 
@@ -97,7 +97,7 @@ final class HookServer {
         let pathBytes = Array(path.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
             close(fd)
-            ArcherLogger.hooks.fault("HookServer socket path too long")
+            NSLog("archer: HookServer socket path too long")
             return
         }
         withUnsafeMutableBytes(of: &addr.sun_path) { dst in
@@ -113,12 +113,12 @@ final class HookServer {
             }
         }
         guard bound == 0 else {
-            ArcherLogger.hooks.fault("HookServer bind() failed errno=\(errno)")
+            NSLog("archer: HookServer bind() failed errno=\(errno)")
             close(fd)
             return
         }
         guard listen(fd, 8) == 0 else {
-            ArcherLogger.hooks.fault("HookServer listen() failed errno=\(errno)")
+            NSLog("archer: HookServer listen() failed errno=\(errno)")
             close(fd)
             return
         }

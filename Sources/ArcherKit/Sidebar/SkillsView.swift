@@ -26,6 +26,8 @@ struct SkillsView: View {
     @State private var discoverQuery = ""
     @State private var discoverResults: [SkillsShResult] = []
     @State private var isSearching = false
+    @State private var installingSkillId: String? = nil
+    @State private var isUpdatingAll = false
 
     struct CCSkillRow: Identifiable {
         let id: String
@@ -78,6 +80,13 @@ struct SkillsView: View {
         ("codex", "Codex", "terminal.fill", ".codex/skills"),
         ("gemini", "Gemini", "g.circle.fill", ".gemini/skills"),
         ("hermes", "Hermes", "h.circle.fill", ".hermes/skills"),
+    ]
+
+    static let featuredSkills: [SkillsShResult] = [
+        SkillsShResult(id: "find-skills", name: "find-skills", source: "vercel-labs/skills", installs: 2_300_000),
+        SkillsShResult(id: "frontend-design", name: "frontend-design", source: "anthropics/skills", installs: 614_300),
+        SkillsShResult(id: "vercel-react-best-practices", name: "vercel-react-best-practices", source: "vercel-labs/agent-skills", installs: 518_200),
+        SkillsShResult(id: "agent-browser", name: "agent-browser", source: "vercel-labs/agent-browser", installs: 503_500),
     ]
 
     /// Derives the source label (e.g. "~/.hermes") from an agentDef's subdir.
@@ -291,24 +300,113 @@ struct SkillsView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                Button {
+                    if let url = URL(string: "https://www.skills.sh/") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("访问 skills.sh")
+                        Image(systemName: "arrow.up.right")
+                    }
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.chromeMuted)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Theme.chromeActive)
+                    .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help("在浏览器中打开 skills.sh 官方市场")
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
             .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
 
             if discoverResults.isEmpty && !isSearching {
-                VStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 22))
-                        .foregroundStyle(Theme.chromeMuted.opacity(0.4))
-                    Text("从 skills.sh 发现技能")
-                        .font(Theme.mono(12))
-                        .foregroundStyle(Theme.chromeMuted)
-                    Text("输入关键词后按 Return 搜索")
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.chromeFaint)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.orange)
+                        Text("热门推荐技能 (Featured on skills.sh)")
+                            .font(Theme.mono(11, weight: .bold))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Theme.chromeActive.opacity(0.4))
+                    .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+
+                    ForEach(SkillsView.featuredSkills) { result in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(result.name)
+                                    .font(Theme.mono(12, weight: .medium))
+                                    .foregroundStyle(Theme.chromeForeground)
+                                Text(result.source)
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeFaint)
+                            }
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.system(size: 9))
+                                Text(result.installs >= 1_000_000 ? String(format: "%.1fM", Double(result.installs) / 1_000_000.0) : "\(result.installs)")
+                                    .font(Theme.mono(10))
+                            }
+                            .foregroundStyle(Theme.chromeMuted)
+
+                            if installingSkillId == result.id {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 40, height: 20)
+                            } else {
+                                Button {
+                                    installingSkillId = result.id
+                                    Task {
+                                        await installSkillFromSh(result, targets: ["claude", "agents"])
+                                        installingSkillId = nil
+                                    }
+                                } label: {
+                                    Text("安装")
+                                        .font(Theme.mono(10))
+                                        .foregroundStyle(Theme.activityRunning)
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                                .help("安装到 ~/.claude/skills 和 ~/.agents/skills")
+
+                                Button {
+                                    installingSkillId = result.id
+                                    Task {
+                                        await installSkillFromSh(result, targets: SkillsView.agentDefs.map { $0.key })
+                                        installingSkillId = nil
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Theme.chromeMuted)
+                                }
+                                .buttonStyle(.plain)
+                                .help("安装到全部 agent")
+                            }
+
+                            Button {
+                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.id)") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            } label: {
+                                Text("详情")
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeMuted)
+                                    .padding(.horizontal, 6).padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(40)
             } else {
                 VStack(spacing: 0) {
                     ForEach(discoverResults) { result in
@@ -325,18 +423,56 @@ struct SkillsView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.down.circle")
                                     .font(.system(size: 9))
-                                Text("\(result.installs)")
+                                Text(result.installs >= 1_000_000 ? String(format: "%.1fM", Double(result.installs) / 1_000_000.0) : "\(result.installs)")
                                     .font(Theme.mono(10))
                             }
                             .foregroundStyle(Theme.chromeMuted)
+
+                            if installingSkillId == result.id {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 40, height: 20)
+                            } else {
+                                Button {
+                                    installingSkillId = result.id
+                                    Task {
+                                        await installSkillFromSh(result, targets: ["claude", "agents"])
+                                        installingSkillId = nil
+                                    }
+                                } label: {
+                                    Text("安装")
+                                        .font(Theme.mono(10))
+                                        .foregroundStyle(Theme.activityRunning)
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                                .help("安装到 ~/.claude/skills 和 ~/.agents/skills")
+
+                                Button {
+                                    installingSkillId = result.id
+                                    Task {
+                                        await installSkillFromSh(result, targets: SkillsView.agentDefs.map { $0.key })
+                                        installingSkillId = nil
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Theme.chromeMuted)
+                                }
+                                .buttonStyle(.plain)
+                                .help("安装到全部 agent")
+                            }
+
                             Button {
-                                NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/CC Switch.app"))
+                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.id)") {
+                                    NSWorkspace.shared.open(url)
+                                }
                             } label: {
-                                Text("安装")
+                                Text("详情")
                                     .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.activityRunning)
-                                    .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                                    .foregroundStyle(Theme.chromeMuted)
+                                    .padding(.horizontal, 6).padding(.vertical, 4)
                             }
                             .buttonStyle(.plain)
                         }
@@ -361,19 +497,58 @@ struct SkillsView: View {
                     .foregroundStyle(Theme.chromeMuted)
                     .textCase(.uppercase)
                 Spacer()
+
+                let githubSkills = ccSwitchSkills.filter { $0.isGitHubBacked }
+
+                if !githubSkills.isEmpty {
+                    Button {
+                        Task {
+                            isUpdatingAll = true
+                            for skill in githubSkills {
+                                let result = SkillsShResult(id: skill.name, name: skill.name, source: "\(skill.repoOwner)/\(skill.repoName)", installs: 0)
+                                var targets: [String] = []
+                                let fm = FileManager.default
+                                let home = NSHomeDirectory()
+                                for def in SkillsView.agentDefs {
+                                    let path = (home as NSString).appendingPathComponent(def.subdir).appending("/\(skill.name)")
+                                    if fm.fileExists(atPath: path) {
+                                        targets.append(def.key)
+                                    }
+                                }
+                                if targets.isEmpty { targets = ["claude", "agents"] }
+                                await installSkillFromSh(result, targets: targets)
+                            }
+                            isUpdatingAll = false
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isUpdatingAll {
+                                ProgressView().scaleEffect(0.5).frame(width: 10, height: 10)
+                            } else {
+                                Image(systemName: "arrow.2.circlepath").font(.system(size: 9))
+                            }
+                            Text("一键更新")
+                        }
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.activityRunning)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.3), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isUpdatingAll)
+                }
+
                 Button {
                     NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/CC Switch.app"))
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.2.circlepath").font(.system(size: 9))
-                        Text("在 CC Switch 中更新")
-                    }
-                    .font(Theme.mono(10))
-                    .foregroundStyle(Theme.activityRunning)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.3), lineWidth: 1))
+                    Text("管理")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.chromeMuted)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .help("在 CC Switch.app 中管理技能")
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
@@ -387,7 +562,7 @@ struct SkillsView: View {
                     Text("未读取到 GitHub 技能")
                         .font(Theme.mono(12))
                         .foregroundStyle(Theme.chromeMuted)
-                    Text("通过 CC Switch 安装 GitHub 技能后在此显示")
+                    Text("通过「发现技能」或 CC Switch 安装 GitHub 技能后在此显示")
                         .font(Theme.mono(10.5))
                         .foregroundStyle(Theme.chromeFaint)
                 }
@@ -419,6 +594,51 @@ struct SkillsView: View {
                                     .font(Theme.mono(10))
                                     .foregroundStyle(Theme.chromeFaint)
                             }
+
+                            if installingSkillId == skill.id {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 40, height: 20)
+                            } else {
+                                Button {
+                                    installingSkillId = skill.id
+                                    Task {
+                                        let result = SkillsShResult(id: skill.name, name: skill.name, source: "\(skill.repoOwner)/\(skill.repoName)", installs: 0)
+                                        var targets: [String] = []
+                                        let fm = FileManager.default
+                                        let home = NSHomeDirectory()
+                                        for def in SkillsView.agentDefs {
+                                            let path = (home as NSString).appendingPathComponent(def.subdir).appending("/\(skill.name)")
+                                            if fm.fileExists(atPath: path) {
+                                                targets.append(def.key)
+                                            }
+                                        }
+                                        if targets.isEmpty { targets = ["claude", "agents"] }
+                                        await installSkillFromSh(result, targets: targets)
+                                        installingSkillId = nil
+                                    }
+                                } label: {
+                                    Text("更新")
+                                        .font(Theme.mono(10))
+                                        .foregroundStyle(Theme.activityRunning)
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isUpdatingAll)
+                            }
+
+                            Button {
+                                if let url = URL(string: "https://www.skills.sh/\(skill.repoOwner)/\(skill.repoName)/\(skill.name)") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            } label: {
+                                Text("详情")
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.chromeMuted)
+                                    .padding(.horizontal, 6).padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 14).padding(.vertical, 10)
                         .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
@@ -995,6 +1215,154 @@ struct SkillsView: View {
         withAnimation(Theme.chromeTransition) {
             skills.removeAll { $0.id == skill.id }
             calculateStats()
+        }
+    }
+
+    private func registerSkillInCCSwitchDb(id: String, name: String, description: String, repoOwner: String, repoName: String) {
+        let dbDir = (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch")
+        let dbPath = (dbDir as NSString).appendingPathComponent("cc-switch.db")
+
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: dbDir) {
+            try? fm.createDirectory(atPath: dbDir, withIntermediateDirectories: true, attributes: nil)
+        }
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK else { return }
+        defer { sqlite3_close(db) }
+
+        let createTableQuery = """
+        CREATE TABLE IF NOT EXISTS skills (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            repo_owner TEXT,
+            repo_name TEXT,
+            updated_at INTEGER
+        )
+        """
+        sqlite3_exec(db, createTableQuery, nil, nil, nil)
+
+        let insertQuery = "INSERT OR REPLACE INTO skills (id, name, description, repo_owner, repo_name, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, insertQuery, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+
+        id.withCString { cId in
+            name.withCString { cName in
+                description.withCString { cDesc in
+                    repoOwner.withCString { cOwner in
+                        repoName.withCString { cRepo in
+                            sqlite3_bind_text(stmt, 1, cId, -1, nil)
+                            sqlite3_bind_text(stmt, 2, cName, -1, nil)
+                            sqlite3_bind_text(stmt, 3, cDesc, -1, nil)
+                            sqlite3_bind_text(stmt, 4, cOwner, -1, nil)
+                            sqlite3_bind_text(stmt, 5, cRepo, -1, nil)
+                            sqlite3_bind_int64(stmt, 6, now)
+                            sqlite3_step(stmt)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func installSkillFromSh(_ result: SkillsShResult, targets: [String]) async {
+        let home = NSHomeDirectory()
+        let fm = FileManager.default
+
+        struct GitHubFile: Decodable {
+            let name: String
+            let path: String
+            let download_url: String?
+            let type: String
+        }
+
+        func downloadDirectory(repo: String, pathInRepo: String, destBasePaths: [String]) async throws {
+            let urlString = "https://api.github.com/repos/\(repo)/contents/\(pathInRepo)"
+            guard let url = URL(string: urlString) else { return }
+
+            var req = URLRequest(url: url)
+            req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+            req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
+
+            if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] ?? ProcessInfo.processInfo.environment["GITHUB_PERSONAL_ACCESS_TOKEN"] {
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 else {
+                if !urlString.contains("?ref=") {
+                    let masterUrlString = urlString + "?ref=master"
+                    if let masterUrl = URL(string: masterUrlString) {
+                        var masterReq = req
+                        masterReq.url = masterUrl
+                        let (mData, mResp) = try await URLSession.shared.data(for: masterReq)
+                        if let mHttpResp = mResp as? HTTPURLResponse, mHttpResp.statusCode == 200 {
+                            try await parseAndDownload(data: mData, repo: repo, destBasePaths: destBasePaths)
+                            return
+                        }
+                    }
+                }
+                throw NSError(domain: "GitHubAPI", code: (resp as? HTTPURLResponse)?.statusCode ?? -1, userInfo: nil)
+            }
+
+            try await parseAndDownload(data: data, repo: repo, destBasePaths: destBasePaths)
+        }
+
+        func parseAndDownload(data: Data, repo: String, destBasePaths: [String]) async throws {
+            let decoder = JSONDecoder()
+            let files = try decoder.decode([GitHubFile].self, from: data)
+
+            for file in files {
+                if file.type == "file", let dlUrlStr = file.download_url, let dlUrl = URL(string: dlUrlStr) {
+                    let (fileData, _) = try await URLSession.shared.data(from: dlUrl)
+
+                    for destBase in destBasePaths {
+                        let prefix = "skills/\(result.id)/"
+                        var relPath = file.path
+                        if relPath.hasPrefix(prefix) {
+                            relPath = String(relPath.dropFirst(prefix.count))
+                        }
+
+                        let destFilePath = (destBase as NSString).appendingPathComponent(relPath)
+                        let destFileDir = (destFilePath as NSString).deletingLastPathComponent
+
+                        try fm.createDirectory(atPath: destFileDir, withIntermediateDirectories: true, attributes: nil)
+                        try fileData.write(to: URL(fileURLWithPath: destFilePath))
+                    }
+                } else if file.type == "dir" {
+                    try await downloadDirectory(repo: repo, pathInRepo: file.path, destBasePaths: destBasePaths)
+                }
+            }
+        }
+
+        do {
+            var destPaths: [String] = []
+            for target in targets {
+                if let def = SkillsView.agentDefs.first(where: { $0.key == target }) {
+                    let path = (home as NSString).appendingPathComponent(def.subdir).appending("/\(result.id)")
+                    destPaths.append(path)
+                }
+            }
+
+            if destPaths.isEmpty { return }
+
+            try await downloadDirectory(repo: result.source, pathInRepo: "skills/\(result.id)", destBasePaths: destPaths)
+
+            let parts = result.source.split(separator: "/")
+            let owner = parts.count > 0 ? String(parts[0]) : ""
+            let repo = parts.count > 1 ? String(parts[1]) : ""
+            registerSkillInCCSwitchDb(id: "\(result.source)/\(result.id)", name: result.id, description: "", repoOwner: owner, repoName: repo)
+
+            await MainActor.run {
+                self.loadSkills(silent: true)
+                self.loadCCSwitchSkills()
+            }
+        } catch {
+            print("Failed to install skill: \(error)")
         }
     }
 }

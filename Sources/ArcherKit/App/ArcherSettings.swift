@@ -2,14 +2,6 @@ import AppKit
 import Foundation
 import GhosttyKit
 
-/// True when macOS is in Dark mode. Reads the global `AppleInterfaceStyle`
-/// default rather than `NSApp.effectiveAppearance` so it's safe off the main
-/// thread (`makeGhosttyConfig` isn't main-isolated) and reflects the *system*
-/// setting Finder follows — not any app-level appearance override.
-func archerSystemIsDark() -> Bool {
-    UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
-}
-
 /// Reads `~/.archer/settings.json` and forwards its `terminal.*` section to
 /// libghostty. JSONC-tolerant (line + block comments stripped before parse).
 ///
@@ -47,13 +39,13 @@ enum ArcherSettings {
 
       // === Terminal rendering (forwarded to libghostty) ===
       // ghostty key reference: https://ghostty.org/docs/config/reference
-      // Defaults mirror the local Ghostty appearance (color / opacity / blur).
       "terminal": {
-        "background": "#2A2A2A",
-        "background-opacity": 0.72,
-        "background-blur": 20,
-        "font-family": "Maple Mono NF CN",
-        "font-size": 16
+        // "font-family": "JetBrains Mono",
+        // "font-size": 13,
+        // "theme": "dracula",
+        // "background-opacity": 0.85,
+        // macOS 26+: "macos-glass-regular" | "macos-glass-clear" for Liquid Glass
+        // "background-blur": "macos-glass-regular"
       }
     }
     """
@@ -65,7 +57,7 @@ enum ArcherSettings {
     static func loadParsed() -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard let obj = try? JSONSerialization.jsonObject(with: data, options: [.json5Allowed]) else {
-            ArcherLogger.settings.error("settings.json parse failed")
+            NSLog("archer: settings.json parse failed")
             return nil
         }
         return obj as? [String: Any]
@@ -83,27 +75,35 @@ enum ArcherSettings {
               let terminal = parsed["terminal"] as? [String: Any],
               !terminal.isEmpty else { return }
         var lines: [String] = []
-        // Non-theme terminal keys first — theme lines come last so
-        // foreground / background from the preset always win (ghostty
-        // last-write-wins within a single load_string call).
-        for key in terminal.keys.sorted() where key != "theme" && key != "autoLightTheme" && key != "autoDarkTheme" {
+        if let rawTheme = terminal["theme"] as? String {
+            if let preset = ArcherTerminalTheme.preset(for: rawTheme) {
+                lines.append(contentsOf: preset.lines)
+            } else if !rawTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Raw JSON users can still point at a custom Ghostty theme
+                // path or name. The Settings UI only writes bundled preset ids.
+                lines.append(contentsOf: formatGhosttyLines(key: "theme", value: rawTheme))
+            }
+        }
+        for key in terminal.keys.sorted() where key != "theme" {
             if let value = terminal[key] {
                 lines.append(contentsOf: formatGhosttyLines(key: key, value: value))
             }
         }
-        if let rawTheme = terminal["theme"] as? String {
-            var actualTheme = rawTheme
-            if rawTheme == "__archer-auto-theme" {
-                let autoLightTheme = terminal["autoLightTheme"] as? String ?? "rose-pine-dawn"
-                let autoDarkTheme = terminal["autoDarkTheme"] as? String ?? "rose-pine"
-                actualTheme = archerSystemIsDark() ? autoDarkTheme : autoLightTheme
-            }
-            if let preset = ArcherTerminalTheme.preset(for: actualTheme) {
-                lines.append(contentsOf: preset.lines)
-            } else if !actualTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                // Raw JSON users can still point at a custom Ghostty theme
-                // path or name. The Settings UI only writes bundled preset ids.
-                lines.append(contentsOf: formatGhosttyLines(key: "theme", value: actualTheme))
+        // Derive the terminal surface opacity from the glass blur when the user
+        // set no explicit `background-opacity`, so every path behaves the same
+        // (the Settings dropdown, hand-edited settings.json, and inherited
+        // ghostty config): a glass style needs a see-through terminal for the
+        // glass to read through, while archer's "off" (`false`) forces it fully
+        // opaque — otherwise an inherited ghostty `background-opacity` would
+        // leave the terminal see-through with the glass gone.
+        if terminal["background-opacity"] == nil {
+            switch blurString(from: terminal["background-blur"]) {
+            case let blur? where blur.hasPrefix("macos-glass"):
+                lines.append("background-opacity = \(Theme.defaultGlassOpacity)")
+            case "false", "0":
+                lines.append("background-opacity = 1")
+            default:
+                break // unset, or a ghostty-native blur — leave opacity alone
             }
         }
         let text = lines.joined(separator: "\n")
@@ -136,16 +136,27 @@ enum ArcherSettings {
         // Click anywhere on the current zsh / bash prompt to jump the shell
         // cursor there. The shell wrapper emits OSC 133 prompt markers with
         // the `cl=line` metadata libghostty needs to recognise it.
-        // Also align terminal/TUI background opacity with window glass theme.
-        // minimum-contrast clamps every resolved ANSI glyph color to at least
-        // 1.4 Lc vs the current background — catches CLIs that hard-code a
-        // near-background grey (e.g. --quiet dim output) regardless of theme.
-        let baseline = "cursor-click-to-move = true\nbackground-opacity = \(Theme.glassOpacity)\nbackground-blur = 20\nminimum-contrast = 1.4\n"
+        let baseline = "cursor-click-to-move = true\n"
         baseline.withCString { cstr in
             "archer-baseline".withCString { source in
                 ghostty_config_load_string(config, cstr, UInt(strlen(cstr)), source)
             }
         }
+    }
+
+    /// Normalize a raw `background-blur` JSON value to its ghostty string form.
+    /// Users can write it as a string (`"macos-glass-regular"`), a JSON bool
+    /// (`false` = off), or an integer radius — `as? String` alone would drop
+    /// the latter two to `nil`, which reads as "unset" and silently deletes the
+    /// key on the next save. Coercing here keeps every form round-tripping.
+    static func blurString(from value: Any?) -> String? {
+        if let str = value as? String { return str }
+        if let num = value as? NSNumber {
+            return CFGetTypeID(num) == CFBooleanGetTypeID()
+                ? (num.boolValue ? "true" : "false")
+                : num.stringValue
+        }
+        return nil
     }
 
     private static func formatGhosttyLines(key: String, value: Any) -> [String] {
@@ -215,8 +226,8 @@ enum ArcherOnboarding {
 
     private static func promptGhosttyImport(from path: URL) {
         let alert = NSAlert()
-        alert.messageText = "Welcome to Archer" // [archer]
-        alert.informativeText = "We found your existing ghostty configuration. Would you like to import it into Archer?\n\nYou can change settings any time via Help → Open Settings."
+        alert.messageText = "Welcome to archer"
+        alert.informativeText = "We found your existing ghostty configuration. Would you like to import it into archer?\n\nYou can change settings any time via Help → Open Settings."
         alert.addButton(withTitle: "Use ghostty settings")
         alert.addButton(withTitle: "Start fresh")
 

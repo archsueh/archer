@@ -637,6 +637,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             selfRow("Center", #selector(handleCenterWindow)),
             .separator,
             selfRow("Cockpit", #selector(handleShowCockpit), "k", modifiers: [.command, .shift]),
+            selfRow("Sessions", #selector(handleShowSessions), "o", modifiers: [.command, .shift]),
         ])
         mainMenu.addItem(submenu(windowMenu))
 
@@ -1086,6 +1087,29 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
 
     @objc private func handleShowCockpit() {
         CockpitPanelWindowController.show()
+    }
+
+    @objc private func handleShowSessions() {
+        SessionsWindowController.show(
+            stores: { [weak self] in self?.windowControllers.map(\.store) ?? [] },
+            tokenLookup: SessionDashboardTokenLookup.makeClosure(),
+            onJump: { [weak self] row in self?.jumpToSessionDashboardRow(row) },
+            onClose: { [weak self] row in self?.closeSessionDashboardRow(row) }
+        )
+    }
+
+    /// Both resolve purely by session id via `dockTabLocation(for:)` — the
+    /// same cross-window lookup the Dock menu's tab-jump already uses — so
+    /// `SessionDashboardRow` doesn't need to carry raw window/workspace ids.
+    private func jumpToSessionDashboardRow(_ row: SessionDashboardRow) {
+        guard let hit = dockTabLocation(for: row.id) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        revealTab(hit.session, in: hit.workspace, controller: hit.controller)
+    }
+
+    private func closeSessionDashboardRow(_ row: SessionDashboardRow) {
+        guard let hit = dockTabLocation(for: row.id) else { return }
+        hit.controller.store.closeTab(hit.session, in: hit.workspace)
     }
 
     private func showCLIDetectionIfNeeded() {

@@ -23,17 +23,22 @@ struct TerminalSessionConfig {
         TerminalSessionConfig(command: launcher, arguments: [], workingDirectory: nil, environment: [:])
     }
 
-    /// Fish shell with XDG_DATA_DIRS pointing at archer's vendor data root so
-    /// fish auto-sources `fish/vendor_conf.d/archer.fish` on startup. Avoids
-    /// `-C` injection (autocomplete wrappers like Fig/kiro swallow that flag).
-    static func fishShell(dataRoot: String) -> TerminalSessionConfig {
-        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/usr/local/bin/fish"
-        let parentXDG = ProcessInfo.processInfo.environment["XDG_DATA_DIRS"] ?? "/usr/local/share:/usr/share"
+    /// fish via `XDG_DATA_DIRS` injection: we prepend archer's data root so fish
+    /// auto-loads our `fish/vendor_conf.d/archer.fish` (the integration hooks).
+    /// No launcher / `-C` — both run after `config.fish` and get swallowed by
+    /// shell-wrapping autocomplete tools (Fig / Amazon Q / kiro); vendor_conf.d
+    /// is read by every fish, including the inner shell those tools re-`exec`.
+    /// fish adds its own default vendor dirs (homebrew, ~/.local/share)
+    /// independently of `XDG_DATA_DIRS`, so prepending here can't drop them.
+    static func fishShell() -> TerminalSessionConfig {
+        let env = ProcessInfo.processInfo.environment
+        let shell = env["SHELL"] ?? ArcherShellIntegration.fishPath
+        let existing = env["XDG_DATA_DIRS"] ?? "/usr/local/share:/usr/share"
         return TerminalSessionConfig(
             command: shell,
             arguments: [],
             workingDirectory: nil,
-            environment: ["XDG_DATA_DIRS": "\(dataRoot):\(parentXDG)"]
+            environment: ["XDG_DATA_DIRS": "\(ArcherShellIntegration.fishVendorDataRoot):\(existing)"]
         )
     }
 }
@@ -84,23 +89,24 @@ protocol TerminalEngine: AnyObject {
     /// don't fire this — libghostty's "press any key to close" message
     /// stays so the user can read crash output before dismissing.
     var onProcessExitedCleanly: (() -> Void)? { get set }
-    /// Fires when the terminal viewport position changes. `offset` is lines from top,
-    /// `total` is total scrollback lines, `visible` is viewport height in lines.
-    /// Allows the SwiftUI layer to persist/restore scroll position per pane.
     var onScrollPositionChange: ((_ offset: Int, _ total: Int, _ visible: Int) -> Void)? { get set }
-    /// Fires when the terminal receives new output while viewport is not at bottom.
-    /// Used to show "Jump to Latest" affordance.
     var onNewOutputWhileScrolledUp: (() -> Void)? { get set }
     func start(config: TerminalSessionConfig)
     func terminate()
-    /// When true, AppKit `setFrameSize` callbacks skip `ghostty_surface_set_size`.
-    /// Set during animated workspace-layout changes (pane zoom) so each
-    /// intermediate animation frame doesn't fire its own SIGWINCH burst —
-    /// the documented "12-24 set_size calls per toggle" scrollback-wipe
-    /// problem that hits conda init users (see CLAUDE.md known issues).
-    /// Pair every `true` assignment with `flushSize()` once the layout
-    /// settles so libghostty's grid catches up to the final dimensions.
-    var suspendsSizePropagation: Bool { get set }
+    /// True while ANY owner holds a size-propagation suspension. While set, AppKit
+    /// `setFrameSize` callbacks skip `ghostty_surface_set_size` so an animated /
+    /// interactive layout change (pane zoom, status-bar height, split-divider drag)
+    /// doesn't fire a SIGWINCH burst per intermediate frame — the documented
+    /// "12-24 set_size calls per toggle" scrollback-wipe that hits conda users
+    /// (see CLAUDE.md known issues). **Refcounted**: three owners can overlap, so
+    /// a plain shared Bool let one owner's un-suspend clobber another's still-active
+    /// suspend (issue #29 review). Mutate through the balanced begin/end pair —
+    /// each owner must pair its own `begin` with exactly one `end` (gate re-arms
+    /// behind a per-owner flag/token so you don't double-count), and follow the
+    /// `end` with `flushSize()` so libghostty's grid catches up to the final size.
+    var suspendsSizePropagation: Bool { get }
+    func beginSizePropagationSuspension()
+    func endSizePropagationSuspension()
     /// Gates whether the engine's view grabs keyboard first-responder when it
     /// mounts into a window. The SwiftUI layer sets it from the pane's active
     /// state so a workspace switch — which re-mounts every pane's surface —

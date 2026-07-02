@@ -82,15 +82,21 @@ final class WorkspaceStore {
     /// this to close its window — a window with zero workspaces is empty.
     var onBecameEmpty: (() -> Void)?
 
-    /// Mutate + schedule save. UI sites wrap in `withAnimation(Theme.chromeTransition)`.
+    /// Mutate + schedule save. UI sites wrap in `withAnimation(Theme.chromeTransition)`,
+    /// which animates the terminal area's width → per-frame `setFrameSize` on every
+    /// surface. Suspend size propagation for the animation (same as pane zoom) so
+    /// that burst doesn't SIGWINCH-wipe conda scrollback / flicker the terminal
+    /// (issue #29). Gated on a real mode change above, so no-op sets don't suspend.
     func setSidebarMode(_ mode: SidebarMode) {
         guard sidebarMode != mode else { return }
+        suspendSizePropagationForLayoutAnimation(active?.root.allPanes.flatMap { $0.tabs }.map(\.engine) ?? [])
         sidebarMode = mode
         scheduleSave()
     }
 
     func setRightSidebarMode(_ mode: SidebarMode) {
         guard rightSidebarMode != mode else { return }
+        suspendSizePropagationForLayoutAnimation(active?.root.allPanes.flatMap { $0.tabs }.map(\.engine) ?? [])
         rightSidebarMode = mode
         scheduleSave()
     }
@@ -196,12 +202,12 @@ final class WorkspaceStore {
     private static let closedTabHistoryLimit = 50
 
     private var pendingSave: Task<Void, Never>?
-    /// Monotonic counter bumped on every `toggleZoom`. The async restore
-    /// Task captures the value at toggle time and bails if the counter has
-    /// moved by the time it fires — keeps a rapid second toggle's
-    /// in-flight animation from being prematurely un-suspended by the
-    /// previous toggle's stale Task.
-    private var zoomSuspensionGeneration: Int = 0
+    // Monotonic counter bumped on every `toggleZoom`. The async restore
+    // Task captures the value at toggle time and bails if the counter has
+    // moved by the time it fires — keeps a rapid second toggle's
+    // in-flight animation from being prematurely un-suspended by the
+    // previous toggle's stale Task.
+
     private static let saveDebounce: UInt64 = 1_000_000_000
 
     var active: Workspace? {
@@ -1050,36 +1056,34 @@ final class WorkspaceStore {
     /// operate on the visibly-zoomed pane).
     func toggleZoom(in workspace: Workspace, paneId: UUID) {
         guard workspace.canZoom else { return }
-        // Suspend per-frame `set_size` propagation across every surface in
-        // this workspace for the duration of the SwiftUI frame animation.
-        // Otherwise each of the ~12-24 intermediate frame sizes fires its
-        // own SIGWINCH, triggering the conda-init scrollback wipe (the
-        // documented known issue). After the animation settles we push
-        // one final size sync.
-        let engines = workspace.root.allPanes.flatMap { $0.tabs }.map(\.engine)
-        for engine in engines {
-            engine.suspendsSizePropagation = true
-        }
-
+        // Suspend per-frame `set_size` across the workspace for the zoom animation
+        // (see suspendSizePropagationForLayoutAnimation).
+        suspendSizePropagationForLayoutAnimation(workspace.root.allPanes.flatMap { $0.tabs }.map(\.engine))
         workspace.activePaneId = paneId
         workspace.zoomedPaneId = workspace.isZoomed(paneId) ? nil : paneId
         scheduleSave()
+    }
 
-        // Generation token: a rapid second toggle bumps the counter
-        // before the first Task fires, so the stale restore bails out
-        // and only the latest toggle's restore actually clears
-        // suspension. Without this, a double-tap inside the 0.25s window
-        // re-opens the per-frame `set_size` window mid-animation and the
-        // SIGWINCH burst (conda scrollback wipe) comes back.
-        zoomSuspensionGeneration &+= 1
-        let token = zoomSuspensionGeneration
-        let restoreDelay: TimeInterval = 0.25
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(restoreDelay * 1_000_000_000))
-            guard let self, self.zoomSuspensionGeneration == token else { return }
+    /// Suspend per-frame `ghostty_surface_set_size` across `engines` for the
+    /// duration of a `withAnimation(Theme.chromeTransition)` layout change (pane
+    /// zoom, sidebar / agent-panel show-hide), then end + flush once it settles.
+    /// Without this, SwiftUI re-frames each surface every animation frame → a
+    /// SIGWINCH burst (conda scrollback wipe) AND — since the vsync render loop is
+    /// driven by those per-frame `setNeedsRender`s racing the display-link tick —
+    /// visible flicker (issue #29). Refcounted begin/end (self-balanced, so
+    /// overlapping animations compose; flush only when an engine's count hits 0);
+    /// the local capture is robust (no shared/token state to strand). ~0.25s
+    /// covers `Theme.chromeTransition`.
+    private func suspendSizePropagationForLayoutAnimation(_ engines: [any TerminalEngine]) {
+        guard !engines.isEmpty else { return }
+        for engine in engines {
+            engine.beginSizePropagationSuspension()
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
             for engine in engines {
-                engine.suspendsSizePropagation = false
-                engine.flushSize()
+                engine.endSizePropagationSuspension()
+                if !engine.suspendsSizePropagation { engine.flushSize() }
             }
         }
     }
@@ -1508,16 +1512,43 @@ final class WorkspaceStore {
         engine.onPwdChange = { [weak self, weak session, weak workspace] pwd in
             guard let session else { return }
             let url = URL(fileURLWithPath: pwd)
-            if session.currentDirectory.path != pwd {
+            // Compare against the URL's normalized path (what actually gets
+            // stored) — not raw `pwd` — so a shell that reports a trailing-slash
+            // cwd doesn't read as a change every prompt and defeat the gate below.
+            let path = url.path
+            let cwdChanged = session.currentDirectory.path != path
+            if cwdChanged {
                 session.currentDirectory = url
             }
-            if let workspace, workspace.activeSession?.id == session.id, workspace.workingDirectory.path != pwd {
+            var workspaceCwdChanged = false
+            if let workspace, workspace.activeSession?.id == session.id, workspace.workingDirectory.path != path {
                 workspace.workingDirectory = url
+                workspaceCwdChanged = true
             }
+            // Git status AND the filesystem watcher refresh on EVERY prompt, even
+            // an unchanged cwd — neither is safe to gate on cwdChanged:
+            //  • refreshGitStatus: an external editor can change the working
+            //    tree's uncommitted-file count without touching .git, which the
+            //    watcher's fs source never sees; this per-prompt fetch (which
+            //    result-dedups) is the only catch.
+            //  • watch(): GitWatcher.watch self-dedups for an already-watched
+            //    repo, but when the cwd had no .git at install time it re-runs
+            //    findGitDir on every call — so this is what finally attaches the
+            //    watcher when a repo is created in place (`git init` / `clone .`)
+            //    with no cd. Gating it would strand that case (issue #29 review).
             self?.refreshGitStatus(for: session)
-            self?.refreshEnvironment(for: session)
             self?.gitWatchers[session.id]?.watch(cwd: session.currentDirectory)
-            self?.scheduleSave()
+            // Environment + persistence DO only move with the cwd. venv / node
+            // changes are pushed by the separate `_archer_env_status` precmd IPC
+            // (which updates shellEnvironment → refreshEnvironment), and the only
+            // state this closure persists is the two cwd fields — so on an
+            // unchanged cwd both refreshEnvironment and scheduleSave are redundant.
+            if cwdChanged {
+                self?.refreshEnvironment(for: session)
+            }
+            if cwdChanged || workspaceCwdChanged {
+                self?.scheduleSave()
+            }
         }
         engine.onTitleChange = { [weak self, weak session] title in
             guard let session else { return }

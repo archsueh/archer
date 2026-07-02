@@ -15,24 +15,20 @@ final class ArcherSettingsModel {
     /// observe the same instance and react to user edits without a reload.
     static let shared = ArcherSettingsModel()
 
-    static let autoThemeSelection = "__archer-auto-theme"
-
-    var autoLightTheme: String = "rose-pine-dawn"
-    var autoDarkTheme: String = "rose-pine"
-    /// Mirrors the system Light/Dark setting for the "Follow System" theme.
-    /// `@Observable` so flipping it re-renders any SwiftUI chrome that reads a
-    /// `Theme` token (via `selectedTerminalTheme`); the observer below keeps it
-    /// in sync with macOS.
-    var systemAppearanceIsDark: Bool = archerSystemIsDark()
-    private var appearanceObserver: NSObjectProtocol?
-    private var lastAppliedTheme: String?
-
     var fontFamily: String = ""
     /// `nil` = not overridden — let libghostty fall back to ghostty's own
     /// config (or its default). Writing a default 13 unconditionally would
     /// silently shadow the user's `~/.config/ghostty/config` font-size.
     var fontSize: Int?
     var cursorStyle: String = "block"
+    /// `terminal.background-blur` — one of ghostty's `macos-glass-*` values
+    /// turns on macOS 26 Liquid Glass chrome. No UI control yet (set it in
+    /// settings.json or ghostty config); kept observable so chrome re-renders
+    /// live when it changes. `nil` = opaque chrome.
+    var backgroundBlur: String?
+    /// `terminal.background-opacity` (0...1). Drives both libghostty's surface
+    /// alpha and archer's glass tint. `nil` = unset (libghostty default).
+    var backgroundOpacity: Double?
     /// Picker selection for the terminal theme row. Values are one of:
     /// `defaultThemeSelection`, `customThemeSelection`, or a theme choice id.
     var terminalThemeSelection: String = ArcherSettingsModel.defaultThemeSelection
@@ -88,6 +84,12 @@ final class ArcherSettingsModel {
     /// base id, so a Claude-based custom honours the `claude-code` entry.
     /// Persisted under `statusbar.toolCallHidden`.
     var hiddenToolCallAgents: Set<String> = []
+    /// Per-agent visibility of the usage gauge (Codex's account rate-limit
+    /// windows), keyed like `hiddenToolCallAgents`. Empty = every usage-
+    /// reporting agent shows its gauge (the default; currently only Codex).
+    /// Persisted under `statusbar.usageHidden`. An open `Set` (not a closed
+    /// enum) so a future usage-reporting agent's id round-trips untouched.
+    var hiddenUsageAgents: Set<String> = []
     /// When true, archer launches Claude tabs with `--resume <id>` using the
     /// conversation id persisted on each tab (captured via Claude's hook
     /// payload). When false, every Claude tab starts fresh — but the
@@ -106,79 +108,34 @@ final class ArcherSettingsModel {
     /// Master switch for macOS notifications about a non-visible tab. When
     /// off, nothing is posted. The first post triggers the OS permission
     /// prompt. Persisted under `notifications.enabled` (only when non-default).
+    /// prompt. Persisted under `notifications.enabled` (only when non-default).
     var notificationsEnabled: Bool = true
     /// Per-kind sub-toggles, gated behind `notificationsEnabled`: notify when
     /// an agent starts waiting on you, and when a command exits non-zero.
     /// Persisted under `notifications.attention` / `.failure` (non-default only).
     var notifyOnAttention: Bool = true
     var notifyOnFailure: Bool = true
-    var notifyOnCompleted: Bool = true // [archer] sound/banner when an agent finishes
-    var notificationSound: String = "Submarine" // [archer] sound name
-    // [archer] Edge activity glow (see docs/edge-glow-spec.md). Defaults: on,
-    // all screens, low brightness. Persistence + UI land in a later step.
+    var notifyOnCompleted: Bool = true
+    var notificationSound: String = "Submarine"
     var edgeGlowEnabled: Bool = true
     var edgeGlowScope: EdgeGlowScope = .allScreens
     var edgeGlowBrightness: Double = 0.35
     var edgeGlowWidth: Double = 3
-    /// In-app UI language. "system" follows macOS; "en"/"zh-Hans" override via
-    /// the AppleLanguages user default (takes effect after restart). Lives in
-    /// UserDefaults, not settings.json. // [archer]
-    var appLanguage: String = "system"
+    /// "Open in" picker (top-chrome split button): user-customised order of
+    /// `OpenInApp` ids; installed apps absent from this list follow in catalog
+    /// order. Persisted under `openin.order`.
+    var openInAppOrder: [String] = []
+    /// Installed "Open in" apps the user suppressed from the picker. Sibling of
+    /// `hiddenAgents`. Persisted under `openin.hidden`.
+    var hiddenOpenInApps: Set<String> = []
+    /// Last app picked from the "Open in" control — drives the split button's
+    /// icon + plain-click target. Persisted under `openin.lastUsed`.
+    var lastOpenInAppId: String?
 
     private var saveWork: DispatchWorkItem?
 
     init() {
         load()
-        observeSystemAppearance()
-    }
-
-    /// Tracks macOS Light/Dark so the "Follow System" theme stays aligned with
-    /// Finder. `AppleInterfaceThemeChangedNotification` is the canonical signal;
-    /// it fires on the system flip (including macOS's own auto schedule).
-    private func observeSystemAppearance() {
-        appearanceObserver = DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.systemAppearanceChanged()
-            }
-        }
-    }
-
-    func systemAppearanceChanged() {
-        let isDark = archerSystemIsDark()
-        guard isDark != systemAppearanceIsDark else { return }
-        systemAppearanceIsDark = isDark
-        // Setting the @Observable above re-renders SwiftUI chrome. libghostty's
-        // surface + the windows' NSAppearance need an explicit nudge: the
-        // persisted theme is the unchanged `__archer-auto-theme` sentinel, so
-        // `save()`'s diff gate would skip the reload/refresh pass.
-        guard terminalThemeSelection == Self.autoThemeSelection else { return }
-        lastAppliedTheme = isDark ? autoDarkTheme : autoLightTheme
-        LibghosttyApp.shared.reloadConfig()
-        (NSApp.delegate as? AppDelegate)?.refreshThemeAppearances()
-    }
-
-    /// [archer] Reads the app's own AppleLanguages override (not the inherited
-    /// system value), mapping to "system" / "en" / "zh-Hans".
-    static func detectAppLanguage() -> String {
-        let bid = Bundle.main.bundleIdentifier ?? ""
-        let domain = UserDefaults.standard.persistentDomain(forName: bid)
-        guard let first = (domain?["AppleLanguages"] as? [String])?.first else { return "system" }
-        if first.hasPrefix("zh") { return "zh-Hans" }
-        if first.hasPrefix("en") { return "en" }
-        return "system"
-    }
-
-    /// [archer] Persists the AppleLanguages override; takes effect after restart.
-    func applyAppLanguage(_ value: String) {
-        switch value {
-        case "en": UserDefaults.standard.set(["en"], forKey: "AppleLanguages")
-        case "zh-Hans": UserDefaults.standard.set(["zh-Hans"], forKey: "AppleLanguages")
-        default: UserDefaults.standard.removeObject(forKey: "AppleLanguages")
-        }
     }
 
     func load() {
@@ -193,26 +150,22 @@ final class ArcherSettingsModel {
             fontSize = Int(d)
         }
         cursorStyle = (terminal["cursor-style"] as? String) ?? "block"
-        autoLightTheme = (terminal["autoLightTheme"] as? String) ?? "rose-pine-dawn"
-        autoDarkTheme = (terminal["autoDarkTheme"] as? String) ?? "rose-pine"
-
+        // Tolerate a JSON bool / numeric `background-blur` so a hand-edited
+        // `false` isn't read as "unset" and then deleted on the next save.
+        backgroundBlur = ArcherSettings.blurString(from: terminal["background-blur"])
+        if let o = terminal["background-opacity"] as? Double {
+            backgroundOpacity = o
+        } else if let i = terminal["background-opacity"] as? Int {
+            backgroundOpacity = Double(i)
+        } else {
+            backgroundOpacity = nil
+        }
         let themeState = Self.themeSelection(
             for: terminal["theme"] as? String,
             in: terminalThemeChoices
         )
         terminalThemeSelection = themeState.selection
         customTerminalThemeRawValue = themeState.customRawValue
-
-        let loadedTheme = Self.persistedThemeValue(
-            selection: terminalThemeSelection,
-            customRawValue: customTerminalThemeRawValue,
-            in: terminalThemeChoices
-        )
-        if loadedTheme == Self.autoThemeSelection {
-            lastAppliedTheme = systemAppearanceIsDark ? autoDarkTheme : autoLightTheme
-        } else {
-            lastAppliedTheme = loadedTheme
-        }
 
         let agents = parsed["agents"] as? [String: Any] ?? [:]
         agentOrder = (agents["order"] as? [String]) ?? []
@@ -231,15 +184,20 @@ final class ArcherSettingsModel {
         notificationsEnabled = (notifications["enabled"] as? Bool) ?? true
         notifyOnAttention = (notifications["attention"] as? Bool) ?? true
         notifyOnFailure = (notifications["failure"] as? Bool) ?? true
-        notifyOnCompleted = (notifications["completed"] as? Bool) ?? true // [archer] sound/banner when an agent finishes
-        notificationSound = (notifications["sound"] as? String) ?? "Submarine" // [archer] sound name
+        notifyOnCompleted = (notifications["completed"] as? Bool) ?? true
+        notificationSound = (notifications["sound"] as? String) ?? "Submarine"
 
-        let edgeGlow = parsed["edgeGlow"] as? [String: Any] ?? [:] // [archer]
+        let edgeGlow = parsed["edgeGlow"] as? [String: Any] ?? [:]
         edgeGlowEnabled = (edgeGlow["enabled"] as? Bool) ?? true
         edgeGlowScope = EdgeGlowScope(rawValue: (edgeGlow["scope"] as? String) ?? "") ?? .allScreens
         edgeGlowBrightness = (edgeGlow["brightness"] as? Double) ?? 0.35
         edgeGlowWidth = (edgeGlow["width"] as? Double) ?? 3
-        appLanguage = ArcherSettingsModel.detectAppLanguage() // [archer]
+
+        let openin = parsed["openin"] as? [String: Any] ?? [:]
+        openInAppOrder = (openin["order"] as? [String]) ?? []
+        hiddenOpenInApps = Set((openin["hidden"] as? [String]) ?? [])
+        lastOpenInAppId = openin["lastUsed"] as? String
+
         let rawCustom = (agents["custom"] as? [[String: Any]]) ?? []
         let builtinIds = Set(AgentTemplate.builtin.map(\.id))
         var seen: Set<String> = []
@@ -298,6 +256,7 @@ final class ArcherSettingsModel {
         let rawHiddenStatus = (statusbar["hidden"] as? [String]) ?? []
         hiddenStatusBarItems = Set(rawHiddenStatus.compactMap(StatusBarItemKind.init(rawValue:)))
         hiddenToolCallAgents = Set((statusbar["toolCallHidden"] as? [String]) ?? [])
+        hiddenUsageAgents = Set((statusbar["usageHidden"] as? [String]) ?? [])
 
         let terminals = parsed["terminals"] as? [String: Any] ?? [:]
         hiddenPresets = Set((terminals["hidden"] as? [String]) ?? [])
@@ -349,13 +308,13 @@ final class ArcherSettingsModel {
         terminal["font-family"] = fontFamily.isEmpty ? nil : fontFamily
         terminal["font-size"] = fontSize
         terminal["cursor-style"] = cursorStyle == "block" ? nil : cursorStyle
+        terminal["background-blur"] = backgroundBlur
+        terminal["background-opacity"] = backgroundOpacity
         terminal["theme"] = Self.persistedThemeValue(
             selection: terminalThemeSelection,
             customRawValue: customTerminalThemeRawValue,
             in: terminalThemeChoices
         )
-        terminal["autoLightTheme"] = autoLightTheme == "rose-pine-dawn" ? nil : autoLightTheme
-        terminal["autoDarkTheme"] = autoDarkTheme == "rose-pine" ? nil : autoDarkTheme
         parsed["terminal"] = terminal
 
         let nonEmptyOptions = agentOptions.filter { !$0.value.isEmpty }
@@ -411,15 +370,15 @@ final class ArcherSettingsModel {
         notifications["enabled"] = notificationsEnabled ? nil : false
         notifications["attention"] = notifyOnAttention ? nil : false
         notifications["failure"] = notifyOnFailure ? nil : false
-        notifications["completed"] = notifyOnCompleted ? nil : false // [archer]
-        notifications["sound"] = notificationSound == "Submarine" ? nil : notificationSound // [archer]
+        notifications["completed"] = notifyOnCompleted ? nil : false
+        notifications["sound"] = notificationSound == "Submarine" ? nil : notificationSound
         if notifications.isEmpty {
             parsed.removeValue(forKey: "notifications")
         } else {
             parsed["notifications"] = notifications
         }
 
-        var edgeGlow = parsed["edgeGlow"] as? [String: Any] ?? [:] // [archer]
+        var edgeGlow = parsed["edgeGlow"] as? [String: Any] ?? [:]
         edgeGlow["enabled"] = edgeGlowEnabled ? nil : false
         edgeGlow["scope"] = edgeGlowScope == .allScreens ? nil : edgeGlowScope.rawValue
         edgeGlow["brightness"] = edgeGlowBrightness == 0.35 ? nil : edgeGlowBrightness
@@ -430,6 +389,16 @@ final class ArcherSettingsModel {
             parsed["edgeGlow"] = edgeGlow
         }
 
+        var openin = parsed["openin"] as? [String: Any] ?? [:]
+        openin["order"] = openInAppOrder.isEmpty ? nil : openInAppOrder
+        openin["hidden"] = hiddenOpenInApps.isEmpty ? nil : Array(hiddenOpenInApps).sorted()
+        openin["lastUsed"] = lastOpenInAppId
+        if openin.isEmpty {
+            parsed.removeValue(forKey: "openin")
+        } else {
+            parsed["openin"] = openin
+        }
+
         let serialisedPresets: [[String: Any]] = terminalPresets.compactMap { p in
             guard !p.id.isEmpty else { return nil }
             var dict: [String: Any] = ["id": p.id]
@@ -437,7 +406,7 @@ final class ArcherSettingsModel {
             if !p.path.isEmpty { dict["path"] = p.path }
             return dict
         }
-        if serialisedPresets.isEmpty, hiddenPresets.isEmpty {
+        if serialisedPresets.isEmpty && hiddenPresets.isEmpty {
             parsed.removeValue(forKey: "terminals")
         } else {
             var terminals = parsed["terminals"] as? [String: Any] ?? [:]
@@ -447,37 +416,31 @@ final class ArcherSettingsModel {
         }
 
         let statusOrderIsDefault = statusBarItems == StatusBarItemKind.defaultOrder
-        if statusOrderIsDefault, hiddenStatusBarItems.isEmpty, hiddenToolCallAgents.isEmpty {
+        if statusOrderIsDefault && hiddenStatusBarItems.isEmpty && hiddenToolCallAgents.isEmpty && hiddenUsageAgents.isEmpty {
             parsed.removeValue(forKey: "statusbar")
         } else {
             var statusbar = parsed["statusbar"] as? [String: Any] ?? [:]
             statusbar["order"] = statusOrderIsDefault ? nil : statusBarItems.map(\.rawValue)
             statusbar["hidden"] = hiddenStatusBarItems.isEmpty ? nil : hiddenStatusBarItems.map(\.rawValue).sorted()
             statusbar["toolCallHidden"] = hiddenToolCallAgents.isEmpty ? nil : Array(hiddenToolCallAgents).sorted()
+            statusbar["usageHidden"] = hiddenUsageAgents.isEmpty ? nil : Array(hiddenUsageAgents).sorted()
             parsed["statusbar"] = statusbar
         }
 
         ArcherSettings.write(parsed)
         ArcherShellIntegration.refreshClaudeCustomSettings(customAgents: customAgents)
         ArcherShellIntegration.refreshSshRemoteAgentDetection(enabled: sshRemoteAgentDetection)
-        // Theme-only diff is the trigger for chrome / window-appearance
-        // refresh — font and cursor changes also flow through `reloadConfig`
-        // so libghostty picks up the new values, but they don't change
-        // chrome tokens, so skip the window-appearance pass for them.
-        let currThemeRaw = terminal["theme"] as? String
-        let resolvedTheme: String?
-        if currThemeRaw == Self.autoThemeSelection {
-            resolvedTheme = systemAppearanceIsDark ? autoDarkTheme : autoLightTheme
-        } else {
-            resolvedTheme = currThemeRaw
-        }
-        let themeChanged = (resolvedTheme != lastAppliedTheme)
-        lastAppliedTheme = resolvedTheme
-
+        // Theme or glass (blur / opacity) diff triggers the chrome /
+        // window-appearance refresh — font and cursor changes also flow
+        // through `reloadConfig` so libghostty picks up the new values, but
+        // they don't change chrome tokens, so skip the window pass for them.
+        let themeChanged = (previousTerminal["theme"] as? String) != (terminal["theme"] as? String)
+        let glassChanged = (previousTerminal["background-blur"] as? String) != (terminal["background-blur"] as? String)
+            || (previousTerminal["background-opacity"] as? NSNumber) != (terminal["background-opacity"] as? NSNumber)
         let terminalChanged = !NSDictionary(dictionary: previousTerminal).isEqual(to: terminal)
         if terminalChanged {
             LibghosttyApp.shared.reloadConfig()
-            if themeChanged {
+            if themeChanged || glassChanged {
                 (NSApp.delegate as? AppDelegate)?.refreshThemeAppearances()
             }
         }
@@ -496,11 +459,7 @@ final class ArcherSettingsModel {
     static let customThemeSelection = "__archer-custom-theme"
 
     var selectedTerminalTheme: ArcherTerminalTheme? {
-        if terminalThemeSelection == Self.autoThemeSelection {
-            let activeId = systemAppearanceIsDark ? autoDarkTheme : autoLightTheme
-            return terminalThemeChoices.first { $0.id == activeId }
-        }
-        return terminalThemeChoices.first { $0.id == terminalThemeSelection }
+        terminalThemeChoices.first { $0.id == terminalThemeSelection }
     }
 
     var customTerminalThemeLabel: String? {
@@ -512,6 +471,14 @@ final class ArcherSettingsModel {
 
     var bundledTerminalThemes: [ArcherTerminalTheme] {
         terminalThemeChoices.filter(\.isBundled)
+    }
+
+    var darkBundledThemes: [ArcherTerminalTheme] {
+        bundledTerminalThemes.filter(\.isDark)
+    }
+
+    var lightBundledThemes: [ArcherTerminalTheme] {
+        bundledTerminalThemes.filter { !$0.isDark }
     }
 
     var ghosttyUserThemes: [ArcherTerminalTheme] {
@@ -527,9 +494,6 @@ final class ArcherSettingsModel {
         else {
             return (defaultThemeSelection, nil)
         }
-        if rawTheme == autoThemeSelection {
-            return (autoThemeSelection, nil)
-        }
         if let theme = ArcherTerminalTheme.theme(for: rawTheme, in: themes) {
             return (theme.id, nil)
         }
@@ -543,9 +507,6 @@ final class ArcherSettingsModel {
     ) -> String? {
         if selection == defaultThemeSelection {
             return nil
-        }
-        if selection == autoThemeSelection {
-            return autoThemeSelection
         }
         if selection == customThemeSelection {
             let raw = customRawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -598,6 +559,15 @@ final class ArcherSettingsModel {
         statusBarItems = StatusBarItemKind.defaultOrder
         hiddenStatusBarItems = []
         hiddenToolCallAgents = []
+        hiddenUsageAgents = []
+        scheduleSave()
+    }
+
+    /// Clears "Open in" order + hidden customisation. Leaves `lastOpenInAppId`
+    /// so the split button keeps pointing at the app the user last used.
+    func resetOpenIn() {
+        openInAppOrder = []
+        hiddenOpenInApps = []
         scheduleSave()
     }
 
@@ -614,7 +584,7 @@ final class ArcherSettingsModel {
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general, terminalPresets, codingAgents, ssh, notifications, statusBar, advanced
+    case general, appearance, codingAgents, terminalPresets, openIn, statusBar, notifications, advanced
 
     var id: String {
         rawValue
@@ -623,11 +593,12 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: return "General"
-        case .terminalPresets: return "Terminals"
+        case .appearance: return "Appearance"
         case .codingAgents: return "Agents"
-        case .ssh: return "SSH"
-        case .notifications: return "Notifications"
+        case .terminalPresets: return "Terminals"
+        case .openIn: return "Open in"
         case .statusBar: return "Status Bar"
+        case .notifications: return "Notifications"
         case .advanced: return "Advanced"
         }
     }
@@ -646,29 +617,31 @@ struct ArcherSettingsView: View {
     @Bindable var model: ArcherSettingsModel
     let onOpenInTab: () -> Void
     @State private var selected: SettingsCategory = .general
-    // [archer] begin: new rule inputs
-    // [archer] end: new rule inputs
 
     var body: some View {
-        // The autosave `.onChange` observers are split across three statements
-        // via intermediate constants: a single chain this long overruns the
-        // Swift type-checker's budget. Each block stays comfortably under the limit.
+        // The autosave `.onChange` observers are split across two statements
+        // via an intermediate `let`: a single chain this long (16 modifiers)
+        // overruns the Swift type-checker's budget ("unable to type-check in
+        // reasonable time"). Each half stays comfortably under the limit.
         let core = HStack(spacing: 0) {
             sidebar
             Rectangle().fill(Theme.chromeHairline).frame(width: 1)
             ScrollView { detail }
                 .frame(maxWidth: .infinity)
         }
-        .background(Theme.chromeBackground)
+        .glassWindowBackground(fallback: Theme.chromeBackground)
         .preferredColorScheme(Theme.chromeColorScheme)
         .onChange(of: model.fontFamily) { _, _ in model.scheduleSave() }
         .onChange(of: model.fontSize) { _, _ in model.scheduleSave() }
         .onChange(of: model.cursorStyle) { _, _ in model.scheduleSave() }
         .onChange(of: model.terminalThemeSelection) { _, _ in model.flushSave() }
+        .onChange(of: model.backgroundBlur) { _, _ in model.flushSave() }
         .onChange(of: model.agentOrder) { _, _ in model.scheduleSave() }
         .onChange(of: model.hiddenAgents) { _, _ in model.scheduleSave() }
         .onChange(of: model.agentOptions) { _, _ in model.scheduleSave() }
         .onChange(of: model.defaultAgentId) { _, _ in model.scheduleSave() }
+        .onChange(of: model.openInAppOrder) { _, _ in model.scheduleSave() }
+        .onChange(of: model.hiddenOpenInApps) { _, _ in model.scheduleSave() }
 
         let core2 = core
             .onChange(of: model.customAgents) { _, _ in model.scheduleSave() }
@@ -679,20 +652,19 @@ struct ArcherSettingsView: View {
             .onChange(of: model.hiddenPresets) { _, _ in model.scheduleSave() }
             .onChange(of: model.statusBarItems) { _, _ in model.scheduleSave() }
             .onChange(of: model.hiddenStatusBarItems) { _, _ in model.scheduleSave() }
+            .onChange(of: model.hiddenToolCallAgents) { _, _ in model.scheduleSave() }
+            .onChange(of: model.hiddenUsageAgents) { _, _ in model.scheduleSave() }
 
         return core2
-            .onChange(of: model.hiddenToolCallAgents) { _, _ in model.scheduleSave() }
             .onChange(of: model.notificationsEnabled) { _, _ in model.scheduleSave() }
             .onChange(of: model.notifyOnAttention) { _, _ in model.scheduleSave() }
             .onChange(of: model.notifyOnFailure) { _, _ in model.scheduleSave() }
-            .onChange(of: model.notifyOnCompleted) { _, _ in model.scheduleSave() } // [archer]
-            .onChange(of: model.notificationSound) { _, _ in model.scheduleSave() } // [archer]
-            .onChange(of: model.edgeGlowEnabled) { _, _ in model.scheduleSave(); EdgeGlowController.shared.refresh() } // [archer]
-            .onChange(of: model.edgeGlowScope) { _, _ in model.scheduleSave(); EdgeGlowController.shared.refresh() } // [archer]
-            .onChange(of: model.edgeGlowBrightness) { _, _ in model.scheduleSave() } // [archer]
-            .onChange(of: model.edgeGlowWidth) { _, _ in model.scheduleSave() } // [archer]
-            .onChange(of: model.autoLightTheme) { _, _ in model.flushSave() }
-            .onChange(of: model.autoDarkTheme) { _, _ in model.flushSave() }
+            .onChange(of: model.notifyOnCompleted) { _, _ in model.scheduleSave() }
+            .onChange(of: model.notificationSound) { _, _ in model.scheduleSave() }
+            .onChange(of: model.edgeGlowEnabled) { _, _ in model.scheduleSave(); EdgeGlowController.shared.refresh() }
+            .onChange(of: model.edgeGlowScope) { _, _ in model.scheduleSave(); EdgeGlowController.shared.refresh() }
+            .onChange(of: model.edgeGlowBrightness) { _, _ in model.scheduleSave() }
+            .onChange(of: model.edgeGlowWidth) { _, _ in model.scheduleSave() }
     }
 
     private var sidebar: some View {
@@ -720,7 +692,7 @@ struct ArcherSettingsView: View {
                 .font(Theme.mono(11, weight: .medium))
                 .foregroundStyle(isSelected ? Theme.chromeForeground : Color.clear)
                 .frame(width: 14, alignment: .leading)
-            Text(L10n.string(category.title)) // [archer] localize section name
+            Text(category.title)
                 .font(Theme.mono(12, weight: isSelected ? .medium : .regular))
                 .foregroundStyle(isSelected ? Theme.chromeForeground : Theme.chromeMuted)
             Spacer()
@@ -734,7 +706,7 @@ struct ArcherSettingsView: View {
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 14) {
-                Text(L10n.string(selected.title)) // [archer] localize section title
+                Text(selected.title)
                     .font(Theme.display(22, weight: .medium))
                     .foregroundStyle(Theme.chromeForeground)
                 // The Notifications section's master switch lives on the title
@@ -756,45 +728,22 @@ struct ArcherSettingsView: View {
                 .padding(.bottom, 18)
             switch selected {
             case .general: generalDetail
-            case .terminalPresets: terminalPresetsDetail
+            case .appearance: appearanceDetail
             case .codingAgents: codingAgentsDetail
-            case .ssh: sshDetail
-            case .notifications: notificationsDetail
+            case .terminalPresets: terminalPresetsDetail
+            case .openIn: openInDetail
             case .statusBar: statusBarDetail
+            case .notifications: notificationsDetail
             case .advanced: advancedDetail
             }
             Spacer(minLength: 28)
         }
     }
 
-    private var generalDetail: some View {
+    private var appearanceDetail: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsRow(label: "theme") {
                 themeControl
-            }
-            if model.terminalThemeSelection == ArcherSettingsModel.autoThemeSelection {
-                SettingsHairline()
-                SettingsRow(label: "  ▸ light mode") {
-                    Picker("", selection: $model.autoLightTheme) {
-                        ForEach(model.terminalThemeChoices) { theme in
-                            Text(theme.title).tag(theme.id)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(minWidth: 220)
-                }
-                SettingsHairline()
-                SettingsRow(label: "  ▸ dark mode") {
-                    Picker("", selection: $model.autoDarkTheme) {
-                        ForEach(model.terminalThemeChoices) { theme in
-                            Text(theme.title).tag(theme.id)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(minWidth: 220)
-                }
             }
             SettingsHairline()
             SettingsRow(label: "font-family") {
@@ -807,7 +756,7 @@ struct ArcherSettingsView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .frame(minWidth: 180)
+                .frame(minWidth: 180, alignment: .trailing)
             }
             SettingsHairline()
             SettingsRow(label: "font-size") {
@@ -830,9 +779,34 @@ struct ArcherSettingsView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .frame(minWidth: 180)
+                .frame(minWidth: 180, alignment: .trailing)
             }
             SettingsHairline()
+            SettingsRow(label: "liquid-glass") {
+                // Real Liquid Glass on macOS 26+; no effect on older systems.
+                // Tags are ghostty's `background-blur` values; "Off" stores
+                // `false` so it overrides a glassy ghostty config.
+                Picker("", selection: glassSelection) {
+                    Text("Off").tag("false")
+                    Text("Regular").tag("macos-glass-regular")
+                    Text("Clear").tag("macos-glass-clear")
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(minWidth: 180, alignment: .trailing)
+            }
+            Text("Requires macOS 26 or later.")
+                .font(Theme.mono(11))
+                .foregroundStyle(Theme.chromeMuted)
+                .padding(.horizontal, 28)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
+            terminalRestartCallout
+        }
+    }
+
+    private var generalDetail: some View {
+        VStack(alignment: .leading, spacing: 0) {
             SettingsRow(label: "default-new-tab") {
                 Picker("", selection: $model.defaultAgentId) {
                     Text("Ask each time").tag(String?.none)
@@ -843,34 +817,32 @@ struct ArcherSettingsView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .frame(minWidth: 180)
+                .frame(minWidth: 180, alignment: .trailing)
             }
             SettingsHairline()
-            SettingsRow(label: "top bar search") {
+            SettingsRow(label: "top-bar-search") {
                 Toggle("", isOn: $model.showSearchPill)
                     .labelsHidden()
                     .toggleStyle(.switch)
             }
             SettingsHairline()
-            SettingsRow(label: "language") { // [archer]
-                Picker("", selection: $model.appLanguage) {
-                    Text("System").tag("system")
-                    Text("English").tag("en")
-                    Text("简体中文").tag("zh-Hans")
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(minWidth: 180)
-                .onChange(of: model.appLanguage) { _, newValue in
-                    model.applyAppLanguage(newValue)
-                }
+            // SSH remote agent detection lives here now (it was its own
+            // one-toggle category before). The settings.json key stays
+            // `ssh.remoteAgentDetection`; only the UI home moved.
+            SettingsRow(label: "remote-agent-detection") {
+                Toggle("", isOn: $model.sshRemoteAgentDetection)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
             }
-            terminalRestartCallout
         }
     }
 
     private var terminalPresetsDetail: some View {
         TerminalPresetsList(model: model)
+    }
+
+    private var openInDetail: some View {
+        OpenInReorderList(model: model)
     }
 
     private var statusBarDetail: some View {
@@ -883,16 +855,6 @@ struct ArcherSettingsView: View {
             SettingsHairline()
             SettingsRow(label: "resume-conversation-when-reopen") {
                 Toggle("", isOn: $model.resumeConversations)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
-        }
-    }
-
-    private var sshDetail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SettingsRow(label: "remote-agent-detection") {
-                Toggle("", isOn: $model.sshRemoteAgentDetection)
                     .labelsHidden()
                     .toggleStyle(.switch)
             }
@@ -913,17 +875,28 @@ struct ArcherSettingsView: View {
                     .toggleStyle(.switch)
                     .disabled(!model.notificationsEnabled)
             }
-            SettingsRow(label: "completed") { // [archer]
+            SettingsRow(label: "completed") {
                 Toggle("", isOn: $model.notifyOnCompleted)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .disabled(!model.notificationsEnabled)
             }
-            SettingsRow(label: "alert sound") { // [archer]
+            SettingsRow(label: "sound") {
                 Picker("", selection: $model.notificationSound) {
-                    ForEach(["Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"], id: \.self) { sound in
-                        Text(sound).tag(sound)
-                    }
+                    Text("Submarine").tag("Submarine")
+                    Text("Basso").tag("Basso")
+                    Text("Blow").tag("Blow")
+                    Text("Bottle").tag("Bottle")
+                    Text("Frog").tag("Frog")
+                    Text("Funk").tag("Funk")
+                    Text("Glass").tag("Glass")
+                    Text("Hero").tag("Hero")
+                    Text("Morse").tag("Morse")
+                    Text("Ping").tag("Ping")
+                    Text("Pop").tag("Pop")
+                    Text("Purr").tag("Purr")
+                    Text("Sosumi").tag("Sosumi")
+                    Text("Tink").tag("Tink")
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
@@ -932,27 +905,27 @@ struct ArcherSettingsView: View {
                     NSSound(named: NSSound.Name(newValue))?.play()
                 }
             }
-            SettingsRow(label: "edge glow") { // [archer]
+            SettingsRow(label: "edge glow") {
                 Toggle("", isOn: $model.edgeGlowEnabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
             }
-            SettingsRow(label: "  ▸ screens") { // [archer]
+            SettingsRow(label: "  ▸ screens") {
                 Picker("", selection: $model.edgeGlowScope) {
                     Text("all").tag(EdgeGlowScope.allScreens)
                     Text("current").tag(EdgeGlowScope.currentScreen)
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .frame(width: 120) // [archer] match slider column so the control edges line up
+                .frame(width: 120)
                 .disabled(!model.edgeGlowEnabled)
             }
-            SettingsRow(label: "  ▸ brightness") { // [archer]
+            SettingsRow(label: "  ▸ brightness") {
                 BrutalistSlider(value: $model.edgeGlowBrightness, range: 0.1 ... 1)
                     .frame(width: 120)
                     .disabled(!model.edgeGlowEnabled)
             }
-            SettingsRow(label: "  ▸ width") { // [archer]
+            SettingsRow(label: "  ▸ width") {
                 BrutalistSlider(value: $model.edgeGlowWidth, range: 1 ... 8)
                     .frame(width: 120)
                     .disabled(!model.edgeGlowEnabled)
@@ -979,7 +952,7 @@ struct ArcherSettingsView: View {
                 .font(Theme.mono(11.5))
                 .foregroundStyle(Theme.chromeMuted)
             Spacer()
-            BracketButton("restart Archer", action: restartApp)
+            BracketButton("restart archer", action: restartApp)
         }
         .padding(.horizontal, 28)
         .padding(.top, 22)
@@ -1013,24 +986,30 @@ struct ArcherSettingsView: View {
     private var themeControl: some View {
         Picker("", selection: $model.terminalThemeSelection) {
             Text("Default").tag(ArcherSettingsModel.defaultThemeSelection)
-            Text("Follow System").tag(ArcherSettingsModel.autoThemeSelection)
             if let customLabel = model.customTerminalThemeLabel {
                 Text(customLabel).tag(ArcherSettingsModel.customThemeSelection)
             }
-            Divider()
-            ForEach(model.bundledTerminalThemes) { preset in
-                Text(preset.title).tag(preset.id)
+            Section("Dark") {
+                ForEach(model.darkBundledThemes) { preset in
+                    Text(preset.title).tag(preset.id)
+                }
+            }
+            Section("Light") {
+                ForEach(model.lightBundledThemes) { preset in
+                    Text(preset.title).tag(preset.id)
+                }
             }
             if !model.ghosttyUserThemes.isEmpty {
-                Divider()
-                ForEach(model.ghosttyUserThemes) { theme in
-                    Text(theme.title).tag(theme.id)
+                Section("Custom") {
+                    ForEach(model.ghosttyUserThemes) { theme in
+                        Text(theme.title).tag(theme.id)
+                    }
                 }
             }
         }
         .labelsHidden()
         .pickerStyle(.menu)
-        .frame(minWidth: 220)
+        .frame(minWidth: 220, alignment: .trailing)
     }
 
     /// Falls back to 13 when the user hasn't explicitly chosen a size —
@@ -1044,6 +1023,27 @@ struct ArcherSettingsView: View {
         Binding(
             get: { model.fontSize ?? Self.defaultFontSize },
             set: { model.fontSize = $0 }
+        )
+    }
+
+    /// The picker shows what's *in effect* (archer's own value, else the ghostty
+    /// fallback, else off), but always writes an explicit value — so picking
+    /// "Off" stores `false` rather than clearing the key, keeping it distinct
+    /// from "never set" (which is what defers to the ghostty config).
+    ///
+    /// The blur→opacity coupling lives in `ArcherSettings.apply` (the libghostty
+    /// config builder), not here — so it holds for every config path and never
+    /// clobbers a `background-opacity` the user set by hand.
+    private var glassSelection: Binding<String> {
+        Binding(
+            get: {
+                switch Theme.effectiveBlurRaw {
+                case "macos-glass-regular": return "macos-glass-regular"
+                case "macos-glass-clear": return "macos-glass-clear"
+                default: return "false"
+                }
+            },
+            set: { model.backgroundBlur = $0 }
         )
     }
 
@@ -1061,7 +1061,7 @@ private struct SettingsRow<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Text(L10n.string(label)) // [archer] localize row labels
+            Text(label)
                 .font(Theme.mono(12.5))
                 .foregroundStyle(Theme.chromeForeground)
             Spacer(minLength: 14)
@@ -1111,9 +1111,7 @@ private struct AgentReorderList: View {
                     env: customBinding(id: template.id, \.env),
                     onToggleVisible: { toggle(template.id) },
                     onToggleExpanded: {
-                        withAnimation(Theme.chromeTransition) {
-                            expandedId = expandedId == template.id ? nil : template.id
-                        }
+                        expandedId = expandedId == template.id ? nil : template.id
                     },
                     onBeginDrag: { draggingId = template.id },
                     onDrop: { droppedId in
@@ -1183,13 +1181,12 @@ private struct AgentReorderList: View {
         )
     }
 
-    /// Non-terminal templates in the user's chosen order, filtered to those
-    /// whose CLI binary is detected on this machine. Custom agents always
-    /// appear (user added them explicitly). Uninstalled builtins are hidden.
+    /// All non-terminal templates in the user's chosen order — visible and
+    /// hidden alike. Hidden agents render greyed out but stay wherever the
+    /// user dragged them, so toggling visibility doesn't move them. The
+    /// `+` menu's filter to visible-only lives in `AgentTemplate.visibleOrdered`.
     private var rows: [AgentTemplate] {
-        AgentTemplate.ordered(model: model).filter { template in
-            isCustomId(template.id) || template.isInstalled
-        }
+        AgentTemplate.ordered(model: model)
     }
 
     private var hasCustomisation: Bool {
@@ -1265,19 +1262,21 @@ private struct AgentRow: View {
             HStack(spacing: 12) {
                 ReorderHandle(payload: template.id, onBeginDrag: onBeginDrag)
                 AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 14)
+                    .opacity(visible ? 1.0 : 0.35)
                 Text(template.title)
                     .font(Theme.mono(12.5))
-                    .foregroundStyle(Theme.chromeForeground)
+                    .foregroundStyle(visible ? Theme.chromeForeground : Theme.chromeMuted)
                 Spacer(minLength: 14)
                 disclosureButton
+                Toggle("", isOn: Binding(get: { visible }, set: { _ in onToggleVisible() }))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
             .background(ReorderDropZone(row: template.id, isDragging: isDragging, decode: { $0 }, onDrop: onDrop))
-            if isExpanded {
-                expandedForm
-                    .transition(.opacity)
-            }
+            if isExpanded { expandedForm }
         }
         .opacity(isDragging ? 0.35 : 1.0)
     }
@@ -1441,10 +1440,16 @@ final class ArcherSettingsWindowController: NSWindowController {
         self.host = host
         let window = NSWindow(contentViewController: host)
         window.title = "Settings"
+        // Keep the title set (Window menu / accessibility) but hide the text in
+        // the bar, matching the main window + About + the floating panels.
+        window.titleVisibility = .hidden
         window.styleMask = [.titled, .closable]
         window.setContentSize(NSSize(width: 680, height: 460))
         window.isReleasedWhenClosed = false
         window.appearance = Theme.windowAppearance
+        // Glass runs edge to edge under a transparent full-size titlebar;
+        // content keeps its safe-area inset, so rows still sit below the bar.
+        window.configureGlassChrome()
         self.window = window
     }
 
@@ -1495,9 +1500,7 @@ private struct TerminalPresetsList: View {
                     path: pathBinding(id: preset.id),
                     onToggleVisible: { toggleVisible(preset.id) },
                     onToggleExpanded: {
-                        withAnimation(Theme.chromeTransition) {
-                            expandedId = expandedId == preset.id ? nil : preset.id
-                        }
+                        expandedId = expandedId == preset.id ? nil : preset.id
                     },
                     onChooseFolder: { chooseFolder(forPresetId: preset.id) },
                     onDelete: { model.deleteTerminalPreset(id: preset.id) },
@@ -1679,10 +1682,7 @@ private struct TerminalPresetRow: View {
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
             .background(ReorderDropZone(row: id, isDragging: isDragging, decode: { $0 }, onDrop: onDrop))
-            if isExpanded {
-                expandedForm
-                    .transition(.opacity)
-            }
+            if isExpanded { expandedForm }
         }
         .opacity(isDragging ? 0.35 : 1.0)
     }
@@ -1776,15 +1776,22 @@ private struct StatusBarReorderList: View {
     /// anything visible. It still appears in the list under the "claude
     /// code" section, but without a drag handle.
     private var reorderableItems: [StatusBarItemKind] {
-        model.statusBarItems.filter { $0 != .toolCallActivity }
+        model.statusBarItems.filter { !$0.isHardcodedSlot }
     }
 
-    /// Builtin agents that feed tool-call activity — each gets its own
-    /// section (header + tool-call toggle) in Settings → Status Bar. Derived
-    /// from `reportsToolCalls` so a future tool-reporting agent appears here
-    /// automatically.
-    private var toolCallAgents: [AgentTemplate] {
-        AgentTemplate.builtin.filter { $0.reportsToolCalls }
+    /// Builtin agents that report account usage (Codex). Their section shows a
+    /// usage-gauge toggle.
+    private var usageAgentIds: Set<String> {
+        [AgentTemplate.codex.id]
+    }
+
+    /// Builtin agents with any status-bar feature (tool-call activity and/or a
+    /// usage gauge), in builtin order — so the per-agent sections read
+    /// Claude Code → Codex → Pi. Each renders one section (header + the
+    /// feature toggles that apply to it); a future agent slots in by its
+    /// builtin position automatically.
+    private var statusAgents: [AgentTemplate] {
+        AgentTemplate.builtin.filter { $0.reportsToolCalls || usageAgentIds.contains($0.id) }
     }
 
     var body: some View {
@@ -1805,21 +1812,35 @@ private struct StatusBarReorderList: View {
                     }
                 )
             }
-            // One section per tool-reporting agent — header is the agent
-            // (icon + name), the row under it is that agent's tool-call pill
-            // toggle. Grouped by agent, not by feature.
-            ForEach(toolCallAgents) { agent in
+            // One section per agent (header = icon + name), grouped by agent,
+            // not by feature. Each agent's section shows the toggles for the
+            // status-bar features it supports — tool-call pill and/or usage
+            // gauge. Ordered Claude Code → Codex → Pi via `statusAgents`.
+            ForEach(statusAgents) { agent in
                 SettingsHairline()
                 sectionHeader(agent.title, agentAsset: agent.iconAsset)
-                StatusBarRow(
-                    item: .toolCallActivity,
-                    visible: !model.hiddenToolCallAgents.contains(agent.id),
-                    isDragging: false,
-                    reorderable: false,
-                    onToggleVisible: { toggleToolCallAgent(agent.id) },
-                    onBeginDrag: nil,
-                    onDrop: nil
-                )
+                if agent.reportsToolCalls {
+                    StatusBarRow(
+                        item: .toolCallActivity,
+                        visible: !model.hiddenToolCallAgents.contains(agent.id),
+                        isDragging: false,
+                        reorderable: false,
+                        onToggleVisible: { model.hiddenToolCallAgents.formSymmetricDifference([agent.id]) },
+                        onBeginDrag: nil,
+                        onDrop: nil
+                    )
+                }
+                if usageAgentIds.contains(agent.id) {
+                    StatusBarRow(
+                        item: .codexUsage,
+                        visible: !model.hiddenUsageAgents.contains(agent.id),
+                        isDragging: false,
+                        reorderable: false,
+                        onToggleVisible: { model.hiddenUsageAgents.formSymmetricDifference([agent.id]) },
+                        onBeginDrag: nil,
+                        onDrop: nil
+                    )
+                }
             }
             Color.clear
                 .frame(height: 10)
@@ -1829,7 +1850,7 @@ private struct StatusBarReorderList: View {
                     defer { draggingItem = nil }
                     guard let raw = items.first,
                           let dropped = StatusBarItemKind(rawValue: raw),
-                          dropped != .toolCallActivity
+                          !dropped.isHardcodedSlot
                     else { return false }
                     return moveToEnd(dropped)
                 } isTargeted: { endTargeted = $0 }
@@ -1871,6 +1892,7 @@ private struct StatusBarReorderList: View {
         model.statusBarItems != StatusBarItemKind.defaultOrder
             || !model.hiddenStatusBarItems.isEmpty
             || !model.hiddenToolCallAgents.isEmpty
+            || !model.hiddenUsageAgents.isEmpty
     }
 
     private func toggleVisible(_ item: StatusBarItemKind) {
@@ -1878,14 +1900,6 @@ private struct StatusBarReorderList: View {
             model.hiddenStatusBarItems.remove(item)
         } else {
             model.hiddenStatusBarItems.insert(item)
-        }
-    }
-
-    private func toggleToolCallAgent(_ id: String) {
-        if model.hiddenToolCallAgents.contains(id) {
-            model.hiddenToolCallAgents.remove(id)
-        } else {
-            model.hiddenToolCallAgents.insert(id)
         }
     }
 
@@ -1970,5 +1984,161 @@ private struct StatusBarRow: View {
                             decode: StatusBarItemKind.init(rawValue:),
                             onDrop: onDrop)
         }
+    }
+}
+
+/// Settings → Open in. Lists the catalog apps installed on this Mac (Finder
+/// always present) with a visibility toggle + drag-reorder; the order + hidden
+/// set drive the top-chrome split button's picker. Uninstalled catalog apps
+/// are omitted — there's nothing to toggle. Mirrors `StatusBarReorderList`.
+private struct OpenInReorderList: View {
+    @Bindable var model: ArcherSettingsModel
+    @State private var draggingId: String?
+    @State private var endTargeted = false
+    /// Bumped in `onAppear` after invalidating the resolver cache, to force
+    /// `apps` to re-resolve this appearance (cache-clear alone isn't an
+    /// observable change). See `onAppear` below.
+    @State private var refreshTick = 0
+
+    private var apps: [OpenInApp] {
+        OpenInResolver.installedApps(model: model)
+    }
+
+    var body: some View {
+        // Reading `refreshTick` registers the dependency so its onAppear bump
+        // (below) invalidates this body and re-resolves `apps` against the
+        // freshly-cleared resolver cache.
+        let _ = refreshTick
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("Apps installed on this Mac. The top-bar button opens the current tab's folder in your last-used one.")
+                .font(Theme.mono(11))
+                .foregroundStyle(Theme.chromeMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 14)
+
+            ForEach(Array(apps.enumerated()), id: \.element.id) { index, app in
+                if index > 0 { SettingsHairline() }
+                OpenInRow(
+                    app: app,
+                    visible: !model.hiddenOpenInApps.contains(app.id),
+                    isDragging: draggingId == app.id,
+                    onToggleVisible: { toggleVisible(app.id) },
+                    onBeginDrag: { draggingId = app.id },
+                    onDrop: { droppedId in
+                        defer { draggingId = nil }
+                        return reorder(draggedId: droppedId, before: app.id)
+                    }
+                )
+            }
+
+            Color.clear
+                .frame(height: 10)
+                .contentShape(Rectangle())
+                .dropIndicator(active: endTargeted, on: .top, offset: 4)
+                .dropDestination(for: String.self) { items, _ in
+                    defer { draggingId = nil }
+                    guard let id = items.first else { return false }
+                    return moveToEnd(id)
+                } isTargeted: { endTargeted = $0 }
+
+            HStack {
+                Spacer()
+                if hasCustomisation {
+                    Button("reset to defaults") { model.resetOpenIn() }
+                        .buttonStyle(.plain)
+                        .font(Theme.mono(11))
+                        .foregroundStyle(Theme.chromeMuted)
+                        .underline()
+                }
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 14)
+        }
+        // Drop any stale install/uninstall cache the top-bar button populated
+        // during this session, then bump `refreshTick` so the list re-resolves
+        // `apps` against the cleared cache on this same appearance — clearing
+        // the cache isn't observable, so without the bump a newly-installed app
+        // wouldn't show (or an uninstalled one wouldn't drop) until an unrelated
+        // re-render.
+        .onAppear {
+            OpenInResolver.invalidate()
+            refreshTick += 1
+        }
+    }
+
+    private var hasCustomisation: Bool {
+        !model.openInAppOrder.isEmpty || !model.hiddenOpenInApps.isEmpty
+    }
+
+    private func toggleVisible(_ id: String) {
+        if model.hiddenOpenInApps.contains(id) {
+            model.hiddenOpenInApps.remove(id)
+        } else {
+            model.hiddenOpenInApps.insert(id)
+        }
+    }
+
+    /// Rewrites `openInAppOrder` to the full installed sequence after the move
+    /// so the saved order is meaningful (rather than the sparse default).
+    private func reorder(draggedId: String, before targetId: String) -> Bool {
+        var order = apps.map(\.id)
+        guard let src = order.firstIndex(of: draggedId),
+              let dst = order.firstIndex(of: targetId),
+              src != dst else { return false }
+        let moved = order.remove(at: src)
+        let adjusted = src < dst ? dst - 1 : dst
+        order.insert(moved, at: adjusted)
+        persistOrder(order)
+        return true
+    }
+
+    private func moveToEnd(_ id: String) -> Bool {
+        var order = apps.map(\.id)
+        guard let src = order.firstIndex(of: id), src != order.count - 1 else { return false }
+        let moved = order.remove(at: src)
+        order.append(moved)
+        persistOrder(order)
+        return true
+    }
+
+    /// Persist a reordered *installed* sequence, keeping any previously-saved
+    /// ids that aren't currently installed (appended at the tail) so an
+    /// uninstall → reorder → reinstall round-trip doesn't drop that app's slot.
+    private func persistOrder(_ installedOrder: [String]) {
+        let installedSet = Set(installedOrder)
+        let preserved = model.openInAppOrder.filter { !installedSet.contains($0) }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            model.openInAppOrder = installedOrder + preserved
+        }
+    }
+}
+
+private struct OpenInRow: View {
+    let app: OpenInApp
+    let visible: Bool
+    let isDragging: Bool
+    let onToggleVisible: () -> Void
+    let onBeginDrag: () -> Void
+    let onDrop: (String) -> Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ReorderHandle(payload: app.id, onBeginDrag: onBeginDrag)
+            OpenInAppIcon(app: app, size: 16)
+                .opacity(visible ? 1.0 : 0.4)
+            Text(app.title)
+                .font(Theme.mono(12.5))
+                .foregroundStyle(visible ? Theme.chromeForeground : Theme.chromeMuted)
+            Spacer(minLength: 14)
+            Toggle("", isOn: Binding(get: { visible }, set: { _ in onToggleVisible() }))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
+        .background(ReorderDropZone(row: app.id, isDragging: isDragging, decode: { $0 }, onDrop: onDrop))
+        .opacity(isDragging ? 0.35 : 1.0)
     }
 }

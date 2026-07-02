@@ -68,6 +68,84 @@ enum Theme {
         NSAppearance(named: resolved.isLight ? .aqua : .darkAqua)
     }
 
+    // MARK: Glass — macOS 26 Liquid Glass (opt-in via `background-blur`)
+
+    enum GlassStyle {
+        case regular, clear
+
+        #if compiler(>=6.2)
+            @available(macOS 26.0, *)
+            var official: NSGlassEffectView.Style {
+                switch self {
+                case .regular: return .regular
+                case .clear: return .clear
+                }
+            }
+        #endif
+    }
+
+    static var glassStyle: GlassStyle? {
+        switch effectiveBlurRaw {
+        case "macos-glass-regular": return .regular
+        case "macos-glass-clear": return .clear
+        default: return nil
+        }
+    }
+
+    static var effectiveBlurRaw: String? {
+        ArcherSettingsModel.shared.backgroundBlur ?? ghosttyFallback.blur
+    }
+
+    static var glassEnabled: Bool {
+        if #available(macOS 26.0, *) { return glassStyle != nil }
+        return false
+    }
+
+    nonisolated static let defaultGlassOpacity: Double = 0.82
+
+    static var backgroundOpacity: Double {
+        let raw = ArcherSettingsModel.shared.backgroundOpacity
+            ?? ghosttyFallback.opacity
+            ?? (glassEnabled ? defaultGlassOpacity : 1)
+        return max(0.001, min(1, raw))
+    }
+
+    static var glassTint: NSColor {
+        resolved.backgroundColor.withAlphaComponent(backgroundOpacity)
+    }
+
+    static var glassInactiveTint: Color {
+        let saturated = resolved.backgroundColor.adjustingSaturation(by: 1.2)
+        let opacity: Double
+        switch glassStyle {
+        case .clear: opacity = resolved.isLight ? 0.20 : 0.50
+        default: opacity = resolved.isLight ? 0.35 : 0.85
+        }
+        return Color(nsColor: saturated).opacity(opacity)
+    }
+
+    static var glassPanelTint: Color {
+        let opacity: Double = glassStyle == .clear ? 0.40 : 0.60
+        return Color(nsColor: resolved.chromeBackgroundColor).opacity(opacity)
+    }
+
+    private static let ghosttyFallback: (blur: String?, opacity: Double?) = {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/ghostty/config")
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return (nil, nil) }
+        var blur: String?
+        var opacity: Double?
+        for line in raw.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.hasPrefix("#"), let eq = trimmed.firstIndex(of: "=") else { continue }
+            let key = trimmed[..<eq].trimmingCharacters(in: .whitespaces)
+            let val = String(trimmed[trimmed.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+            if key == "background-blur" { blur = val }
+            if key == "background-opacity" { opacity = Double(val) }
+        }
+        return (blur, opacity)
+    }()
+
     /// `Theme.resolved` reads `ArcherSettingsModel.shared.selectedTerminalTheme` so
     /// SwiftUI's `@Observable` machinery registers the dependency on every
     /// body that touches a chrome token — without that read, body
@@ -373,5 +451,15 @@ extension NSColor {
         return 0.2126 * channel(c.redComponent)
             + 0.7152 * channel(c.greenComponent)
             + 0.0722 * channel(c.blueComponent)
+    }
+
+    /// Multiply saturation (clamped to 1). Mirrors ghostty's inactive-window
+    /// tint, which boosts the background's saturation so the masked-inactive
+    /// state reads as a deliberate tint rather than a dull wash.
+    func adjustingSaturation(by factor: CGFloat) -> NSColor {
+        guard let c = usingColorSpace(.sRGB) else { return self }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return NSColor(hue: h, saturation: min(1, s * factor), brightness: b, alpha: a)
     }
 }

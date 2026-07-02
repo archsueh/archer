@@ -53,3 +53,12 @@ IDEAS.md
 
 # /goal skill per-session tracking state (churns every turn)
 .claude/goal/
+
+# Grok agent runtime state
+.grok/
+
+# Xcodebuild MCP tool state
+.xcodebuildmcp/
+
+# Claude agent workspace settings
+.claude/settings.json

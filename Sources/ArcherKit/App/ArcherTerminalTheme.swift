@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct ArcherTerminalTheme: Identifiable, Hashable {
@@ -16,6 +17,14 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
 
     var isBundled: Bool {
         source == .bundled
+    }
+
+    /// Light/dark split for the picker's section grouping. Uses the same
+    /// luminance threshold `Theme.Resolved` applies when deciding chrome
+    /// appearance, so a theme listed under "Dark" is exactly one that renders
+    /// dark chrome.
+    var isDark: Bool {
+        (NSColor(hex: backgroundHex)?.relativeLuminance ?? 0) <= 0.55
     }
 
     static let presets: [ArcherTerminalTheme] = [
@@ -124,56 +133,94 @@ struct ArcherTerminalTheme: Identifiable, Hashable {
                 "#839496", "#6C71C4", "#93A1A1", "#FDF6E3",
             ]
         ),
-        // Aver design-system terminal pair — dark is the user's existing
-        // glass palette (matches Aver `amber-foil` cursor); light is derived
-        // from Aver tokens (paper-0 ground, ink fg, cinnabar accent). Drives
-        // the `__archer-auto-theme` follow-system switch.
         .init(
-            id: "aver-dark",
-            title: "Aver Dark",
-            background: "#2A2A2A",
-            foreground: "#E8E6E3",
-            cursor: "#D17D7B",
-            selectionBackground: "#3F638B",
-            selectionForeground: "#FFFFFF",
+            id: "tokyo-night",
+            title: "Tokyo Night",
+            background: "#1A1B26",
+            foreground: "#C0CAF5",
+            cursor: "#C0CAF5",
+            selectionBackground: "#283457",
+            selectionForeground: "#C0CAF5",
             palette: [
-                "#1E1E1E", "#C76874", "#85AE85", "#D9A678",
-                "#7BA8D4", "#A07A98", "#6CAAA4", "#C7C5C2",
-                "#3A3A3A", "#E08894", "#A0C8A0", "#E8C29A",
-                "#9DC0DE", "#BF99B6", "#8FC4BE", "#FFFFFF",
+                "#15161E", "#F7768E", "#9ECE6A", "#E0AF68",
+                "#7AA2F7", "#BB9AF7", "#7DCFFF", "#A9B1D6",
+                "#414868", "#F7768E", "#9ECE6A", "#E0AF68",
+                "#7AA2F7", "#BB9AF7", "#7DCFFF", "#C0CAF5",
             ]
         ),
         .init(
-            id: "aver-light",
-            title: "Aver Light",
-            background: "#FDF9F4",
-            foreground: "#2A2320",
-            cursor: "#A6444C",
-            selectionBackground: "#CBD9E8",
-            selectionForeground: "#1C1410",
+            id: "tokyo-day",
+            title: "Tokyo Day",
+            background: "#E1E2E7",
+            foreground: "#3760BF",
+            cursor: "#3760BF",
+            selectionBackground: "#B7C1E3",
+            selectionForeground: "#3760BF",
             palette: [
-                "#1C1410", "#A6444C", "#5E865E", "#6B5010",
-                "#286096", "#7A5870", "#3E7E78", "#ACA9A4",
-                "#77706C", "#BE5A60", "#6B9A6B", "#7A5B1E",
-                "#3B76AC", "#8E6A84", "#4E948D", "#D8D4CF",
+                "#B4B5B9", "#F52A65", "#587539", "#8C6C3E",
+                "#2E7DE9", "#9854F1", "#007197", "#6172B0",
+                "#A1A6C5", "#F52A65", "#587539", "#8C6C3E",
+                "#2E7DE9", "#9854F1", "#007197", "#3760BF",
             ]
         ),
-        // Liquid Glass — icy blue-white ground, deep navy text, sky-blue accents.
-        // Designed to pair with Archer's glass chrome: cool tones make the
-        // backdrop blur read as refracted light rather than plain fog.
         .init(
-            id: "liquid-glass",
-            title: "Liquid Glass",
-            background: "#EDF3F8",
-            foreground: "#1B2B38",
-            cursor: "#38BDF8",
-            selectionBackground: "#B8D4E8",
-            selectionForeground: "#1B2B38",
+            id: "gruvbox-dark",
+            title: "Gruvbox Dark",
+            background: "#282828",
+            foreground: "#EBDBB2",
+            cursor: "#EBDBB2",
+            selectionBackground: "#665C54",
+            selectionForeground: "#EBDBB2",
             palette: [
-                "#1B2B38", "#D95F6E", "#38966E", "#C8904C",
-                "#3E8EC8", "#8068B8", "#2EACD8", "#9AB8C8",
-                "#3A5068", "#F07080", "#48B888", "#DCA860",
-                "#58AADC", "#9880C8", "#48C4EC", "#EDF3F8",
+                "#282828", "#CC241D", "#98971A", "#D79921",
+                "#458588", "#B16286", "#689D6A", "#A89984",
+                "#928374", "#FB4934", "#B8BB26", "#FABD2F",
+                "#83A598", "#D3869B", "#8EC07C", "#EBDBB2",
+            ]
+        ),
+        .init(
+            id: "gruvbox-light",
+            title: "Gruvbox Light",
+            background: "#FBF1C7",
+            foreground: "#3C3836",
+            cursor: "#3C3836",
+            selectionBackground: "#D5C4A1",
+            selectionForeground: "#3C3836",
+            palette: [
+                "#FBF1C7", "#CC241D", "#98971A", "#D79921",
+                "#458588", "#B16286", "#689D6A", "#7C6F64",
+                "#928374", "#9D0006", "#79740E", "#B57614",
+                "#076678", "#8F3F71", "#427B58", "#3C3836",
+            ]
+        ),
+        .init(
+            id: "one-dark",
+            title: "One Dark",
+            background: "#282C34",
+            foreground: "#ABB2BF",
+            cursor: "#ABB2BF",
+            selectionBackground: "#3E4451",
+            selectionForeground: "#ABB2BF",
+            palette: [
+                "#282C34", "#E06C75", "#98C379", "#E5C07B",
+                "#61AFEF", "#C678DD", "#56B6C2", "#ABB2BF",
+                "#5C6370", "#E06C75", "#98C379", "#E5C07B",
+                "#61AFEF", "#C678DD", "#56B6C2", "#FFFFFF",
+            ]
+        ),
+        .init(
+            id: "one-light",
+            title: "One Light",
+            background: "#FAFAFA",
+            foreground: "#383A42",
+            cursor: "#383A42",
+            selectionBackground: "#DBDBDC",
+            selectionForeground: "#383A42",
+            palette: [
+                "#383A42", "#E45649", "#50A14F", "#C18401",
+                "#4078F2", "#A626A4", "#0184BC", "#A0A1A7",
+                "#696C77", "#E45649", "#50A14F", "#C18401",
+                "#4078F2", "#A626A4", "#0184BC", "#FFFFFF",
             ]
         ),
     ]

@@ -21,7 +21,7 @@ enum AgentIcon {
     /// every theme. Keyed on `iconAsset`, so a custom agent based on a mono
     /// brand inherits the treatment for free. `nonisolated` so the predicate
     /// is reachable from tests without hopping to the main actor.
-    nonisolated static let monochromeAssets: Set<String> = ["opencode", "cursor", "githubcopilot", "grok", "kimi", "pi"]
+    nonisolated static let monochromeAssets: Set<String> = ["opencode", "cursor", "githubcopilot", "grok", "kimi", "pi", "droid"]
 
     nonisolated static func isMonochrome(_ asset: String) -> Bool {
         monochromeAssets.contains(asset)

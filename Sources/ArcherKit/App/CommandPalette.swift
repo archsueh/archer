@@ -173,7 +173,7 @@ struct CommandPaletteView: View {
         // narrowest the rows can wrap to and ignores the NSPanel
         // contentRect width entirely.
         .frame(width: 720)
-        .background(Theme.chromeBackground)
+        .glassWindowBackground(fallback: Theme.chromeBackground)
         .preferredColorScheme(Theme.chromeColorScheme)
         .onAppear {
             focusField = true
@@ -319,6 +319,7 @@ final class CommandPaletteWindowController: NSWindowController {
         panel.level = .floating
         panel.isReleasedWhenClosed = false
         panel.appearance = Theme.windowAppearance
+        panel.applyGlassBacking()
         self.init(window: panel)
         NotificationCenter.default.addObserver(
             self, selector: #selector(panelResignedKey(_:)),
@@ -394,29 +395,25 @@ struct SearchTriggerPill: View {
     @State private var isHovered: Bool = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.chromeForeground.opacity(0.75))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.chromeMuted)
             Text("search workspace, tab, agent…")
-                .font(Theme.mono(11.5))
-                .foregroundStyle(Theme.chromeForeground.opacity(0.75))
+                .font(Theme.mono(11))
+                .foregroundStyle(Theme.chromeMuted)
                 .lineLimit(1)
             Spacer(minLength: 14)
             Text("⌘P")
                 .font(Theme.mono(10, weight: .medium))
-                .foregroundStyle(Theme.chromeForeground.opacity(0.5))
+                .foregroundStyle(Theme.chromeMuted.opacity(0.55))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .frame(width: 440, height: 30)
+        .frame(width: 280, height: 22)
         .background(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Theme.chromeHover)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .strokeBorder(Theme.chromeHairline, lineWidth: 1)
+                .fill(isHovered ? Theme.chromeActive : Theme.chromeHover)
         )
         .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         .padding(.vertical, 5)

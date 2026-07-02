@@ -37,7 +37,7 @@ struct UpdatePromptView: View {
         .padding(.top, 22)
         .padding(.bottom, 22)
         .frame(width: 460, alignment: .topLeading)
-        .background(Theme.chromeBackground)
+        .glassWindowBackground(fallback: Theme.chromeBackground)
         .preferredColorScheme(Theme.chromeColorScheme)
     }
 
@@ -174,6 +174,7 @@ final class UpdatePromptWindowController: NSWindowController {
             new.styleMask = [.titled, .closable]
             new.isReleasedWhenClosed = false
             new.appearance = Theme.windowAppearance
+            new.configureGlassChrome()
             window = new
         }
     }

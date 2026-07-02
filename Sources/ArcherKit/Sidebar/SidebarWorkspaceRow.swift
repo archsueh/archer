@@ -257,7 +257,7 @@ struct SidebarWorkspaceRow: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
                     .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(Theme.chromeSurface)
+                    .foregroundStyle(Theme.chromeBackground)
                     .frame(width: 12, height: 12)
                     .background(badgeColor, in: RoundedRectangle(cornerRadius: 3))
                 Text(branch)
@@ -276,9 +276,9 @@ struct SidebarWorkspaceRow: View {
     }
 
     /// Trailing hover icon strip min width — accommodates each optional
-    /// hover button (chevron, create-worktree, parallel-task) plus the
-    /// always-present close × slot so the trailing edge doesn't shift
-    /// when a hover icon appears.
+    /// hover button (chevron, create-worktree) plus the always-present
+    /// close × slot so the trailing edge doesn't shift when a hover
+    /// icon appears.
     private var trailingHoverMinWidth: CGFloat {
         var width: CGFloat = 20
         if disclosure != nil { width += 22 }
@@ -299,7 +299,7 @@ struct SidebarWorkspaceRow: View {
                 if agents.count > 1 {
                     Text("+\(agents.count - 1)")
                         .font(Theme.mono(9))
-                        .foregroundStyle(Theme.chromeSurface)
+                        .foregroundStyle(Theme.chromeBackground)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 0.5)
                         .background(Capsule().fill(Theme.chromeForeground.opacity(0.92)))

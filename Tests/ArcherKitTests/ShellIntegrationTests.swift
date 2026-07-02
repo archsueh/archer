@@ -51,30 +51,6 @@ final class ShellIntegrationTests: XCTestCase {
     /// event name (`PreToolUse` / `PostToolUse`) because `main.swift` reads
     /// stdin and routes through `ArcherHookKit.parseToolEventPayload` for
     /// these — not a `HookEvent` rawValue.
-    func testGrokHooksObjectMirrorsClaudeLifecycleAndTools() throws {
-        let object = ArcherShellIntegration.grokHooksObject(hookCmd: Self.stubHook)
-        XCTAssertEqual(object["_archerManaged"] as? String, "archer-managed-do-not-edit")
-        let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
-
-        for (event, state) in [
-            "SessionStart": "running",
-            "UserPromptSubmit": "running",
-            "Stop": "attention",
-            "Notification": "attention",
-            "SessionEnd": "ended",
-        ] {
-            let entries = try XCTUnwrap(hooks[event] as? [[String: Any]], "missing event \(event)")
-            let inner = try XCTUnwrap((entries.first?["hooks"] as? [[String: Any]])?.first)
-            XCTAssertEqual(inner["command"] as? String, "'\(Self.stubHook)' grok \(state)")
-        }
-
-        for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
-            let entries = try XCTUnwrap(hooks[event] as? [[String: Any]], "missing event \(event)")
-            let inner = try XCTUnwrap((entries.first?["hooks"] as? [[String: Any]])?.first)
-            XCTAssertEqual(inner["command"] as? String, "'\(Self.stubHook)' grok \(event)")
-        }
-    }
-
     func testClaudeHooksObjectSubscribesToolCallEvents() throws {
         let object = ArcherShellIntegration.claudeHooksObject(hookCmd: Self.stubHook)
         let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
@@ -156,18 +132,31 @@ final class ShellIntegrationTests: XCTestCase {
         XCTAssertEqual(parsed.agent.id, AgentTemplate.codex.id)
         XCTAssertEqual(parsed.event, .attention)
         XCTAssertNil(AgentStatusMarker.parseTitle("archer-agent:not-real:running"))
-        XCTAssertNil(AgentStatusMarker.parseTitle("mac@web-prod: ~/srv"))
+        XCTAssertNil(AgentStatusMarker.parseTitle("corey@web-prod: ~/srv"))
     }
 
     func testKimiWrapperBracketsRunningAndEnded() {
         // Kimi's lifecycle hooks are TOML-only with no system-settings
         // override, so it rides the generic bracket wrapper (running before
-        // exec, ended after exit) like amp rather than a JSON hooks file.
-        // Regression guard for the v0.20.0 wiring.
+        // exec, ended after exit) like grok / amp rather than a JSON hooks
+        // file. Regression guard for the v0.20.0 wiring.
         let script = ArcherShellIntegration.bracketWrapperScript(slug: "kimi")
 
         XCTAssertTrue(script.contains("\"$ARCHER_HOOK_BIN\" kimi running"))
         XCTAssertTrue(script.contains("\"$ARCHER_HOOK_BIN\" kimi ended"))
+        XCTAssertTrue(script.contains("exec \"$real\" \"$@\""), "must passthrough when ARCHER_SURFACE_ID is unset")
+    }
+
+    func testGeminiWrapperBracketsRunningAndEnded() {
+        // Gemini's own GEMINI_CLI_SYSTEM_SETTINGS_PATH hooks have no launch event
+        // (earliest is BeforeAgent), so a manually-typed `gemini` showed no icon
+        // until the first prompt. It now also rides the bracket wrapper for the
+        // immediate launch promotion every other agent gets — the two coexist
+        // via same-value dedup. Regression guard.
+        let script = ArcherShellIntegration.bracketWrapperScript(slug: "gemini")
+
+        XCTAssertTrue(script.contains("\"$ARCHER_HOOK_BIN\" gemini running"))
+        XCTAssertTrue(script.contains("\"$ARCHER_HOOK_BIN\" gemini ended"))
         XCTAssertTrue(script.contains("exec \"$real\" \"$@\""), "must passthrough when ARCHER_SURFACE_ID is unset")
     }
 
@@ -314,6 +303,91 @@ final class ShellIntegrationTests: XCTestCase {
         XCTAssertTrue(body.contains("--version"), "must invoke node --version")
         XCTAssertTrue(body.contains("_ARCHER_NODE_KEY_LAST"), "must memoize node version against path+NVM_BIN")
         XCTAssertTrue(body.contains("_ARCHER_ENV_LAST"), "must skip the archer-hook IPC when env unchanged")
+    }
+
+    func testFishInitScriptPrependsWrapperPathAndTracksCwd() {
+        let s = ArcherShellIntegration.fishInitScript
+        // The core fix for fish users: force the wrapper dir to the FRONT of PATH
+        // so a manually-typed `claude` resolves to our shim (lights the dot) —
+        // even when config.fish / fish_add_path left it mid-PATH behind
+        // ~/.local/bin. Must dedupe + prepend, not a `contains`-guarded skip.
+        XCTAssertTrue(s.contains(#"set -gx PATH "$ARCHER_BIN_DIR" (string match -v -- "$ARCHER_BIN_DIR" $PATH)"#), "must move the wrapper dir to the front, dropping any mid-PATH copy")
+        XCTAssertTrue(s.contains(#"test "$PATH[1]" = "$ARCHER_BIN_DIR"; and return"#), "must skip when already first (no per-prompt PATH churn)")
+        // PATH prepend lives in a fish_prompt hook so it runs AFTER config.fish.
+        XCTAssertTrue(s.contains("function __archer_prompt --on-event fish_prompt"), "PATH/cwd work must defer to a prompt hook (runs after config.fish)")
+        // fish never emits OSC 7, so cwd tracking is always ours.
+        XCTAssertTrue(s.contains(#"printf '\e]7;file://%s%s\e\\'"#), "must emit OSC 7 for cwd tracking")
+    }
+
+    func testFishInitScriptGuardsNonInteractiveShells() {
+        // vendor_conf.d is read by non-interactive fish too; wiring prompt hooks
+        // there would be wasted work — bail early.
+        XCTAssertTrue(ArcherShellIntegration.fishInitScript.contains("status is-interactive"))
+    }
+
+    func testFishInitScriptGatesOSC133OnLegacyFish() {
+        let s = ArcherShellIntegration.fishInitScript
+        // fish 4+ emits OSC 133 natively — adding ours unconditionally would
+        // double-mark every prompt. The version gate is load-bearing.
+        XCTAssertTrue(s.contains(#"set -l __archer_major (string split '.' -- $version)[1]"#))
+        XCTAssertTrue(s.contains(#"test "$__archer_major" -lt 4"#), "must only add OSC 133 on fish 3.x")
+        XCTAssertTrue(s.contains(#"printf '\e]133;D;%s\a' $status"#), "the 3.x path must report command exit status")
+    }
+
+    func testFishInitScriptAutoLaunchesAgentAsOneShotPromptHook() {
+        let s = ArcherShellIntegration.fishInitScript
+        // Agent launch defers to the first prompt (after config.fish) and removes
+        // itself so it can't re-fire.
+        XCTAssertTrue(s.contains("function __archer_agent_launch --on-event fish_prompt"), "agent launch must be a prompt hook (runs after config.fish set up PATH/env)")
+        XCTAssertTrue(s.contains("functions -e __archer_agent_launch"), "must self-remove to stay one-shot")
+        XCTAssertTrue(s.contains("eval $_archer_cmd"), "must launch ARCHER_AGENT via eval for multi-word commands")
+        XCTAssertTrue(s.contains("ARCHER_AGENT_LAUNCHED"), "must guard against subshell re-entry")
+        XCTAssertTrue(s.contains(#""$ARCHER_HOOK_BIN" $_archer_bin ended"#), "must ping ended after the agent returns")
+    }
+
+    func testCleanupRemovesOnlyCurrentPidTempFiles() {
+        let fm = FileManager.default
+        let dir = NSTemporaryDirectory()
+        let pid = getpid()
+        let mine = ["archer-zsh-\(pid)", "archer-bash-launch-\(pid).sh", "archer-fish-init-\(pid).fish"]
+        // Decoys: another process's file, and a non-archer file — both must survive.
+        let others = ["archer-zsh-9999999", "notarcher-\(pid).txt"]
+        for name in mine + others {
+            fm.createFile(atPath: dir.appending(name), contents: Data())
+        }
+        defer { for name in others {
+            try? fm.removeItem(atPath: dir.appending(name))
+        } }
+
+        ArcherShellIntegration.cleanup()
+
+        for name in mine {
+            XCTAssertFalse(fm.fileExists(atPath: dir.appending(name)), "\(name) should be swept")
+        }
+        for name in others {
+            XCTAssertTrue(fm.fileExists(atPath: dir.appending(name)), "\(name) must NOT be touched")
+        }
+    }
+
+    @MainActor
+    func testFishShellInjectsVendorConfViaXdgDataDirs() throws {
+        // libghostty's spawn path ignores `.arguments`, and `-C` runs after
+        // config.fish (swallowed by shell-wrapping autocomplete). So fish gets
+        // its integration via XDG_DATA_DIRS → vendor_conf.d instead.
+        let config = TerminalSessionConfig.fishShell()
+        XCTAssertTrue(config.arguments.isEmpty, "must NOT rely on .arguments — libghostty drops it")
+        let xdg = try XCTUnwrap(config.environment["XDG_DATA_DIRS"])
+        XCTAssertTrue(xdg.hasPrefix("\(ArcherShellIntegration.fishVendorDataRoot):"), "archer data root must be prepended, preserving existing dirs")
+        // The vendor conf must live where fish discovers it.
+        XCTAssertTrue(ArcherShellIntegration.fishVendorConfPath.hasSuffix("/fish/vendor_conf.d/archer.fish"))
+        XCTAssertTrue(ArcherShellIntegration.fishVendorConfPath.hasPrefix(ArcherShellIntegration.fishVendorDataRoot))
+    }
+
+    @MainActor
+    func testInstallFishVendorConfWritesDiscoverableFile() throws {
+        ArcherShellIntegration.installFishVendorConf()
+        let written = try String(contentsOfFile: ArcherShellIntegration.fishVendorConfPath, encoding: .utf8)
+        XCTAssertEqual(written, ArcherShellIntegration.fishInitScript, "installed vendor conf must match the source script")
     }
 
     @MainActor

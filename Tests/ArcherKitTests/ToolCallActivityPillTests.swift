@@ -8,9 +8,21 @@ import XCTest
 /// row renders correct content without spinning up a SwiftUI host.
 @MainActor
 final class ToolCallActivityPillTests: XCTestCase {
+    private static var savedHiddenToolCallAgents: Set<String> = []
+
     override func setUp() {
         super.setUp()
-        ArcherSettingsModel.shared.hiddenToolCallAgents = []
+        MainActor.assumeIsolated {
+            Self.savedHiddenToolCallAgents = ArcherSettingsModel.shared.hiddenToolCallAgents
+            ArcherSettingsModel.shared.hiddenToolCallAgents = []
+        }
+    }
+
+    override func tearDown() {
+        MainActor.assumeIsolated {
+            ArcherSettingsModel.shared.hiddenToolCallAgents = Self.savedHiddenToolCallAgents
+        }
+        super.tearDown()
     }
 
     private func makeSession(agent: AgentTemplate = .claudeCode, activity: SessionActivityState = .running) -> Session {

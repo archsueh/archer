@@ -305,6 +305,34 @@ enum UsageCollector {
         ).records
     }
 
+    /// Per-Claude-Code-session token totals for the Sessions dashboard's
+    /// token column. Reuses `collectClaudeCode`'s existing JSONL parse path
+    /// (each record already carries `sessionID` via `claudeIdentity`) and
+    /// re-folds by session instead of by day — no new file/DB parsing.
+    /// Fresh local cache/livePaths per call (same throwaway-cache shape as
+    /// `grokRecords` above), so this never touches the shared persisted
+    /// collector cache the main `collect()` snapshot depends on.
+    static func claudeSessionTokenTotals(
+        historyDays: Int = 30,
+        rootURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/projects", isDirectory: true)
+    ) -> [String: Int] {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        let result = collectClaudeCode(
+            cache: &cache,
+            livePaths: &livePaths,
+            rootURL: rootURL,
+            modifiedSince: sourceFileCutoffDate(historyDays: historyDays)
+        )
+        var totals: [String: Int] = [:]
+        for record in result.records {
+            guard let sessionID = record.sessionID else { continue }
+            totals[sessionID, default: 0] += record.usage.totalTokens
+        }
+        return totals
+    }
+
     static func collectGrokForTesting(
         homeURL: URL,
         modifiedSince cutoffDate: Date?

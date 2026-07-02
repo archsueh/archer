@@ -188,7 +188,7 @@ struct InboxView: View {
         // so any rounding slack lands at the bottom as chrome rather than the
         // panel's default window color showing through as a mismatched strip.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.chromeBackground)
+        .glassWindowBackground(fallback: Theme.chromeBackground)
         .preferredColorScheme(Theme.chromeColorScheme)
         // The hosting controller drops the titlebar safe area
         // (`safeAreaRegions = []`); this is the matching SwiftUI-side guard,
@@ -341,6 +341,7 @@ final class InboxWindowController: NSWindowController {
         panel.level = .floating
         panel.isReleasedWhenClosed = false
         panel.appearance = Theme.windowAppearance
+        panel.applyGlassBacking()
         self.init(window: panel)
         NotificationCenter.default.addObserver(
             self, selector: #selector(panelResignedKey(_:)),

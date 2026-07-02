@@ -6,6 +6,9 @@ import Foundation
 @MainActor
 final class InMemoryPersistence: Persistence {
     var saved: PersistedState?
+    /// Number of `save` calls — lets tests assert on debounced `scheduleSave`
+    /// behaviour (e.g. an unchanged cwd must NOT trigger an extra save).
+    private(set) var saveCount = 0
     private let initial: PersistedState?
 
     init(initial: PersistedState? = nil) {
@@ -18,5 +21,6 @@ final class InMemoryPersistence: Persistence {
 
     func save(_ state: PersistedState) {
         saved = state
+        saveCount += 1
     }
 }

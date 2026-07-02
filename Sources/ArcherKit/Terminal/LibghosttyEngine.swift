@@ -18,7 +18,7 @@ final class LibghosttyApp {
             ghostty_init(0, $0.baseAddress)
         }
         guard initResult == 0 else {
-            ArcherLogger.terminal.fault("ghostty_init failed (\(initResult))")
+            NSLog("archer: ghostty_init failed (\(initResult))")
             return
         }
 
@@ -34,12 +34,12 @@ final class LibghosttyApp {
         )
 
         guard let config = ArcherSettings.makeGhosttyConfig() else {
-            ArcherLogger.terminal.fault("ghostty_config_new failed")
+            NSLog("archer: ghostty_config_new failed")
             return
         }
         app = ghostty_app_new(&runtime, config)
         if app == nil {
-            ArcherLogger.terminal.fault("ghostty_app_new failed")
+            NSLog("archer: ghostty_app_new failed")
         }
     }
 
@@ -52,7 +52,7 @@ final class LibghosttyApp {
         // parses for a window with many panes.
         let parsed = ArcherSettings.loadParsed()
         guard let config = ArcherSettings.makeGhosttyConfig(parsed: parsed) else {
-            ArcherLogger.terminal.error("ghostty_config_new failed during reload")
+            NSLog("archer: ghostty_config_new failed during reload")
             return
         }
         ghostty_app_update_config(app, config)
@@ -170,6 +170,20 @@ private let archerActionCb: ghostty_runtime_action_cb = { _, target, action in
     case GHOSTTY_ACTION_SEARCH_SELECTED:
         let selected = Int(action.action.search_selected.selected)
         dispatchToView(userdata) { $0.onSearchSelected?(selected) }
+        return true
+    case GHOSTTY_ACTION_RENDER:
+        // libghostty marked content dirty — wake the per-surface render link so
+        // the next vsync presents it. This is the whole render loop now that the
+        // polling Timer is gone (issue #29); without it nothing would ever draw.
+        dispatchToView(userdata) { $0.setNeedsRender() }
+        return true
+    case GHOSTTY_ACTION_RENDERER_HEALTH:
+        // Diagnostic only (NOT part of the frame loop): surfaces a degraded GPU /
+        // Metal state that would otherwise be silent — the blind spot to check
+        // first if any visual corruption survives the render-loop fix.
+        if action.action.renderer_health == GHOSTTY_RENDERER_HEALTH_UNHEALTHY {
+            NSLog("archer: ghostty renderer reported UNHEALTHY")
+        }
         return true
     default:
         return false
@@ -304,8 +318,15 @@ final class LibghosttyEngine: TerminalEngine {
     }
 
     var suspendsSizePropagation: Bool {
-        get { surfaceView.suspendsSizePropagation }
-        set { surfaceView.suspendsSizePropagation = newValue }
+        surfaceView.suspendsSizePropagation
+    }
+
+    func beginSizePropagationSuspension() {
+        surfaceView.beginSizePropagationSuspension()
+    }
+
+    func endSizePropagationSuspension() {
+        surfaceView.endSizePropagationSuspension()
     }
 
     var grabsFocusOnMount: Bool {
@@ -367,7 +388,19 @@ private enum GhosttySurfaceRegistry {
 /// the Metal layer and draws into it.
 @MainActor
 final class GhosttySurfaceView: NSView {
-    private var drawTimer: Timer?
+    /// Vsync-aligned render driver. Replaces the old free-running 60Hz `Timer`,
+    /// which presented off-vsync into the IOSurfaceLayer → beat-frequency judder
+    /// + torn frames on a ProMotion (120Hz) display, most visible while scrolling
+    /// a full-screen TUI (Claude Code / Codex) where every frame is a fresh full
+    /// repaint (issue #29). The link self-pauses when there's nothing to draw and
+    /// resumes on the next `GHOSTTY_ACTION_RENDER` (or a seed event), so an idle
+    /// terminal costs zero GPU work.
+    private var renderLink: CADisplayLink?
+    /// Set by `GHOSTTY_ACTION_RENDER` and seeded after every surface mutation we
+    /// drive ourselves (size / scale / config / first frame / focus). Read on each
+    /// link tick: render exactly when dirty, otherwise pause until the next
+    /// request. Writer and reader both end up on main, so a plain `Bool` is safe.
+    private var needsRender = true
     private let scrollIndicator = ScrollIndicator()
     private var lastScrollbar: (total: UInt64, offset: UInt64, len: UInt64)?
     /// Whether the viewport is currently pinned to the bottom (latest output).
@@ -392,6 +425,13 @@ final class GhosttySurfaceView: NSView {
     /// gratuitous resize. Seeded at surface creation.
     private var lastBackingScale: CGFloat?
 
+    /// Last pixel size pushed to libghostty via `ghostty_surface_set_size`. Lets
+    /// `propagateSizeToSurface` drop a redundant push of an identical size — each
+    /// push is a SIGWINCH that thrashes the shell (conda scrollback-wipe +
+    /// prompt-reflow flicker, issue #29 audit). Reset on surface teardown so a
+    /// re-created surface always re-syncs.
+    private var lastPushedSizePx: (UInt32, UInt32)?
+
     var pendingConfig: TerminalSessionConfig?
     var onPwdChange: ((String) -> Void)?
     var onTitleChange: ((String) -> Void)?
@@ -409,18 +449,12 @@ final class GhosttySurfaceView: NSView {
     /// grab; set by `TerminalView` from the pane's active state. See
     /// `TerminalEngine.grabsFocusOnMount` for the why (issue #24).
     var grabsFocusOnMount = true
-    /// Kitty-protocol TUIs (Grok, Codex) enable focus reporting (`\x1b[?1004h`)
-    /// during startup. `ghostty_surface_set_focus(true)` then writes
-    /// `\x1bO\x1b[I` to the PTY, which crossterm/ratatui misreads as literal
-    /// composer text (e.g. `f8`). Fresh surfaces suppress all PTY focus reports
-    /// for a short mount window so "+ → agent" focus churn never injects bytes
-    /// mid-handshake. AppKit focus is unaffected.
-    private var suppressPtyFocusDuringMount = false
-    private var mountFocusSuppressionTimer: DispatchWorkItem?
     private(set) var surface: ghostty_surface_t? {
         didSet {
-            if surface != nil { propagateSizeToSurface() }
-            updateDrawTimer()
+            // force: a fresh surface must be sized even if the pixel size matches
+            // what a prior surface on this view was last sent (dedup would skip).
+            if surface != nil { propagateSizeToSurface(force: true) }
+            updateRenderLink()
         }
     }
 
@@ -443,7 +477,6 @@ final class GhosttySurfaceView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.isOpaque = false
         ScrollIndicator.install(scrollIndicator, in: self)
         updateTrackingAreas()
         wireScrollDrag()
@@ -452,10 +485,6 @@ final class GhosttySurfaceView: NSView {
         // onto the terminal pane and we inject its backslash-escaped
         // absolute path (or paths, space-separated) as if it were pasted.
         registerForDraggedTypes([.fileURL])
-    }
-
-    override var isOpaque: Bool {
-        false
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
@@ -543,12 +572,10 @@ final class GhosttySurfaceView: NSView {
 
     func releaseSurface() {
         guard let dying = surface else { return }
-        mountFocusSuppressionTimer?.cancel()
-        mountFocusSuppressionTimer = nil
-        suppressPtyFocusDuringMount = false
         // Null first so any guard-on-surface check post-free sees the cleared
         // state immediately; the local `dying` keeps the handle for free.
         surface = nil
+        lastPushedSizePx = nil
         ghostty_surface_free(dying)
     }
 
@@ -563,44 +590,43 @@ final class GhosttySurfaceView: NSView {
             createSurfaceIfReady()
             // Defer until after SwiftUI's hosting finishes its current event
             // loop pass, otherwise the originating button click reclaims focus.
-            let freshMount = !reattaching
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window = self.window else { return }
                 // Only the active pane grabs focus on (re)mount — otherwise every
                 // pane's surface races on a workspace switch and the last one wins
                 // (issue #24). Size re-sync below runs regardless of focus.
-                // Defer AppKit focus grab on a brand-new surface so the "+"
-                // popover click doesn't immediately reclaim the responder chain.
-                // PTY focus reports are suppressed in `schedulePtyFocusReport`
-                // during the fresh-mount window so Grok's handshake is clean.
-                let scheduleFocusGrab = { (delay: TimeInterval) in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                        guard let self, let window = self.window, self.grabsFocusOnMount else { return }
-                        window.makeFirstResponder(self)
-                    }
-                }
-                if freshMount, self.surface != nil {
-                    scheduleFocusGrab(0.15)
-                } else if self.grabsFocusOnMount {
+                if self.grabsFocusOnMount {
                     window.makeFirstResponder(self)
                 }
                 // Re-sync size on reattach: propagateSizeToSurface no-ops while
                 // detached, and a same-display / unchanged-frame reattach fires
-                // neither viewDidChangeBackingProperties nor setFrameSize.
-                if reattaching { self.propagateSizeToSurface() }
+                // neither viewDidChangeBackingProperties nor setFrameSize. force:
+                // the frame is usually unchanged across the detach, which the
+                // pixel-dedup would otherwise skip — but libghostty needs the
+                // re-push to recover (issue #8).
+                if reattaching { self.propagateSizeToSurface(force: true) }
             }
         }
-        updateDrawTimer()
+        updateRenderLink()
     }
 
-    /// Draw timer runs only when the surface exists AND the view is in a window.
-    /// Without the window guard, hidden sessions keep driving 60Hz
-    /// `ghostty_surface_draw` into a detached IOSurfaceLayer.
-    private func updateDrawTimer() {
+    /// Mark the surface dirty and wake the render link so the next vsync presents
+    /// the new frame. Idempotent + cheap — call it from `GHOSTTY_ACTION_RENDER`
+    /// and after any surface mutation we initiate, so a frame is never stranded
+    /// waiting for an action that may have already fired before the link ran.
+    func setNeedsRender() {
+        needsRender = true
+        renderLink?.isPaused = false
+    }
+
+    /// Render link runs only when the surface exists AND the view is in a window.
+    /// Without the window guard, hidden sessions (an inactive tab is detached from
+    /// the window) would keep ticking against a detached IOSurfaceLayer.
+    private func updateRenderLink() {
         if surface != nil, window != nil {
-            startDrawTimer()
+            startRenderLink()
         } else {
-            stopDrawTimer()
+            stopRenderLink()
         }
     }
 
@@ -615,7 +641,6 @@ final class GhosttySurfaceView: NSView {
         // Pin contentsScale so Core Animation doesn't double-scale ghostty's
         // already-pixel-correct render.
         layer?.contentsScale = scale
-        layer?.isOpaque = false
         // Seed so the first viewDidChangeBackingProperties on this display is a
         // no-op; only a real cross-display scale change re-pushes (issue #8).
         lastBackingScale = window.backingScaleFactor
@@ -663,33 +688,8 @@ final class GhosttySurfaceView: NSView {
             return
         }
         surface = new
-        beginMountFocusSuppression()
         pendingConfig = nil
         ghostty_surface_refresh(new)
-    }
-
-    /// How long to suppress `ghostty_surface_set_focus` PTY reports on a
-    /// brand-new surface. Covers Grok/Codex kitty + focus-report negotiation.
-    nonisolated static let ptyFocusReportSuppressionInterval: TimeInterval = 3.0
-
-    private func beginMountFocusSuppression() {
-        mountFocusSuppressionTimer?.cancel()
-        suppressPtyFocusDuringMount = true
-        let work = DispatchWorkItem { [weak self] in
-            self?.suppressPtyFocusDuringMount = false
-            self?.mountFocusSuppressionTimer = nil
-        }
-        mountFocusSuppressionTimer = work
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + Self.ptyFocusReportSuppressionInterval,
-            execute: work
-        )
-    }
-
-    private func schedulePtyFocusReport(focused: Bool) {
-        guard let surface else { return }
-        guard !suppressPtyFocusDuringMount else { return }
-        ghostty_surface_set_focus(surface, focused)
     }
 
     func updateConfigFromSettings(parsed: [String: Any]?) {
@@ -700,47 +700,116 @@ final class GhosttySurfaceView: NSView {
         }
         ghostty_surface_update_config(surface, config)
         ghostty_surface_refresh(surface)
+        setNeedsRender()
     }
 
-    private func startDrawTimer() {
-        stopDrawTimer()
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, let surface = self.surface else { return }
-                ghostty_surface_draw(surface)
-            }
+    private func startRenderLink() {
+        guard renderLink == nil else {
+            // Already running (e.g. a workspace-switch remount) — just make sure
+            // the first frame back on screen actually draws.
+            setNeedsRender()
+            return
         }
-        RunLoop.main.add(timer, forMode: .common)
-        drawTimer = timer
+        // `NSView.displayLink(target:selector:)` (macOS 14+) is the only display
+        // link variant that auto-retargets to whichever display the view occupies
+        // and follows the window across displays (Retina 120Hz ↔ external 60Hz),
+        // so we never hand-track `NSScreen.maximumFramesPerSecond`. The frame-rate
+        // range lets ProMotion run up to 120 while the system throttles for power.
+        let link = displayLink(target: self, selector: #selector(renderTick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        renderLink = link
+        setNeedsRender()
     }
 
-    private func stopDrawTimer() {
-        drawTimer?.invalidate()
-        drawTimer = nil
+    private func stopRenderLink() {
+        renderLink?.invalidate()
+        renderLink = nil
+    }
+
+    /// Vsync tick — render exactly when there's a pending change, otherwise pause
+    /// the link so an idle terminal costs nothing. Runs on main (the link is added
+    /// to `RunLoop.main`); `render_now` is the synchronous encode+present, so it
+    /// must run inline here — deferring it through a `Task` would re-add the
+    /// one-frame phase error this whole change exists to remove (issue #29).
+    @objc private func renderTick(_ link: CADisplayLink) {
+        guard let surface else { return }
+        guard needsRender else {
+            // Nothing pending — sleep until the next setNeedsRender() wakes us.
+            // Any source that changes pixels (RENDER action, resize, focus) also
+            // un-pauses, so we can never strand a frame here.
+            link.isPaused = true
+            return
+        }
+        needsRender = false
+        ghostty_surface_render_now(surface)
     }
 
     override var acceptsFirstResponder: Bool {
         true
     }
 
-    /// Toggled true around animated layout changes (pane zoom). Per-frame
-    /// `setFrameSize` callbacks then skip the SIGWINCH-propagating
-    /// `ghostty_surface_set_size` and the caller pushes one final size
-    /// sync via `flushPropagateSize` after the animation settles.
-    var suspendsSizePropagation: Bool = false
+    /// Refcount of active size-propagation suspenders — pane zoom, status-bar
+    /// height change, split-divider drag can overlap. Per-frame `setFrameSize` /
+    /// `viewDidEndLiveResize` skip the SIGWINCH-propagating `ghostty_surface_set_size`
+    /// while this is > 0; each owner pushes one final size via `flushPropagateSize`
+    /// after its `end`. A plain shared Bool let a second owner's un-suspend clobber
+    /// a first owner's still-active suspend mid-interaction (issue #29 review); the
+    /// count composes N overlapping owners so suspension holds until the LAST ends.
+    private var sizePropagationSuspendCount = 0
+    var suspendsSizePropagation: Bool {
+        sizePropagationSuspendCount > 0
+    }
+
+    func beginSizePropagationSuspension() {
+        sizePropagationSuspendCount += 1
+    }
+
+    func endSizePropagationSuspension() {
+        sizePropagationSuspendCount = max(0, sizePropagationSuspendCount - 1)
+    }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         // AppKit calls this whenever this view's own frame changes — single
-        // canonical hook. The legacy `resizeSubviews(withOldSize:)` would
-        // double-propagate.
-        if !suspendsSizePropagation {
-            propagateSizeToSurface()
-        }
+        // canonical hook (the legacy `resizeSubviews(withOldSize:)` would
+        // double-propagate). Two paths defer the libghostty push rather than fire
+        // it per frame:
+        //  • suspendsSizePropagation — pane-zoom animation; flushPropagateSize
+        //    settles it.
+        //  • window live-resize — a window-edge drag fires setFrameSize on every
+        //    frame, each a set_size → SIGWINCH, thrashing the shell (conda
+        //    scrollback wipe + prompt-reflow flicker, issue #29 audit).
+        //    viewDidEndLiveResize pushes once with the final size.
+        if suspendsSizePropagation { return }
+        if window?.inLiveResize == true { return }
+        propagateSizeToSurface()
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        // If a pane-zoom / status-bar animation is mid-flight, its own flush
+        // (after the suspend window clears) is the authoritative settle — don't
+        // leak a set_size here inside the very window the suspend exists to
+        // silence (the drag has ended by then, so that flush is no longer gated).
+        if suspendsSizePropagation { return }
+        // Push the final size once the window-drag settles. Pixel-dedup makes a
+        // drag that returns to the original size a no-op, so the shell sees at
+        // most ONE SIGWINCH per resize (a genuine cell-count change) instead of
+        // the per-frame burst.
+        propagateSizeToSurface()
     }
 
     func flushPropagateSize() {
-        propagateSizeToSurface()
+        // If a window-edge live-resize is in progress, defer to viewDidEndLiveResize
+        // for the settle — pushing here would leak a set_size mid-drag (the exact
+        // SIGWINCH the live-resize defer exists to suppress). The drag-end push
+        // re-syncs the final size regardless.
+        if window?.inLiveResize == true { return }
+        // force: the pane-zoom path suspended per-frame pushes during the
+        // animation, so libghostty may be a frame behind; re-sync unconditionally
+        // even if the settled pixel size matches the last one we sent.
+        propagateSizeToSurface(force: true)
     }
 
     /// Fires when the window moves to a display with a different backing scale
@@ -759,13 +828,16 @@ final class GhosttySurfaceView: NSView {
         lastBackingScale = scale
         layer?.contentsScale = scale
         ghostty_surface_set_content_scale(surface, scale, scale)
-        propagateSizeToSurface()
+        // A scale change already shifts the pixel size (px = points × scale) so
+        // the dedup wouldn't skip it; force is belt-and-suspenders so the grid is
+        // guaranteed to relearn the new DPI (issue #8) right after set_content_scale.
+        propagateSizeToSurface(force: true)
     }
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         if became {
-            schedulePtyFocusReport(focused: true)
+            if let surface { ghostty_surface_set_focus(surface, true); setNeedsRender() }
             onFocus?()
         }
         return became
@@ -773,8 +845,9 @@ final class GhosttySurfaceView: NSView {
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
-        if resigned {
-            schedulePtyFocusReport(focused: false)
+        if resigned, let surface {
+            ghostty_surface_set_focus(surface, false)
+            setNeedsRender()
         }
         return resigned
     }
@@ -838,13 +911,13 @@ final class GhosttySurfaceView: NSView {
             return
         }
 
-        // Cursor and function keys are mode/protocol-aware: after a TUI enables
-        // DECCKM (`smkx`) or the kitty keyboard protocol (`\x1b[?u`), libghostty
-        // must emit the right escape form instead of archer hard-coding legacy
-        // CSI/SS3 bytes via `text_input`. Legacy xterm F8 (`ESC [ 19 ~`) injected
-        // that way is misread by ratatui/crossterm TUIs as literal "f8" text.
-        // Route unmodified physical keys through libghostty; fall back to the
-        // handwritten sequence if libghostty declines.
+        // Cursor keys are mode-aware: after a TUI enables DECCKM (`smkx`),
+        // libghostty must switch them from CSI (`ESC [ A`) to SS3
+        // (`ESC O A`). Route the physical key event through libghostty so
+        // old terminfo-strict programs (vim 7.2 on CentOS 6, etc.) see the
+        // active mode instead of archer hard-coding CSI forever. If libghostty
+        // declines the key — shouldn't happen for a focused surface — fall
+        // back to the CSI form; a non-mode-aware arrow still beats a dead one.
         if !hasMarkedText(),
            Self.shouldForwardModeAwareKeyToLibghostty(keyCode: event.keyCode, modifierFlags: mods)
         {
@@ -994,10 +1067,9 @@ final class GhosttySurfaceView: NSView {
         return String(bytes: Data(bytes: ptr, count: Int(text.text_len)), encoding: .utf8)
     }
 
-    /// Physical keys whose PTY output depends on libghostty's mode/protocol
-    /// state (DECCKM, kitty keyboard enhancements). Keep unmodified forms out
-    /// of `handWrittenEscapeSequence` — hard-coded CSI bytes break TUIs that
-    /// negotiated a different encoding.
+    /// Physical keys whose output depends on libghostty's terminal mode state.
+    /// Keep these out of `handWrittenEscapeSequence`: hard-coded CSI cursor
+    /// bytes break applications that requested application cursor keys.
     nonisolated static func shouldForwardModeAwareKeyToLibghostty(
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags
@@ -1007,9 +1079,6 @@ final class GhosttySurfaceView: NSView {
         }
         switch keyCode {
         case 123, 124, 125, 126: return true // left, right, down, up
-        // F1–F12 (macOS keyCodes). Modified function keys keep explicit CSI
-        // modifier forms in `handWrittenEscapeSequence`.
-        case 122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111: return true
         default: return false
         }
     }
@@ -1204,11 +1273,9 @@ final class GhosttySurfaceView: NSView {
         let next = (total: total, offset: offset, len: len)
         let previous = lastScrollbar
 
-        // Fire scroll position change callback for persistence
         onScrollPositionChange?(Int(offset), Int(total), Int(len))
 
-        // Fire "new output while scrolled up" when content grows while not at bottom
-        if !wasAtBottom && previous != nil && total > (previous?.total ?? 0) {
+        if !wasAtBottom, previous != nil, total > (previous?.total ?? 0) {
             onNewOutputWhileScrolledUp?()
         }
 
@@ -1270,7 +1337,7 @@ final class GhosttySurfaceView: NSView {
         return ghostty_input_mods_e(rawValue: raw)
     }
 
-    private func propagateSizeToSurface() {
+    private func propagateSizeToSurface(force: Bool = false) {
         // Require a live window — never propagate while detached. A workspace
         // switch briefly removes the session's NSView from the window
         // (ContentView's `.id(workspace.id)` rebuild); the old `?? 2.0` scale
@@ -1286,6 +1353,17 @@ final class GhosttySurfaceView: NSView {
         // layout completes; pushing 0 to libghostty shrinks its row count and
         // never fully recovers, so the visible buffer creeps upward each swap.
         guard widthPx > 0, heightPx > 0 else { return }
+        // Drop a redundant push of an identical pixel size. SwiftUI re-layouts,
+        // sub-cell setFrameSize nudges, and the viewDidEndLiveResize flush all
+        // re-enter with the same frame; each ghostty_surface_set_size is a
+        // SIGWINCH that thrashes the shell (conda scrollback-wipe, prompt-reflow
+        // flicker — issue #29 audit). Keyed on PIXELS (bounds × scale), NOT
+        // cols×rows, so a cross-display DPI change still pushes (px = points ×
+        // scale shifts with the scale); only a true no-op is dropped. `force`
+        // covers the paths that must re-sync even an unchanged size — surface
+        // create, reattach, post-zoom flush, DPI change.
+        if !force, let last = lastPushedSizePx, last == (widthPx, heightPx) { return }
+        lastPushedSizePx = (widthPx, heightPx)
         ghostty_surface_set_size(surface, widthPx, heightPx)
         // ghostty does NOT re-pin the viewport to the bottom on resize — it only
         // follows the latest output when a PTY write or keystroke calls
@@ -1301,6 +1379,10 @@ final class GhosttySurfaceView: NSView {
             let action = "scroll_to_bottom"
             action.withCString { _ = ghostty_surface_binding_action(surface, $0, UInt(action.utf8.count)) }
         }
+        // Render the resized frame on the next vsync without waiting for
+        // libghostty's async RENDER action — removes the ordering dependency
+        // between set_size and the render loop.
+        setNeedsRender()
     }
 }
 

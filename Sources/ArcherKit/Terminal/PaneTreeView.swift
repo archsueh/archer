@@ -165,7 +165,7 @@ private struct PaneView: View {
             // in-flight animation prematurely un-suspended by a stale Task.
             let engines = pane.tabs.map(\.engine)
             for engine in engines {
-                engine.suspendsSizePropagation = true
+                engine.beginSizePropagationSuspension()
             }
 
             sigwinchSuspensionGeneration &+= 1
@@ -175,7 +175,7 @@ private struct PaneView: View {
                 try? await Task.sleep(nanoseconds: 250_000_000) // covers Theme.chromeTransition
                 guard token == sigwinchSuspensionGeneration else { return }
                 for engine in engines {
-                    engine.suspendsSizePropagation = false
+                    engine.endSizePropagationSuspension()
                     engine.flushSize()
                 }
             }
@@ -195,6 +195,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     /// visibility; reordering this kind has no visible effect because
     /// rendering bypasses `visibleItems`.
     case toolCallActivity = "tool-call-activity"
+    case codexUsage = "codex-usage"
     /// Pending turn indicator — shows when agent is processing (activityState == .running).
     /// Not user-configurable; always visible when relevant.
     case pendingTurn = "pending-turn"
@@ -208,6 +209,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     var displayName: String {
         switch self {
         case .toolCallActivity: return "Tool calls"
+        case .codexUsage: return "Usage remaining"
         case .pendingTurn: return "Pending turn"
         case .pythonVenv: return "Python venv"
         case .nodeVersion: return "Node version"
@@ -225,6 +227,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     var symbol: String? {
         switch self {
         case .toolCallActivity: return nil
+        case .codexUsage: return nil
         case .pendingTurn: return "hourglass"
         case .pythonVenv: return "p.circle.fill"
         case .nodeVersion: return "n.circle.fill"
@@ -238,8 +241,12 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     /// Default order shipped with archer — used when the user hasn't
     /// touched Settings → Status Bar. Tool-call activity goes first so a
     /// fresh Settings → Status Bar list renders it at the top.
+    var isHardcodedSlot: Bool {
+        self == .toolCallActivity || self == .codexUsage
+    }
+
     static let defaultOrder: [StatusBarItemKind] = [
-        .toolCallActivity, .pendingTurn, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitBranch, .gitDiff,
+        .toolCallActivity, .codexUsage, .pendingTurn, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitBranch, .gitDiff,
     ]
 }
 
@@ -259,6 +266,7 @@ func paneStatusBarHasData(session: Session) -> Bool {
         // gate already lives in the loop predicate.
         switch item {
         case .toolCallActivity: if sessionWantsToolCallActivity(session) { return true }
+        case .codexUsage: if sessionWantsCodexUsage(session) { return true }
         case .pendingTurn: if session.activityState == .running { return true }
         case .pythonVenv: if session.environment.pythonVenv != nil { return true }
         case .nodeVersion: if session.environment.nodeVersion != nil { return true }
@@ -284,6 +292,14 @@ func sessionWantsToolCallActivity(_ session: Session) -> Bool {
     guard session.agent.reportsToolCalls, session.activityState != .idle else { return false }
     let agentKey = session.agent.baseAgentId ?? session.agent.id
     return !ArcherSettingsModel.shared.hiddenToolCallAgents.contains(agentKey)
+}
+
+@MainActor
+func sessionWantsCodexUsage(_ session: Session) -> Bool {
+    guard let usage = session.codexUsage, usage.hasQuota else { return false }
+    let agentKey = session.displayAgent.baseAgentId ?? session.displayAgent.id
+    guard agentKey == AgentTemplate.codex.id else { return false }
+    return !ArcherSettingsModel.shared.hiddenUsageAgents.contains(agentKey)
 }
 
 /// A status-bar icon button: bracket-bordered pill with hover + engaged
@@ -367,6 +383,9 @@ private struct PaneStatusBar: View {
             if showToolCallActivityPill(for: session) {
                 ToolCallActivityPill(session: session)
             }
+            if sessionWantsCodexUsage(session), let usage = session.codexUsage {
+                CodexUsagePill(usage: usage)
+            }
             // Flow wraps overflowing segments to a new row instead of hiding
             // them — narrow panes still surface every status at the cost of
             // a taller chrome row. Each row is right-aligned so the visual
@@ -390,7 +409,7 @@ private struct PaneStatusBar: View {
     /// honors the kind's hidden/visible state).
     private var visibleItems: [StatusBarItemKind] {
         model.statusBarItems.filter {
-            $0 != .toolCallActivity && !model.hiddenStatusBarItems.contains($0)
+            !$0.isHardcodedSlot && !model.hiddenStatusBarItems.contains($0)
         }
     }
 
@@ -398,6 +417,7 @@ private struct PaneStatusBar: View {
     private func segment(for item: StatusBarItemKind) -> some View {
         switch item {
         case .toolCallActivity: EmptyView() // rendered separately on the left
+        case .codexUsage: EmptyView() // rendered separately on the left
         case .pendingTurn: pendingTurnSegment
         case .pythonVenv: pythonSegment
         case .nodeVersion: nodeSegment

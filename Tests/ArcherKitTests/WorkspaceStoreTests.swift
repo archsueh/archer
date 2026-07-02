@@ -599,10 +599,10 @@ final class WorkspaceStoreTests: XCTestCase {
         let session = firstPane(ws).tabs[0]
 
         // An `ssh` remote shell emits its own OSC 0/2 title.
-        engine(session).emitTitle("mac@web-prod: ~/srv")
+        engine(session).emitTitle("corey@web-prod: ~/srv")
 
-        XCTAssertEqual(session.title, "mac@web-prod: ~/srv")
-        XCTAssertEqual(ws.title, "mac@web-prod: ~/srv")
+        XCTAssertEqual(session.title, "corey@web-prod: ~/srv")
+        XCTAssertEqual(ws.title, "corey@web-prod: ~/srv")
     }
 
     func testAgentStatusTitleMarkerSurfacesRemoteAgentWithoutChangingLaunchTemplate() {
@@ -643,11 +643,11 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.addWorkspace(workingDirectory: projectA)
         let session = firstPane(ws).tabs[0]
 
-        engine(session).emitTitle("mac@web-prod: ~/srv")
+        engine(session).emitTitle("corey@web-prod: ~/srv")
         engine(session).emitTitle(AgentStatusMarker.title(slug: "codex", event: .running))
 
-        XCTAssertEqual(session.terminalTitle, "mac@web-prod: ~/srv")
-        XCTAssertEqual(session.title, "mac@web-prod: ~/srv")
+        XCTAssertEqual(session.terminalTitle, "corey@web-prod: ~/srv")
+        XCTAssertEqual(session.title, "corey@web-prod: ~/srv")
         XCTAssertEqual(session.displayAgent.id, AgentTemplate.codex.id)
         XCTAssertEqual(ws.distinctAgents.map(\.id), [AgentTemplate.codex.id])
     }
@@ -704,7 +704,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.addWorkspace(workingDirectory: projectA)
         let session = firstPane(ws).tabs[0]
 
-        engine(session).emitTitle("mac@web-prod")
+        engine(session).emitTitle("corey@web-prod")
         store.renameTab(session, to: "deploy")
 
         XCTAssertEqual(session.title, "deploy")
@@ -721,11 +721,11 @@ final class WorkspaceStoreTests: XCTestCase {
         let ws = store.addWorkspace(workingDirectory: projectA)
         let session = firstPane(ws).tabs[0]
 
-        engine(session).emitTitle("mac@web-prod")
+        engine(session).emitTitle("corey@web-prod")
         engine(session).emitCommandFinished(exit: 0, duration: 0.1)
 
-        XCTAssertEqual(session.terminalTitle, "mac@web-prod")
-        XCTAssertEqual(session.title, "mac@web-prod")
+        XCTAssertEqual(session.terminalTitle, "corey@web-prod")
+        XCTAssertEqual(session.title, "corey@web-prod")
     }
 
     func testEmptyTerminalTitleReportFallsBackToCwd() {
@@ -1537,42 +1537,102 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertTrue(engineB.suspendsSizePropagation)
     }
 
-    func testSplitPaneWithExistingTab() {
+    func testSizePropagationSuspensionIsRefcounted() {
+        // Zoom / status-bar / divider-drag can overlap on the same engine, so
+        // suspension must be a refcount: it holds until the LAST owner ends, and a
+        // stray extra end can't drive it negative (issue #29 review — the fix for
+        // the shared-Bool clobber race).
         let store = makeStore()
-        let ws = store.addWorkspace(workingDirectory: projectA)
-        let paneA = firstPane(ws)
-        let tabA = paneA.tabs[0]
-
-        // Add a second tab so paneA still has a tab after we move tabA
-        let tabB = store.addTab(in: ws, pane: paneA)
-
-        // Verify paneA has both tabs
-        XCTAssertEqual(paneA.tabs.count, 2)
-        XCTAssertEqual(paneA.activeTabId, tabB.id)
-
-        // Split paneA with existing tabA (move tabA to a new pane on the left / first position)
-        store.splitPaneWithExistingTab(paneA, orientation: .horizontal, tabId: tabA.id, position: .first, in: ws)
-
-        // Now the split tree should have two child panes: one containing tabA, and one containing tabB (which is paneA)
-        guard case let .split(orientation, first, second, fraction) = ws.root.content else {
-            return XCTFail("root should be split")
+        guard let session = store.active?.activeSession else {
+            return XCTFail("expected an active session")
         }
+        let e = engine(session)
+        XCTAssertFalse(e.suspendsSizePropagation)
+        e.beginSizePropagationSuspension() // owner A
+        e.beginSizePropagationSuspension() // owner B
+        XCTAssertTrue(e.suspendsSizePropagation)
+        e.endSizePropagationSuspension() // A ends
+        XCTAssertTrue(e.suspendsSizePropagation, "still suspended while owner B holds it")
+        e.endSizePropagationSuspension() // B ends
+        XCTAssertFalse(e.suspendsSizePropagation, "un-suspended only after the last owner ends")
+        e.endSizePropagationSuspension() // underflow guard
+        XCTAssertFalse(e.suspendsSizePropagation)
+    }
 
-        XCTAssertEqual(orientation, .horizontal)
-        XCTAssertEqual(fraction, 0.5)
+    // MARK: - onPwdChange refresh gating (issue #29 follow-up: env/save run only
 
-        guard case let .pane(paneFirst) = first.content,
-              case let .pane(paneSecond) = second.content
-        else {
-            return XCTFail("split children should be panes")
+    // on a real cwd change; git status still refreshes every prompt)
+
+    func testPwdChangeUpdatesSessionAndWorkspaceDirectories() {
+        let store = makeStore()
+        guard let ws = store.active, let session = ws.activeSession else {
+            return XCTFail("expected an active session")
         }
+        engine(session).emitPwd("/tmp/projectB")
+        XCTAssertEqual(session.currentDirectory.path, "/tmp/projectB")
+        XCTAssertEqual(ws.workingDirectory.path, "/tmp/projectB",
+                       "active session's cwd drives the workspace working directory")
+    }
 
-        XCTAssertEqual(paneFirst.tabs.map(\.id), [tabA.id])
-        XCTAssertEqual(paneSecond.id, paneA.id)
-        XCTAssertEqual(paneSecond.tabs.map(\.id), [tabB.id])
+    func testSamePwdLeavesDirectoriesUnchanged() {
+        let store = makeStore()
+        guard let ws = store.active, let session = ws.activeSession else {
+            return XCTFail("expected an active session")
+        }
+        let e = engine(session)
+        e.emitPwd("/tmp/projectA")
+        // Re-emitting the same cwd (every prompt re-fires OSC 7) must be a no-op
+        // on the directories — the gate keys off this exact comparison.
+        e.emitPwd("/tmp/projectA")
+        XCTAssertEqual(session.currentDirectory.path, "/tmp/projectA")
+        XCTAssertEqual(ws.workingDirectory.path, "/tmp/projectA")
+    }
 
-        // The newly created pane (paneFirst) should be active
-        XCTAssertEqual(ws.activePaneId, paneFirst.id)
+    func testPwdChangeIsStillPersisted() {
+        let persistence = InMemoryPersistence()
+        let store = WorkspaceStore(
+            persistence: persistence,
+            engineFactory: { TestEngine() },
+            optionsProvider: { _ in nil },
+            resumeProvider: { true }
+        )
+        guard let session = store.active?.activeSession else {
+            return XCTFail("expected an active session")
+        }
+        engine(session).emitPwd("/tmp/projectB")
+        store.flushPersistence()
+        // Gating scheduleSave on cwd-change must NOT drop the new directory from
+        // persistence, otherwise a restored tab would reopen in the wrong place.
+        XCTAssertEqual(persistence.saved?.workspaces.first?.workingDirectoryPath, "/tmp/projectB")
+        XCTAssertEqual(persistence.saved?.workspaces.first?.root.allTabs.first?.currentDirectoryPath,
+                       "/tmp/projectB")
+    }
+
+    /// Directly exercises the scheduleSave gating: a real cwd change persists,
+    /// re-emitting the SAME cwd (every prompt re-fires OSC 7) must NOT schedule
+    /// a redundant save. Timing-based because scheduleSave debounces ~1s.
+    func testSamePwdDoesNotScheduleRedundantSave() async {
+        let persistence = InMemoryPersistence()
+        let store = WorkspaceStore(
+            persistence: persistence,
+            engineFactory: { TestEngine() },
+            optionsProvider: { _ in nil },
+            resumeProvider: { true }
+        )
+        guard let session = store.active?.activeSession else {
+            return XCTFail("expected an active session")
+        }
+        let e = engine(session)
+        // A real change schedules a save; let it (and the bootstrap save) settle.
+        e.emitPwd("/tmp/projectB")
+        try? await Task.sleep(nanoseconds: 1_300_000_000)
+        let baseline = persistence.saveCount
+        XCTAssertGreaterThan(baseline, 0, "a real cwd change must persist")
+        // Same cwd — the gate must skip scheduleSave entirely, so no new save.
+        e.emitPwd("/tmp/projectB")
+        try? await Task.sleep(nanoseconds: 1_300_000_000)
+        XCTAssertEqual(persistence.saveCount, baseline,
+                       "re-emitting an unchanged cwd must not re-persist")
     }
 }
 

@@ -2,6 +2,11 @@
 
 Rebranded from Kooky/Sailor. Archer is a lightweight, vibe-coding developer cockpit featuring a terminal, sidebars, file tree, glass aesthetics, and AI agent integration.
 
+## Working Memory — read first, write last
+
+- **开局必读**: Before doing anything, read [`STATE.md`](STATE.md) — it holds verified facts (paths/ports/schema), general rules distilled from past bugs, open in-progress work, and a resume pointer. Treat its **Verified facts** as ground truth; don't re-derive them. If a fact there contradicts the live repo, the repo wins — fix `STATE.md`.
+- **走前必写**: Before ending a nontrivial session, update `STATE.md` — what was tried, what passed/failed, any new rule that survived, and the **Last session** resume pointer. If a session doesn't finish with a write, the next one restarts from zero.
+
 ## Key Commands
 
 - **Build**: `swift build`

@@ -114,13 +114,13 @@ struct AgentOverviewSidebar: View {
     /// `.full` or `.compact` — `.hidden` never renders (`ContentView` gates it),
     /// mirroring the left sidebar's three collapse modes.
     let mode: SidebarMode
-    var width: Double = 230
+    let width: Double
 
     var body: some View {
         Group {
             if mode == .compact { compactBody } else { fullBody }
         }
-        .background(Theme.chromeBackground)
+        .glassChromeBackground()
     }
 
     // Full: header + labelled rows.
@@ -231,7 +231,7 @@ private struct AgentOverviewCompactRow: View {
                 Circle()
                     .fill(agentAccent(entry.state))
                     .frame(width: 7, height: 7)
-                    .overlay(Circle().stroke(Theme.chromeSurface, lineWidth: 1.5))
+                    .overlay(Circle().stroke(Theme.chromeBackground, lineWidth: 1.5))
             }
             .background(isHovered ? Theme.chromeHover : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 6))

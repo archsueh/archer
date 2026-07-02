@@ -24,31 +24,17 @@ final class AgentTemplateTests: XCTestCase {
     }
 
     func testTerminalTemplateUsesUserDefaultShell() {
-        // Terminal respects the user's shell, but bash/zsh route through an
-        // integration wrapper (bash → archer-bash-launch-*, zsh → /bin/zsh);
-        // only unwrapped shells (fish/nu/...) surface $SHELL verbatim. Assert
-        // per detected shell so the test holds on bash CI runners too.
-        let cmd = AgentTemplate.terminal.makeSessionConfig().command
-        switch ArcherShellIntegration.detectedUserShell {
-        case .zsh:
-            XCTAssertEqual(cmd, ArcherShellIntegration.zshPath)
-        case .bash:
-            XCTAssertTrue(cmd.contains("archer-bash-launch-"), "bash terminal must use the launcher wrapper: \(cmd)")
-        case .fish:
-            XCTAssertEqual(cmd, ProcessInfo.processInfo.environment["SHELL"] ?? "/usr/local/bin/fish")
-        case .other:
-            XCTAssertEqual(cmd, ProcessInfo.processInfo.environment["SHELL"] ?? ArcherShellIntegration.zshPath)
-        }
+        let expected = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        XCTAssertEqual(AgentTemplate.terminal.makeSessionConfig().command, expected)
     }
 
     func testAgentTemplatesPickAShellWithIntegrationWrapper() {
-        // Agent must run under one of our wrappers (zsh ZDOTDIR, bash --rcfile,
-        // or fish XDG_DATA_DIRS) — anything else means ARCHER_AGENT never fires.
+        // Agent must run under one of our wrappers (zsh ZDOTDIR or bash
+        // --rcfile) — anything else means ARCHER_AGENT never fires.
         for template in AgentTemplate.all where template.id != "terminal" {
             let cmd = template.makeSessionConfig().command
-            let isFish = cmd.hasSuffix("/fish")
             XCTAssertTrue(
-                cmd == "/bin/zsh" || cmd.contains("archer-bash-launch-") || isFish,
+                cmd == "/bin/zsh" || cmd.contains("archer-bash-launch-"),
                 "agent template \(template.id) launched without a archer shell wrapper: \(cmd)"
             )
         }
@@ -193,33 +179,36 @@ final class AgentTemplateTests: XCTestCase {
     }
 
     func testMakeSessionConfigIgnoresResumeOnUnsupportedBuiltins() {
-        // Codex / Cursor / Gemini / OpenCode / Copilot / Amp / Antigravity
-        // support resume flags syntactically but archer doesn't have a
-        // reliable id-capture path for them yet, so we don't inject the flag
-        // — see AgentTemplate.supportsResume / resumeFlag.
+        // Codex / Cursor / Gemini / OpenCode / Copilot / Amp / Grok /
+        // Antigravity all support a resume flag syntactically but archer
+        // doesn't have a reliable id-capture path for them yet, so we
+        // don't inject the flag — see AgentTemplate.supportsResume /
+        // resumeFlag.
         let codexConfig = AgentTemplate.codex.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(codexConfig.environment["ARCHER_AGENT"], "codex")
         let copilotConfig = AgentTemplate.copilot.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(copilotConfig.environment["ARCHER_AGENT"], "copilot")
+        let grokConfig = AgentTemplate.grok.makeSessionConfig(resumeId: "abc-123")
+        XCTAssertEqual(grokConfig.environment["ARCHER_AGENT"], "grok")
         let antigravityConfig = AgentTemplate.antigravity.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(antigravityConfig.environment["ARCHER_AGENT"], "agy")
         let kimiConfig = AgentTemplate.kimi.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(kimiConfig.environment["ARCHER_AGENT"], "kimi")
         let kiroConfig = AgentTemplate.kiro.makeSessionConfig(resumeId: "abc-123")
         XCTAssertEqual(kiroConfig.environment["ARCHER_AGENT"], "kiro-cli")
-        let hermesConfig = AgentTemplate.hermes.makeSessionConfig(resumeId: "abc-123")
-        XCTAssertEqual(hermesConfig.environment["ARCHER_AGENT"], "hermes")
+        let droidConfig = AgentTemplate.droid.makeSessionConfig(resumeId: "abc-123")
+        XCTAssertEqual(droidConfig.environment["ARCHER_AGENT"], "droid")
     }
 
     func testSupportsResumeMatchesResumeFlag() {
         XCTAssertTrue(AgentTemplate.claudeCode.supportsResume)
         XCTAssertFalse(AgentTemplate.codex.supportsResume)
         XCTAssertFalse(AgentTemplate.copilot.supportsResume)
-        XCTAssertTrue(AgentTemplate.grok.supportsResume)
+        XCTAssertFalse(AgentTemplate.grok.supportsResume)
         XCTAssertFalse(AgentTemplate.antigravity.supportsResume)
         XCTAssertFalse(AgentTemplate.kimi.supportsResume)
         XCTAssertFalse(AgentTemplate.kiro.supportsResume)
-        XCTAssertFalse(AgentTemplate.hermes.supportsResume)
+        XCTAssertFalse(AgentTemplate.droid.supportsResume)
         XCTAssertTrue(AgentTemplate.pi.supportsResume)
     }
 
@@ -237,24 +226,18 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertEqual(config.environment["ARCHER_AGENT"], "pi --session abc-123")
     }
 
-    func testMakeSessionConfigInjectsResumeForGrok() {
-        let config = AgentTemplate.grok.makeSessionConfig(resumeId: "019f1c53-7719-7af1-afae-4f3ba33bb260")
-        XCTAssertEqual(config.environment["ARCHER_AGENT"], "grok --resume 019f1c53-7719-7af1-afae-4f3ba33bb260")
-    }
-
     func testReportsToolCallsOnlyForToolFeedingAgents() {
         // Claude (hooks) + Pi (extension tool_execution_* events) feed archer
         // per-tool-call activity; every other builtin (incl. shells) does not.
         XCTAssertTrue(AgentTemplate.claudeCode.reportsToolCalls)
         XCTAssertTrue(AgentTemplate.pi.reportsToolCalls)
-        XCTAssertTrue(AgentTemplate.grok.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.terminal.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.codex.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.gemini.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.kimi.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.copilot.reportsToolCalls)
         XCTAssertFalse(AgentTemplate.kiro.reportsToolCalls)
-        XCTAssertFalse(AgentTemplate.hermes.reportsToolCalls)
+        XCTAssertFalse(AgentTemplate.droid.reportsToolCalls)
     }
 
     func testFromCustomInheritsReportsToolCallsFromBase() {
@@ -262,7 +245,6 @@ final class AgentTemplateTests: XCTestCase {
         // on a non-reporting base (or none) does not — mirrors resumeFlag.
         XCTAssertTrue(AgentTemplate.fromCustom(CustomAgentData(id: "c1", baseAgentId: "claude-code")).reportsToolCalls)
         XCTAssertTrue(AgentTemplate.fromCustom(CustomAgentData(id: "c2", baseAgentId: "pi")).reportsToolCalls)
-        XCTAssertTrue(AgentTemplate.fromCustom(CustomAgentData(id: "c5", baseAgentId: "grok")).reportsToolCalls)
         XCTAssertFalse(AgentTemplate.fromCustom(CustomAgentData(id: "c3", baseAgentId: "codex")).reportsToolCalls)
         XCTAssertFalse(AgentTemplate.fromCustom(CustomAgentData(id: "c4", baseAgentId: "")).reportsToolCalls)
     }
@@ -294,19 +276,9 @@ final class AgentTemplateTests: XCTestCase {
         XCTAssertEqual(config.environment["ARCHER_AGENT"], "kimi -p 'fix this error'")
     }
 
-    func testMakeSessionConfigFlagPromptForHermes() {
-        let config = AgentTemplate.hermes.makeSessionConfig(initialPrompt: "fix this error")
-        XCTAssertEqual(config.environment["ARCHER_AGENT"], "hermes -p 'fix this error'")
-    }
-
     func testMakeSessionConfigFlagPromptForPi() {
         let config = AgentTemplate.pi.makeSessionConfig(initialPrompt: "fix this error")
         XCTAssertEqual(config.environment["ARCHER_AGENT"], "pi -p 'fix this error'")
-    }
-
-    func testMakeSessionConfigFlagPromptForGrok() {
-        let config = AgentTemplate.grok.makeSessionConfig(initialPrompt: "fix this error")
-        XCTAssertEqual(config.environment["ARCHER_AGENT"], "grok -p 'fix this error'")
     }
 
     // MARK: - Monochrome icon theming
@@ -324,10 +296,10 @@ final class AgentTemplateTests: XCTestCase {
     func testMonochromeBrandsTintedAndColorBrandsRenderedAsIs() {
         // The white-mark brands get template-tinted so they survive a light
         // theme; the color brands keep their own pixels on every theme.
-        for mono in ["opencode", "cursor", "githubcopilot", "grok", "kimi", "pi"] {
+        for mono in ["opencode", "cursor", "githubcopilot", "grok", "kimi", "pi", "droid"] {
             XCTAssertTrue(AgentIcon.isMonochrome(mono), "\(mono) should be template-tinted")
         }
-        for color in ["claudecode", "codex", "gemini", "amp", "antigravity", "kiro", "hermes"] {
+        for color in ["claudecode", "codex", "gemini", "amp", "antigravity", "kiro"] {
             XCTAssertFalse(AgentIcon.isMonochrome(color), "\(color) is a color brand, render as-is")
         }
     }
@@ -338,7 +310,9 @@ final class AgentTemplateTests: XCTestCase {
             (.cursor, "cursor-agent"),
             (.gemini, "gemini"),
             (.opencode, "opencode"),
+            (.grok, "grok"),
             (.kiro, "kiro-cli"),
+            (.droid, "droid"),
         ]
         for (template, bin) in pairs {
             let config = template.makeSessionConfig(initialPrompt: "hello")
@@ -393,8 +367,8 @@ final class AgentTemplateTests: XCTestCase {
         // line begins `-rw-r--r--@`. Without the `--` separator the
         // agent's argparse would reject it as an unknown flag. The
         // POSIX separator + POSIX-quoted prompt together neutralise it.
-        let config = AgentTemplate.codex.makeSessionConfig(initialPrompt: "-rw-r--r--@  1 mac staff  44")
-        XCTAssertEqual(config.environment["ARCHER_AGENT"], "codex -- '-rw-r--r--@  1 mac staff  44'")
+        let config = AgentTemplate.codex.makeSessionConfig(initialPrompt: "-rw-r--r--@  1 corey staff  44")
+        XCTAssertEqual(config.environment["ARCHER_AGENT"], "codex -- '-rw-r--r--@  1 corey staff  44'")
     }
 
     // MARK: - parseEnv (custom-agent environment block)

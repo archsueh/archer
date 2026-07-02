@@ -41,7 +41,7 @@ struct TabBarView: View {
             // ScrollView so they stay put while the tabs scroll.
             splitButtons
         }
-        .frame(height: 44)
+        .frame(height: 40)
     }
 
     /// Split-right / split-down buttons. Mirror ⌘D / ⌘⇧D exactly: Split
@@ -181,12 +181,7 @@ private struct DraggableTabRow: View {
         .dropIndicator(active: isTargeted && !isSelfDrag, on: edge)
         .onDrag {
             store.draggingTabId = tab.id
-            let provider = NSItemProvider(object: tab.id.uuidString as NSString)
-            let tracker = DragCleanupTracker { [weak store] in
-                store?.draggingTabId = nil
-            }
-            objc_setAssociatedObject(provider, &dragCleanupKey, tracker, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            return provider
+            return NSItemProvider(object: tab.id.uuidString as NSString)
         }
         .dropDestination(for: String.self) { dropped, _ in
             defer { store.draggingTabId = nil }

@@ -18,6 +18,8 @@ final class StatusBarItemKindTests: XCTestCase {
         // `rawValue` is persisted in settings.json — renaming a case
         // silently invalidates every user's saved configuration. Pin the
         // mapping so renames force an explicit test update.
+        XCTAssertEqual(StatusBarItemKind.toolCallActivity.rawValue, "tool-call-activity")
+        XCTAssertEqual(StatusBarItemKind.codexUsage.rawValue, "codex-usage")
         XCTAssertEqual(StatusBarItemKind.pythonVenv.rawValue, "python-venv")
         XCTAssertEqual(StatusBarItemKind.nodeVersion.rawValue, "node-version")
         XCTAssertEqual(StatusBarItemKind.proxy.rawValue, "proxy")

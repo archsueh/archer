@@ -61,6 +61,12 @@ final class Session: Identifiable {
     /// the ssh wrapper via an OSC title marker, shown in the pane status bar.
     /// Not persisted (like `transientAgent`); cleared on command-finished.
     var remoteHost: String?
+    /// Latest Codex account rate-limit usage (5-hour + weekly windows), parsed
+    /// from the active session's rollout file by `CodexUsageMonitor` and shown
+    /// as a status-bar gauge. Only populated for Codex sessions; `nil` until
+    /// the first `token_count` lands. Runtime-only — not persisted (each launch
+    /// re-derives it from disk once Codex starts writing again).
+    var codexUsage: CodexUsage?
     /// Per-tab cwd. Initialized from the workspace's cwd at spawn, then kept in
     /// sync via OSC 7 (`engine.onPwdChange`). Drives the tab title so users see
     /// where they are, not which agent template the tab was launched from.
@@ -104,6 +110,12 @@ final class Session: Identifiable {
     var searchNeedle = ""
     var searchTotal = 0
     var searchSelected = -1
+
+    /// Multiline prompt composer state (⌘L). Per-session like search — the
+    /// draft survives a tab switch (switching destroys the view; `composerDraft`
+    /// re-seeds the `TextEditor` on re-appear). Runtime-only, not persisted.
+    var composerActive = false
+    var composerDraft = ""
 
     /// Set true to open the rename popover on this tab from outside the view
     /// (the ⌘R menu command). The active tab's `TabBarItem` observes this,

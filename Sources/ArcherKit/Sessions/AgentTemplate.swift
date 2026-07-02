@@ -38,7 +38,7 @@ struct AgentTemplate: Identifiable, Hashable {
     let promptLaunchFlag: String?
     /// CLI flag the agent's binary expects to resume a prior conversation.
     /// Nil = no resume support (archer doesn't have an id-capture path for
-    /// this agent yet). Claude Code = `--resume`; Grok = `--resume`. Drives
+    /// this agent yet). Claude Code = `--resume`; Grok = `--session`. Drives
     /// `makeSessionConfig(resumeId:)` and `supportsResume`.
     let resumeFlag: String?
     /// True when the agent feeds archer per-tool-call activity — Claude via
@@ -71,31 +71,6 @@ struct AgentTemplate: Identifiable, Hashable {
     /// exist there are many shell templates, not one.
     var isShell: Bool {
         initialCommand == nil
-    }
-
-    /// True when the agent's CLI binary is found in common install locations.
-    /// Shell templates (no `initialCommand`) are always considered installed.
-    /// Custom agents are always considered installed (user added them explicitly).
-    var isInstalled: Bool {
-        guard let cmd = initialCommand else { return true }
-        return AgentTemplate.binaryExists(cmd)
-    }
-
-    private static let installPaths: [String] = {
-        let home = NSHomeDirectory()
-        return [
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "/usr/bin",
-            "\(home)/.local/bin",
-            "\(home)/.grok/bin",
-            "\(home)/.npm-global/bin",
-            "\(home)/.cargo/bin",
-        ]
-    }()
-
-    static func binaryExists(_ cmd: String) -> Bool {
-        installPaths.contains { FileManager.default.isExecutableFile(atPath: "\($0)/\(cmd)") }
     }
 
     init(
@@ -154,9 +129,9 @@ struct AgentTemplate: Identifiable, Hashable {
         resumeId: String? = nil,
         initialPrompt: String? = nil
     ) -> TerminalSessionConfig {
-        // Pick a shell that has an archer integration wrapper. Plain terminal
-        // sessions respect $SHELL where we have a wrapper (zsh/bash/fish);
-        // other shells get $SHELL too, just without full cwd tracking.
+        // Pick a shell that has a archer integration wrapper. Plain terminal
+        // sessions respect $SHELL where we have a wrapper (zsh/bash/fish); other
+        // shells (nu/...) get $SHELL too, just without cwd tracking.
         // Agent sessions force a wrapped shell so ARCHER_AGENT auto-launch
         // works — `.other` users get zsh as a working fallback.
         var config: TerminalSessionConfig
@@ -166,7 +141,7 @@ struct AgentTemplate: Identifiable, Hashable {
         case (.zsh, _):
             config = .zshShell()
         case (.fish, _):
-            config = .fishShell(dataRoot: ArcherShellIntegration.fishVendorDataRoot.path)
+            config = .fishShell()
         case (.other, .none):
             config = .defaultShell()
         case (.other, .some):
@@ -333,26 +308,13 @@ extension AgentTemplate {
         promptLaunchFlag: "-p"
     )
 
-    /// Grok — xAI's coding CLI; binary `grok` (default install:
-    /// `~/.grok/bin/grok`). Hooks use Grok's Claude-compatible
-    /// `~/.grok/hooks/*.json` schema; archer installs `archer.json` when
-    /// `~/.grok/` exists. Lifecycle + tool-call events mirror Claude
-    /// (SessionStart → running, Stop/Notification → attention,
-    /// PreToolUse/PostToolUse → activity strip). Session ids from hook
-    /// stdin (`sessionId`) persist for `--resume <id>` on relaunch.
-    ///
-    /// `-p` (`--single`) is the one-shot Ask flag; interactive-with-prompt
-    /// uses a positional argv (`grok "fix this"`).
     static let grok = AgentTemplate(
         id: "grok",
-        title: "Grok",
+        title: "Grok Build",
         symbol: "x.square.fill",
         iconAsset: "grok",
         tintHex: "E8E8E8",
-        initialCommand: "grok",
-        promptLaunchFlag: "-p",
-        resumeFlag: "--resume",
-        reportsToolCalls: true
+        initialCommand: "grok"
     )
 
     /// Antigravity CLI — Google's Go-based successor to Gemini CLI; binary
@@ -474,29 +436,36 @@ extension AgentTemplate {
         initialCommand: "kiro-cli"
     )
 
-    /// Hermes Agent — Nous Research's AI terminal agent; binary `hermes`.
-    /// Bracket wrapper only: Hermes uses its own config system and doesn't
-    /// expose lifecycle hooks archer can map to attention, so the running/ended
-    /// dot comes from the wrapper.
+    /// Droid — Factory.ai's agentic coding CLI; binary `droid`
+    /// (curl-installed or npm `droid`). Bracket wrapper only: Droid has a
+    /// lifecycle-hook system (shell commands around tool events, configured
+    /// with `/hooks`), but it's declared in Droid's own config with no
+    /// system-settings env-var override (no `GEMINI_CLI_SYSTEM_SETTINGS_PATH`
+    /// analogue), so — like Kimi / Kiro — archer can't inject hooks
+    /// non-invasively. running/ended come from the wrapper; mid-run attention
+    /// + tool-call pills are deferred until a config-merge path exists.
     ///
-    /// Prompt flag is `-p` (`--print`) for single-shot; no interactive prompt
-    /// flag exists, so "Ask Hermes" single-shots rather than seeding a live
-    /// session. Resume stays unwired: no id-capture path implemented.
-    /// The lobe-icon uses the Nous/Hermes brand mark. `tintHex: "7C3AED"`
-    /// (brand purple) drives the sidebar pip.
-    static let hermes = AgentTemplate(
-        id: "hermes",
-        title: "Hermes Agent",
-        symbol: "wand.and.stars",
-        iconAsset: "hermes",
-        tintHex: "7C3AED",
-        initialCommand: "hermes",
-        promptLaunchFlag: "-p"
+    /// Prompt is positional — interactive `droid "<prompt>"` starts the REPL
+    /// seeded with that query (`droid exec "<prompt>"` is the separate
+    /// headless single-shot, not what Ask wants), so `promptLaunchFlag` is nil
+    /// and Ask sends `droid -- "<prompt>"`. Resume stays unwired: Droid has
+    /// `-r/--resume [id]`, but like every non-Claude/Pi agent archer has no
+    /// id-capture path, so `resumeFlag` is nil. The brand mark is the white
+    /// pinwheel on a black tile; extracted to white-on-transparent and
+    /// registered in `AgentIcon.monochromeAssets` so the theme-adaptive
+    /// tinting handles light themes (same treatment as grok / kimi / pi).
+    static let droid = AgentTemplate(
+        id: "droid",
+        title: "Droid",
+        symbol: "asterisk",
+        iconAsset: "droid",
+        tintHex: "C9CDD3",
+        initialCommand: "droid"
     )
 
     /// The 14 templates shipped with archer. User-defined custom agents are
     /// merged on top via `all` at runtime.
-    static let builtin: [AgentTemplate] = [.terminal, .claudeCode, .codex, .gemini, .opencode, .amp, .cursor, .copilot, .grok, .antigravity, .kimi, .pi, .kiro, .hermes]
+    static let builtin: [AgentTemplate] = [.terminal, .claudeCode, .codex, .gemini, .opencode, .amp, .cursor, .copilot, .grok, .antigravity, .kimi, .pi, .kiro, .droid]
 
     /// All templates available right now — `builtin` plus the user's custom
     /// agents from Settings → Agents. MainActor-isolated because it
@@ -582,8 +551,8 @@ extension AgentTemplate {
         let base = builtin.first { $0.id == data.baseAgentId }
         // `promptLaunchFlag` + `resumeFlag` + `reportsToolCalls` follow the
         // base unconditionally — they're properties of the binary (Copilot
-        // needs `-p`, Amp needs `-x`; Claude / Grok need `--resume`; Claude /
-        // Grok / Pi feed tool-call activity), not something the
+        // needs `-p`, Amp needs `-x`; Claude needs `--resume`, Grok needs
+        // `--session`; Claude / Pi feed tool-call activity), not something the
         // user could meaningfully override per custom. Without inheritance, a
         // "Copilot Beta" custom built on Copilot would lose the flag and
         // right-click Ask would feed the prompt as a positional argv that
