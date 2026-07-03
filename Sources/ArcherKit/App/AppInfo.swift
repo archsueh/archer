@@ -13,6 +13,6 @@ enum ArcherApp {
 
     static let repositoryURL = URL(string: "https://github.com/archsueh/archer")!
     static let issuesURL = URL(string: "https://github.com/archsueh/archer/issues")!
-    /// Mirrors `repositoryURL`; update both if the repo is ever renamed.
-    static let releasesAPIURL = URL(string: "https://api.github.com/repos/archsueh/archer/releases/latest")!
+    // Sparkle reads the appcast URL from Info.plist's `SUFeedURL` (set in
+    // build-app.sh), not from here — it has no reason to go through Swift code.
 }

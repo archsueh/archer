@@ -52,6 +52,16 @@ mkdir -p "${APP}/Contents/Resources"
 
 cp .build/release/Archer "${APP}/Contents/MacOS/${APP_NAME}"
 cp .build/release/ArcherHook "${APP}/Contents/MacOS/ArcherHook"
+
+# Sparkle.framework — SwiftPM resolves and copies it next to the build
+# products but (unlike Xcode's "Embed Frameworks" phase) does nothing to get
+# it into an app bundle. Embed it under Contents/Frameworks and add the
+# matching rpath so the `@rpath/Sparkle.framework/...` load command in the
+# Archer binary resolves at runtime.
+echo "==> Embedding Sparkle.framework"
+mkdir -p "${APP}/Contents/Frameworks"
+cp -R .build/release/Sparkle.framework "${APP}/Contents/Frameworks/"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP}/Contents/MacOS/${APP_NAME}"
 # Bundle.module's first lookup candidate is `Bundle.main.resourceURL`
 # (= Contents/Resources/), so the resource bundle has to live there or
 # the running .app will silently fall back to .build/release/ on disk.
@@ -189,6 +199,12 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
     <false/>
     <key>NSSupportsSuddenTermination</key>
     <false/>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/archsueh/archer/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>R8F+0R9LBA/JibvArSfUthDyrOFswtmgqMxeOEDbnvE=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <false/>
 ${APPLE_ICON_PLIST_KEYS}
 </dict>
 </plist>
@@ -234,6 +250,9 @@ cat > "$ENTITLEMENTS" <<'PLIST'
 </plist>
 PLIST
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/Resources/Archer_ArcherKit.bundle"
+# Sparkle ships its XPC services / Autoupdate / Updater.app already signed;
+# sign only the outer framework wrapper so those nested signatures survive.
+codesign --force --sign - "${APP}/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/MacOS/${APP_NAME}"
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}/Contents/MacOS/ArcherHook"
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "${APP}" 2>&1 | tail -3

@@ -40,14 +40,14 @@
 
 ## 3. Open failures / 进行中(stage 1→2)
 
-当前工作树未提交(HEAD `b97c0a6` 之后):
+当前工作树未提交(HEAD `6868a8f` 之后):
 
-- **`Sidebar/SkillsView.swift`(未提交,+41/-2)**:给技能安装失败加 UI 错误横幅(替掉静默 `print`)+ GitHub API 友好错误(403 限流 / 404 路径)。自洽完整,可作独立 commit `fix(skills): surface install errors`。**待用户确认是否提交**(非本人所写)。
-- **`.grok/`、`.xcodebuildmcp/`、`.playwright-mcp/`**:工具产物目录,建议入 `.gitignore`(待确认)。
-- **未提交的项目记忆/文档**:`STATE.md` 本身、`docs/usage-tokenscope-plan.md`(tokenscope 集成方案,见该文件)——应提交使其随仓库走。
-- **遗留清理**:`~/.archer/mlx-server.log` 是已下线本地模型的残留,可删。
+- **知识循环脚本** `scripts/knowledge-loop/`: 已加入 `.gitignore`（本地运维自动化，非共享）。
+- **droid 图标资源**: 新增（用于 agent 图标支持），已入库。
 
-**tokenscope 集成(未开工)**:方案见 `docs/usage-tokenscope-plan.md`。Stage 0(清 Dashboard)已完成;下一步 Stage 1 = `PricingProvider`(models.dev 动态定价 + 收敛 `UsageCollector.swift:1277` 与 `UsageView.swift:1146` 两处 drift 定价)。
+**tokenscope 集成**: 
+- Stage 0 收尾已做（Dashboard、skills 提交、STATE 对齐）。
+- Stage 1 `PricingProvider` 落地中（本 chore 分支已暂存实现 + 测试，models.dev + 快照兜底 + 用量采集/视图收敛）。详见 `docs/usage-tokenscope-plan.md`。
 
 _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
@@ -63,10 +63,11 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
 ## 5. Last session(stage 5 — resume,别 restart)
 
-**2026-07-03** · HEAD `b97c0a6 feat(skills): implement native in-app skill installation and update from skills.sh`。
+**2026-07-03** · HEAD `6868a8f` (docs) + staged `feat(usage): PricingProvider...`
 
-自 2026-07-02 起:Sessions Dashboard **已提交**(并入 `b97c0a6`,含 `SessionDashboardTests`)、skills 原生安装已提交。
+- `swift test`: **491 tests / 0 failures** (绿).
+- 本地构建: `./scripts/build-app.sh` → `dist/Archer.app` v1.0.6（adhoc 签名）；已 `cp` 覆盖 `/Applications/Archer.app` 并清理 quarantine；另产出 `dist/Archer-v1.0.6.dmg` (10M).
+- PricingProvider (Stage 1 核心) + 测试已暂存；.gitignore 补充 knowledge-loop。
+- 按 §2 规则更新 STATE.md 并将随下次提交入库。
 
-**本次会话(Stage 0 收尾)已验证**:① `swift test` = **483 tests / 0 failures**(基线绿);② `SessionsWindowController` 按 §2 NSWindow 三条复核**通过**(`isReleasedWhenClosed=false`、关窗 cancel refresh Task、主窗口 `AppDelegate.handleWindowWillClose:245` 用通用 `NSApp.windows` 扫覆盖它——无僵尸态);③ 发现 STATE.md §3/§5 曾严重落后于 repo(Dashboard 早已提交),已按"repo wins"修正——再次印证 §4 的 drift 教训。
-
-**Next**:① 处理 §3 未决项(`SkillsView.swift` 是否提交、gitignore、提交 STATE.md/plan);② 开工 **tokenscope Stage 1 `PricingProvider`**(见 `docs/usage-tokenscope-plan.md`)。
+**Next**: ① 提交本分支变更并 `git push`；② 继续 tokenscope 余下（heatmap/donut 或完整验证）；③ 按需处理 SkillsView 残留或 release 流程（DMG + appcast）。

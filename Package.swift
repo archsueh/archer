@@ -9,7 +9,9 @@ let package = Package(
         // would mean reverting all session models to ObservableObject + @Published.
         .macOS(.v14),
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
+    ],
     targets: [
         // Thin executable: main.swift only. Everything else lives in ArcherKit so
         // tests can `@testable import` it (SPM doesn't allow importing executables).
@@ -46,6 +48,7 @@ let package = Package(
             name: "ArcherKit",
             dependencies: [
                 "GhosttyKit",
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/ArcherKit",
             resources: [

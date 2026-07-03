@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 import SwiftUI
 
 /// Namespace for the View menu's Tab/Workspace switch items. Tags share a
@@ -55,6 +56,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// isn't theirs, so exactly the owning window reacts.
     private lazy var bridgeServer: BridgeServer = .init()
 
+    /// State shared between Sparkle's callbacks and Archer's glass-styled
+    /// update window — see `ArcherUpdateUserDriver` and `UpdatePromptView`.
+    private let updateFlow = UpdateFlowController()
+    private lazy var updateDriver = ArcherUpdateUserDriver(flow: updateFlow)
+    /// `SUEnableAutomaticChecks=false` in Info.plist keeps this manual-only:
+    /// no startup poll, no background schedule, no permission prompt.
+    private lazy var updater = SPUUpdater(
+        hostBundle: Bundle.main,
+        applicationBundle: Bundle.main,
+        userDriver: updateDriver,
+        delegate: nil
+    )
+
     private lazy var hookServer = HookServer { [weak self] message in
         guard let self else { return }
         switch message {
@@ -95,6 +109,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     }
 
     public func applicationDidFinishLaunching(_: Notification) {
+        do {
+            try updater.start()
+        } catch {
+            ArcherLogger.updates.error("Sparkle updater failed to start: \(error, privacy: .public)")
+        }
         ArcherFonts.registerOnce()
         // First-launch onboarding (blocking NSAlert if a ghostty config exists)
         // — must run before any window is created and before any libghostty
@@ -1055,21 +1074,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         NSWorkspace.shared.open(ArcherApp.repositoryURL)
     }
 
-    @objc private func handleCheckForUpdates(_ sender: NSMenuItem) {
-        let originalTitle = sender.title
-        sender.title = "Checking for Updates…"
-        sender.isEnabled = false
-        // ARCHER_FAKE_VERSION lets us preview the "newer release" prompt without
-        // mutating ArcherApp.displayVersion. Launch via:
-        //   open --env ARCHER_FAKE_VERSION=0.11.0 /Applications/Archer.app
-        let currentVersion = ProcessInfo.processInfo.environment["ARCHER_FAKE_VERSION"]
-            ?? ArcherApp.displayVersion
-        Task { @MainActor in
-            let outcome = await UpdateChecker.check(currentVersion: currentVersion)
-            sender.title = originalTitle
-            sender.isEnabled = true
-            UpdatePromptWindowController.present(outcome: outcome, currentVersion: currentVersion)
-        }
+    @objc private func handleCheckForUpdates(_: NSMenuItem) {
+        updater.checkForUpdates()
     }
 
     @objc func handleOpenSettings() {
