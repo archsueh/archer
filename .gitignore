@@ -60,5 +60,8 @@ IDEAS.md
 # Xcodebuild MCP tool state
 .xcodebuildmcp/
 
+# Playwright MCP tool state
+.playwright-mcp/
+
 # Claude agent workspace settings
 .claude/settings.json

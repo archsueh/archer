@@ -28,6 +28,7 @@ struct SkillsView: View {
     @State private var isSearching = false
     @State private var installingSkillId: String? = nil
     @State private var isUpdatingAll = false
+    @State private var installErrorMessage: String? = nil
 
     struct CCSkillRow: Identifiable {
         let id: String
@@ -98,6 +99,30 @@ struct SkillsView: View {
     var body: some View {
         VStack(spacing: 0) {
             titlebar
+
+            if let message = installErrorMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.activityFailure)
+                    Text(message)
+                        .font(Theme.mono(11))
+                        .foregroundStyle(Theme.chromeForeground)
+                        .lineLimit(2)
+                    Spacer()
+                    Button {
+                        installErrorMessage = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Theme.activityFailure.opacity(0.12))
+                .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+            }
 
             if isLoading {
                 Spacer()
@@ -1270,6 +1295,8 @@ struct SkillsView: View {
     }
 
     private func installSkillFromSh(_ result: SkillsShResult, targets: [String]) async {
+        await MainActor.run { installErrorMessage = nil }
+
         let home = NSHomeDirectory()
         let fm = FileManager.default
 
@@ -1306,7 +1333,17 @@ struct SkillsView: View {
                         }
                     }
                 }
-                throw NSError(domain: "GitHubAPI", code: (resp as? HTTPURLResponse)?.statusCode ?? -1, userInfo: nil)
+                let statusCode = (resp as? HTTPURLResponse)?.statusCode ?? -1
+                let description: String
+                switch statusCode {
+                case 403:
+                    description = "GitHub API 请求超限(403),未认证请求每小时限 60 次,请稍后再试。"
+                case 404:
+                    description = "在 \(repo) 找不到路径 \(pathInRepo)(404)。"
+                default:
+                    description = "GitHub 请求失败(HTTP \(statusCode))。"
+                }
+                throw NSError(domain: "GitHubAPI", code: statusCode, userInfo: [NSLocalizedDescriptionKey: description])
             }
 
             try await parseAndDownload(data: data, repo: repo, destBasePaths: destBasePaths)
@@ -1362,7 +1399,9 @@ struct SkillsView: View {
                 self.loadCCSwitchSkills()
             }
         } catch {
-            print("Failed to install skill: \(error)")
+            await MainActor.run {
+                installErrorMessage = "安装 \(result.name) 失败: \(error.localizedDescription)"
+            }
         }
     }
 }
