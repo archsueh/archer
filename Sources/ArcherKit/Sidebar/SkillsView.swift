@@ -1,5 +1,4 @@
 import AppKit
-import SQLite3
 import SwiftUI
 
 struct SkillsView: View {
@@ -22,23 +21,31 @@ struct SkillsView: View {
     @State private var hoverSort = false
     @State private var activeTab: SkillsTab = .installed
     @State private var updateCount = 0
-    @State private var ccSwitchSkills: [CCSkillRow] = []
+    @State private var installedSkills: [InstalledSkill] = []
+    @State private var updatableSkillNames: Set<String> = []
     @State private var discoverQuery = ""
     @State private var discoverResults: [SkillsShResult] = []
     @State private var isSearching = false
     @State private var installingSkillId: String? = nil
     @State private var isUpdatingAll = false
+    @State private var isCheckingUpdates = false
+    @State private var lastUpdateCheck: Date? = nil
     @State private var installErrorMessage: String? = nil
 
-    struct CCSkillRow: Identifiable {
-        let id: String
+    /// A skill Archer itself installed from a GitHub repo, persisted in
+    /// `~/.archer/skills.json` so update checks work without any external app.
+    struct InstalledSkill: Identifiable, Codable {
         let name: String
-        let description: String
         let repoOwner: String
         let repoName: String
-        let updatedAt: Int64
-        var isGitHubBacked: Bool {
-            !repoOwner.isEmpty
+        var installedAt: Int64 // ms epoch
+        var updatedAt: Int64 // ms epoch
+        var id: String {
+            name
+        }
+
+        var repoSlug: String {
+            "\(repoOwner)/\(repoName)"
         }
     }
 
@@ -86,7 +93,9 @@ struct SkillsView: View {
     static let featuredSkills: [SkillsShResult] = [
         SkillsShResult(id: "find-skills", name: "find-skills", source: "vercel-labs/skills", installs: 2_300_000),
         SkillsShResult(id: "frontend-design", name: "frontend-design", source: "anthropics/skills", installs: 614_300),
-        SkillsShResult(id: "vercel-react-best-practices", name: "vercel-react-best-practices", source: "vercel-labs/agent-skills", installs: 518_200),
+        // skills.sh markets this as "vercel-react-best-practices" but the repo
+        // directory is skills/react-best-practices — id must match the repo path.
+        SkillsShResult(id: "react-best-practices", name: "vercel-react-best-practices", source: "vercel-labs/agent-skills", installs: 518_200),
         SkillsShResult(id: "agent-browser", name: "agent-browser", source: "vercel-labs/agent-browser", installs: 503_500),
     ]
 
@@ -417,7 +426,7 @@ struct SkillsView: View {
                             }
 
                             Button {
-                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.id)") {
+                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.name)") {
                                     NSWorkspace.shared.open(url)
                                 }
                             } label: {
@@ -490,7 +499,7 @@ struct SkillsView: View {
                             }
 
                             Button {
-                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.id)") {
+                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.name)") {
                                     NSWorkspace.shared.open(url)
                                 }
                             } label: {
@@ -509,7 +518,7 @@ struct SkillsView: View {
         }
         .bracketBorder()
         .onAppear {
-            if ccSwitchSkills.isEmpty { loadCCSwitchSkills() }
+            if installedSkills.isEmpty { loadInstalledRegistry() }
         }
     }
 
@@ -523,7 +532,7 @@ struct SkillsView: View {
                     .textCase(.uppercase)
                 Spacer()
 
-                let githubSkills = ccSwitchSkills.filter { $0.isGitHubBacked }
+                let githubSkills = installedSkills
 
                 if !githubSkills.isEmpty {
                     Button {
@@ -564,30 +573,38 @@ struct SkillsView: View {
                 }
 
                 Button {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/CC Switch.app"))
+                    Task { await checkForUpdates(force: true) }
                 } label: {
-                    Text("管理")
-                        .font(Theme.mono(10))
-                        .foregroundStyle(Theme.chromeMuted)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
+                    HStack(spacing: 4) {
+                        if isCheckingUpdates {
+                            ProgressView().scaleEffect(0.5).frame(width: 10, height: 10)
+                        } else {
+                            Image(systemName: "arrow.clockwise").font(.system(size: 9))
+                        }
+                        Text("检查更新")
+                    }
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.chromeMuted)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .overlay(Rectangle().stroke(Theme.chromeHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .help("在 CC Switch.app 中管理技能")
+                .disabled(isCheckingUpdates)
+                .help("对比上游仓库最新提交时间")
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
 
-            let githubSkills = ccSwitchSkills.filter { $0.isGitHubBacked }
+            let githubSkills = installedSkills
             if githubSkills.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "tray")
                         .font(.system(size: 22))
                         .foregroundStyle(Theme.chromeMuted.opacity(0.4))
-                    Text("未读取到 GitHub 技能")
+                    Text("暂无可更新的技能")
                         .font(Theme.mono(12))
                         .foregroundStyle(Theme.chromeMuted)
-                    Text("通过「发现技能」或 CC Switch 安装 GitHub 技能后在此显示")
+                    Text("通过「发现技能」安装的 GitHub 技能会在此显示并支持更新检测")
                         .font(Theme.mono(10.5))
                         .foregroundStyle(Theme.chromeFaint)
                 }
@@ -596,14 +613,24 @@ struct SkillsView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(githubSkills) { skill in
+                        let hasUpdate = updatableSkillNames.contains(skill.name)
                         HStack(spacing: 12) {
                             Circle()
-                                .fill(Theme.activityRunning)
+                                .fill(hasUpdate ? Color.orange : Theme.activityRunning)
                                 .frame(width: 6, height: 6)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(skill.name)
-                                    .font(Theme.mono(12, weight: .medium))
-                                    .foregroundStyle(Theme.chromeForeground)
+                                HStack(spacing: 6) {
+                                    Text(skill.name)
+                                        .font(Theme.mono(12, weight: .medium))
+                                        .foregroundStyle(Theme.chromeForeground)
+                                    if hasUpdate {
+                                        Text("有新版本")
+                                            .font(Theme.mono(9))
+                                            .foregroundStyle(Color.orange)
+                                            .padding(.horizontal, 4).padding(.vertical, 1)
+                                            .overlay(Rectangle().stroke(Color.orange.opacity(0.4), lineWidth: 1))
+                                    }
+                                }
                                 Text("\(skill.repoOwner)/\(skill.repoName)")
                                     .font(Theme.mono(10))
                                     .foregroundStyle(Theme.chromeFaint)
@@ -672,7 +699,10 @@ struct SkillsView: View {
             }
         }
         .bracketBorder()
-        .onAppear { loadCCSwitchSkills() }
+        .onAppear {
+            loadInstalledRegistry()
+            Task { await checkForUpdates() }
+        }
     }
 
     private var filterBar: some View {
@@ -810,30 +840,100 @@ struct SkillsView: View {
         return result
     }
 
-    // MARK: - CC Switch DB + skills.sh
+    // MARK: - Install registry (~/.archer/skills.json) + skills.sh
 
-    private func loadCCSwitchSkills() {
-        let dbPath = (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch/cc-switch.db")
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return }
-        defer { sqlite3_close(db) }
+    private static var registryPath: String {
+        (NSHomeDirectory() as NSString).appendingPathComponent(".archer/skills.json")
+    }
 
-        let query = "SELECT id, name, COALESCE(description,''), COALESCE(repo_owner,''), COALESCE(repo_name,''), updated_at FROM skills ORDER BY name ASC"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-
-        var rows: [CCSkillRow] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let id = String(cString: sqlite3_column_text(stmt, 0))
-            let name = String(cString: sqlite3_column_text(stmt, 1))
-            let desc = String(cString: sqlite3_column_text(stmt, 2))
-            let owner = String(cString: sqlite3_column_text(stmt, 3))
-            let repo = String(cString: sqlite3_column_text(stmt, 4))
-            let updatedAt = sqlite3_column_int64(stmt, 5)
-            rows.append(CCSkillRow(id: id, name: name, description: desc, repoOwner: owner, repoName: repo, updatedAt: updatedAt))
+    private static func readRegistry() -> [InstalledSkill] {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: registryPath)),
+              let rows = try? JSONDecoder().decode([InstalledSkill].self, from: data)
+        else {
+            return []
         }
-        Task { @MainActor in ccSwitchSkills = rows }
+        return rows.sorted { $0.name < $1.name }
+    }
+
+    private func loadInstalledRegistry() {
+        let rows = SkillsView.readRegistry()
+        Task { @MainActor in installedSkills = rows }
+    }
+
+    private func registerInstalledSkill(name: String, repoOwner: String, repoName: String) {
+        var rows = SkillsView.readRegistry()
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        if let idx = rows.firstIndex(where: { $0.name == name }) {
+            rows[idx].updatedAt = now
+        } else {
+            rows.append(InstalledSkill(name: name, repoOwner: repoOwner, repoName: repoName, installedAt: now, updatedAt: now))
+        }
+        let dir = (SkillsView.registryPath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: nil)
+        if let data = try? JSONEncoder().encode(rows.sorted(by: { $0.name < $1.name })) {
+            try? data.write(to: URL(fileURLWithPath: SkillsView.registryPath), options: .atomic)
+        }
+    }
+
+    /// One request per distinct upstream repo (not per skill): compares the
+    /// repo's latest commit time against when we installed/updated each skill.
+    /// Repo-level granularity can over-report for monorepos, but costs
+    /// `distinct repos` requests instead of `skills × tree walks`.
+    private func checkForUpdates(force: Bool = false) async {
+        if !force, let last = lastUpdateCheck, Date().timeIntervalSince(last) < 600 { return }
+        let skills = await MainActor.run { installedSkills }
+        guard !skills.isEmpty else { return }
+        await MainActor.run {
+            isCheckingUpdates = true
+            installErrorMessage = nil
+        }
+
+        let token = resolveGitHubToken()
+        let repos = Set(skills.map { $0.repoSlug })
+        var repoLatest: [String: Int64] = [:]
+        var firstErrorCode: Int? = nil
+        let iso = ISO8601DateFormatter()
+
+        for slug in repos {
+            guard let url = URL(string: "https://api.github.com/repos/\(slug)/commits?per_page=1") else { continue }
+            var req = URLRequest(url: url)
+            req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+            req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
+            if let token {
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            guard let (data, resp) = try? await URLSession.shared.data(for: req) else { continue }
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+                if firstErrorCode == nil { firstErrorCode = (resp as? HTTPURLResponse)?.statusCode ?? -1 }
+                continue
+            }
+            guard let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let commit = list.first?["commit"] as? [String: Any],
+                  let committer = commit["committer"] as? [String: Any],
+                  let dateStr = committer["date"] as? String,
+                  let date = iso.date(from: dateStr)
+            else { continue }
+            repoLatest[slug] = Int64(date.timeIntervalSince1970 * 1000)
+        }
+
+        var names: Set<String> = []
+        for skill in skills {
+            if let latest = repoLatest[skill.repoSlug], latest > max(skill.installedAt, skill.updatedAt) {
+                names.insert(skill.name)
+            }
+        }
+
+        await MainActor.run {
+            updatableSkillNames = names
+            updateCount = names.count
+            lastUpdateCheck = Date()
+            isCheckingUpdates = false
+            if repoLatest.isEmpty, let code = firstErrorCode {
+                installErrorMessage = code == 403
+                    ? "检查更新失败:GitHub API 限流(403)。登录 gh(gh auth login)或设置 GITHUB_TOKEN 可提升到 5000 次/小时。"
+                    : "检查更新失败(HTTP \(code))。"
+            }
+        }
     }
 
     private func searchSkillsSh() {
@@ -1243,57 +1343,6 @@ struct SkillsView: View {
         }
     }
 
-    private func registerSkillInCCSwitchDb(id: String, name: String, description: String, repoOwner: String, repoName: String) {
-        let dbDir = (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch")
-        let dbPath = (dbDir as NSString).appendingPathComponent("cc-switch.db")
-
-        let fm = FileManager.default
-        if !fm.fileExists(atPath: dbDir) {
-            try? fm.createDirectory(atPath: dbDir, withIntermediateDirectories: true, attributes: nil)
-        }
-
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK else { return }
-        defer { sqlite3_close(db) }
-
-        let createTableQuery = """
-        CREATE TABLE IF NOT EXISTS skills (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT,
-            repo_owner TEXT,
-            repo_name TEXT,
-            updated_at INTEGER
-        )
-        """
-        sqlite3_exec(db, createTableQuery, nil, nil, nil)
-
-        let insertQuery = "INSERT OR REPLACE INTO skills (id, name, description, repo_owner, repo_name, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, insertQuery, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-
-        id.withCString { cId in
-            name.withCString { cName in
-                description.withCString { cDesc in
-                    repoOwner.withCString { cOwner in
-                        repoName.withCString { cRepo in
-                            sqlite3_bind_text(stmt, 1, cId, -1, nil)
-                            sqlite3_bind_text(stmt, 2, cName, -1, nil)
-                            sqlite3_bind_text(stmt, 3, cDesc, -1, nil)
-                            sqlite3_bind_text(stmt, 4, cOwner, -1, nil)
-                            sqlite3_bind_text(stmt, 5, cRepo, -1, nil)
-                            sqlite3_bind_int64(stmt, 6, now)
-                            sqlite3_step(stmt)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     /// GitHub's unauthenticated API cap is 60 req/hr — trivially exhausted by
     /// installing a skill or two. Prefer `GITHUB_TOKEN`/`GITHUB_PERSONAL_ACCESS_TOKEN`
     /// if set, but Archer is normally launched from Finder/Dock, which does not
@@ -1430,11 +1479,14 @@ struct SkillsView: View {
             let parts = result.source.split(separator: "/")
             let owner = parts.count > 0 ? String(parts[0]) : ""
             let repo = parts.count > 1 ? String(parts[1]) : ""
-            registerSkillInCCSwitchDb(id: "\(result.source)/\(result.id)", name: result.id, description: "", repoOwner: owner, repoName: repo)
+            registerInstalledSkill(name: result.id, repoOwner: owner, repoName: repo)
 
             await MainActor.run {
                 self.loadSkills(silent: true)
-                self.loadCCSwitchSkills()
+                self.loadInstalledRegistry()
+                if self.updatableSkillNames.remove(result.id) != nil {
+                    self.updateCount = self.updatableSkillNames.count
+                }
             }
         } catch {
             await MainActor.run {
