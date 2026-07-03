@@ -63,5 +63,8 @@ IDEAS.md
 # Playwright MCP tool state
 .playwright-mcp/
 
+# Local knowledge maintenance automation (per-user)
+scripts/knowledge-loop/
+
 # Claude agent workspace settings
 .claude/settings.json

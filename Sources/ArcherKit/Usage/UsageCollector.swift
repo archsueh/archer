@@ -20,6 +20,10 @@ enum UsageCollector {
         includeCCSwitchProxyUsage: Bool = false,
         ccSwitchDatabaseURL: URL? = nil
     ) -> UsageSnapshot {
+        // Refresh the models.dev pricing cache in the background; this pass
+        // uses whatever is already on disk (or the built-in snapshot). // [archer]
+        PricingProvider.refreshInBackgroundIfStale()
+
         var cache = loadCache()
         var livePaths = Set<String>()
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
@@ -856,8 +860,11 @@ enum UsageCollector {
         var tools = [String: UsageAccumulator]()
         var models = [ModelKey: UsageAccumulator]()
 
+        // Load the models.dev pricing table once per pass (synchronous read of
+        // the slim cache, or the built-in snapshot when absent). // [archer]
+        let pricing = PricingProvider.table()
         for record in records {
-            let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model)
+            let cost = record.costUSD ?? estimateCost(usage: record.usage, tool: record.tool, model: record.model, pricing: pricing)
             daily[record.date, default: DailyAccumulator(date: record.date)].add(record: record, cost: cost)
             tools[record.tool, default: UsageAccumulator()].add(record.usage, cost: cost)
             models[ModelKey(tool: record.tool, model: record.model), default: UsageAccumulator()].add(record.usage, cost: cost)
@@ -1266,53 +1273,18 @@ enum UsageCollector {
         return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     }
 
-    private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
-        let lower = model.lowercased()
-        if tool == "Codex", lower.contains("gpt-5.5") {
-            return openAICostByParts(usage: usage, input: 5, cachedInput: 0.5, output: 30)
-        }
-        if tool == "Codex", lower.contains("gpt-5.4") {
-            return openAICostByParts(usage: usage, input: 2.5, cachedInput: 0.25, output: 15)
-        }
-        if lower.contains("opus") {
-            return costByParts(usage: usage, input: 15, output: 75, cacheCreation: 18.75, cacheRead: 1.5)
-        }
-        if lower.contains("sonnet") {
-            return costByParts(usage: usage, input: 3, output: 15, cacheCreation: 3.75, cacheRead: 0.3)
+    /// Cost for one record when the source didn't report one. Pricing numbers
+    /// come from `PricingProvider` (models.dev cache → built-in family
+    /// snapshot); only the flat total-token heuristic for unknown families
+    /// stays here. // [archer]
+    private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String, pricing: PricingTable) -> Double {
+        if let price = PricingProvider.resolve(tool: tool, model: model, in: pricing) {
+            return PricingProvider.cost(usage: usage, price: price)
         }
         if tool == "Claude Code" {
             return Double(usage.totalTokens) / 1_000_000 * 3
         }
         return Double(usage.totalTokens) / 1_000_000
-    }
-
-    private static func openAICostByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        cachedInput: Double,
-        output: Double
-    ) -> Double {
-        let cached = max(0, usage.cacheReadInputTokens)
-        let uncachedInput = max(0, usage.inputTokens - cached)
-        return Double(uncachedInput + usage.cacheCreationInputTokens) / 1_000_000 * input
-            + Double(cached) / 1_000_000 * cachedInput
-            + Double(usage.outputTokens + usage.reasoningOutputTokens) / 1_000_000 * output
-    }
-
-    private static func costByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        output: Double,
-        cacheCreation: Double,
-        cacheRead: Double
-    ) -> Double {
-        let creation = max(0, usage.cacheCreationInputTokens)
-        let read = max(0, usage.cacheReadInputTokens)
-        let rest = max(0, usage.inputTokens - creation - read)
-        return Double(rest) / 1_000_000 * input
-            + Double(creation) / 1_000_000 * cacheCreation
-            + Double(read) / 1_000_000 * cacheRead
-            + Double(usage.outputTokens + usage.reasoningOutputTokens) / 1_000_000 * output
     }
 
     private static func percent(_ subset: Int, of total: Int) -> Double {

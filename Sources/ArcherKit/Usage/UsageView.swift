@@ -1142,10 +1142,13 @@ struct UsageView: View {
     }
 
     private func calculateCost(input: Int, output: Int, cacheRead: Int) -> Double {
-        // Prices per 1M tokens: Input = $3.00, Output = $15.00, Cache read = $0.30
-        let inputCost = Double(input) * 3.0 / 1_000_000.0
-        let outputCost = Double(output) * 15.0 / 1_000_000.0
-        let cacheCost = Double(cacheRead) * 0.30 / 1_000_000.0
-        return inputCost + outputCost + cacheCost
+        // Hermes proxies Claude Sonnet; source the rates from PricingProvider's
+        // snapshot (no IO, safe in `body`) instead of hardcoding them, so the
+        // numbers can't drift from the collector's pricing. // [archer]
+        let price = PricingProvider.familyPrice(tool: "Hermes", model: "sonnet")
+            ?? ModelPrice(input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3, style: .anthropic)
+        return Double(input) * price.input / 1_000_000.0
+            + Double(output) * price.output / 1_000_000.0
+            + Double(cacheRead) * price.cacheRead / 1_000_000.0
     }
 }
