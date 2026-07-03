@@ -12,6 +12,7 @@ enum ArcherLogger {
     static let usage = Logger(subsystem: subsystem, category: "usage")
     static let cli = Logger(subsystem: subsystem, category: "cli")
     static let fonts = Logger(subsystem: subsystem, category: "fonts")
+    static let updates = Logger(subsystem: subsystem, category: "updates")
 
     private static let subsystem = "com.archsueh.archer"
 }

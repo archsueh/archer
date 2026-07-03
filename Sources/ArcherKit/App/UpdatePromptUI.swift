@@ -3,13 +3,11 @@ import SwiftUI
 
 /// Brutalist update prompt — matches the Settings window's visual language:
 /// Theme.chrome* tokens, mono kebab-case labels, sharp corners, 1pt
-/// hairlines, BracketButton actions. Replaces the system NSAlert so the
-/// "Check for Updates…" flow doesn't fall out of archer's design system.
+/// hairlines, BracketButton actions. Replaces Sparkle's default AppKit alert
+/// windows so the update flow doesn't fall out of archer's design system;
+/// `ArcherUpdateUserDriver` is what feeds it Sparkle's real lifecycle state.
 struct UpdatePromptView: View {
-    let outcome: UpdateChecker.Outcome
-    let currentVersion: String
-    let onClose: () -> Void
-    let onDownload: (URL) -> Void
+    @Bindable var flow: UpdateFlowController
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -65,8 +63,8 @@ struct UpdatePromptView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch outcome {
-        case let .newer(_, _, notes) where !notes.isEmpty:
+        switch flow.stage {
+        case let .found(_, notes, _, _) where !notes.isEmpty:
             VStack(alignment: .leading, spacing: 10) {
                 Text("release-notes")
                     .font(Theme.mono(10, weight: .medium))
@@ -83,6 +81,20 @@ struct UpdatePromptView: View {
                 .frame(maxHeight: 160)
                 .bracketBorder()
             }
+        case .checking, .installing:
+            ProgressView()
+                .progressViewStyle(.linear)
+        case let .downloading(progress):
+            if let progress {
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+            } else {
+                ProgressView()
+                    .progressViewStyle(.linear)
+            }
+        case let .extracting(progress):
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
         default:
             EmptyView()
         }
@@ -90,41 +102,69 @@ struct UpdatePromptView: View {
 
     @ViewBuilder
     private var actions: some View {
-        switch outcome {
-        case let .newer(_, url, _):
-            BracketButton("later", action: onClose)
-            BracketButton("update") {
-                onDownload(url)
-                onClose()
-            }
-        case .upToDate, .failed:
-            BracketButton("done", action: onClose)
+        switch flow.stage {
+        case .found:
+            BracketButton("skip", action: flow.chooseSkip)
+            BracketButton("later", action: flow.chooseDismiss)
+            BracketButton("update", action: flow.chooseInstall)
+        case .readyToInstall:
+            BracketButton("later", action: flow.chooseDismiss)
+            BracketButton("restart-and-install", action: flow.chooseInstall)
+        case .checking, .downloading, .extracting:
+            BracketButton("cancel", action: flow.chooseDismiss)
+        case .installing:
+            EmptyView()
+        case .upToDate, .notFound, .error:
+            BracketButton("done", action: flow.chooseDismiss)
+        case .idle:
+            EmptyView()
         }
     }
 
     // MARK: Copy
 
     private var statusText: String {
-        switch outcome {
-        case .newer: return "UPDATE-AVAILABLE"
+        switch flow.stage {
+        case .idle: return ""
+        case .checking: return "CHECKING…"
+        case .found: return "UPDATE-AVAILABLE"
+        case .downloading: return "DOWNLOADING…"
+        case .extracting: return "EXTRACTING…"
+        case .readyToInstall: return "READY-TO-INSTALL"
+        case .installing: return "INSTALLING…"
         case .upToDate: return "UP-TO-DATE"
-        case .failed: return "CHECK-FAILED"
+        case .notFound: return "NO-UPDATE"
+        case .error: return "CHECK-FAILED"
         }
     }
 
     private var headlineText: String {
-        switch outcome {
-        case let .newer(latest, _, _): return latest
-        case let .upToDate(current): return current
-        case .failed: return "couldn't reach github"
+        switch flow.stage {
+        case .idle: return ""
+        case .checking: return "checking github…"
+        case let .found(version, _, _, _): return version
+        case .downloading: return "downloading update…"
+        case .extracting: return "unpacking update…"
+        case .readyToInstall: return "update ready"
+        case .installing: return "installing…"
+        case let .upToDate(version): return version
+        case .notFound: return "no update found"
+        case .error: return "couldn't reach github"
         }
     }
 
     private var subtitleText: String {
-        switch outcome {
-        case .newer: return "current \(currentVersion)"
+        switch flow.stage {
+        case .idle: return ""
+        case .checking: return "looking for a newer release."
+        case .found: return "current \(ArcherApp.displayVersion)"
+        case .downloading: return "verifying signature once complete."
+        case .extracting: return "almost there."
+        case .readyToInstall: return "archer will quit and relaunch on the new version."
+        case .installing: return "quitting and relaunching…"
         case .upToDate: return "you're on the latest release."
-        case let .failed(reason): return reason
+        case let .notFound(message): return message
+        case let .error(message): return message
         }
     }
 }
@@ -142,9 +182,9 @@ final class UpdatePromptWindowController: NSWindowController {
         fatalError()
     }
 
-    static func present(outcome: UpdateChecker.Outcome, currentVersion: String) {
+    static func presentFlow(_ flow: UpdateFlowController) {
         let controller = shared
-        controller.build(outcome: outcome, currentVersion: currentVersion)
+        controller.build(flow: flow)
         if controller.window?.isVisible != true {
             controller.window?.center()
         }
@@ -152,13 +192,8 @@ final class UpdatePromptWindowController: NSWindowController {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func build(outcome: UpdateChecker.Outcome, currentVersion: String) {
-        let view = UpdatePromptView(
-            outcome: outcome,
-            currentVersion: currentVersion,
-            onClose: { [weak self] in self?.window?.close() },
-            onDownload: { url in NSWorkspace.shared.open(url) }
-        )
+    private func build(flow: UpdateFlowController) {
+        let view = UpdatePromptView(flow: flow)
         let host = NSHostingController(rootView: view)
         // NSHostingController computes its preferred size from the SwiftUI
         // root; the .frame(width:) on UpdatePromptView fixes the width and
