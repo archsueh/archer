@@ -1294,11 +1294,49 @@ struct SkillsView: View {
         }
     }
 
+    /// GitHub's unauthenticated API cap is 60 req/hr — trivially exhausted by
+    /// installing a skill or two. Prefer `GITHUB_TOKEN`/`GITHUB_PERSONAL_ACCESS_TOKEN`
+    /// if set, but Archer is normally launched from Finder/Dock, which does not
+    /// inherit the user's shell profile — so those env vars are almost never
+    /// actually present here even if set in `.zshrc`. Fall back to `gh auth
+    /// token`: if the user has GitHub CLI signed in (common for developers),
+    /// this gets us the same 5,000 req/hr authenticated limit with no setup.
+    private func resolveGitHubToken() -> String? {
+        if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] ?? ProcessInfo.processInfo.environment["GITHUB_PERSONAL_ACCESS_TOKEN"],
+           !token.isEmpty
+        {
+            return token
+        }
+        // GUI apps get a minimal PATH, so a bare `env gh` lookup would miss
+        // Homebrew installs — check the common absolute locations directly.
+        let ghCandidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"]
+        guard let ghPath = ghCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            return nil
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: ghPath)
+        process.arguments = ["auth", "token"]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            let token = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (token?.isEmpty == false) ? token : nil
+        } catch {
+            return nil
+        }
+    }
+
     private func installSkillFromSh(_ result: SkillsShResult, targets: [String]) async {
         await MainActor.run { installErrorMessage = nil }
 
         let home = NSHomeDirectory()
         let fm = FileManager.default
+        let githubToken = resolveGitHubToken()
 
         struct GitHubFile: Decodable {
             let name: String
@@ -1315,8 +1353,8 @@ struct SkillsView: View {
             req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
             req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
 
-            if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] ?? ProcessInfo.processInfo.environment["GITHUB_PERSONAL_ACCESS_TOKEN"] {
-                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let githubToken {
+                req.setValue("Bearer \(githubToken)", forHTTPHeaderField: "Authorization")
             }
 
             let (data, resp) = try await URLSession.shared.data(for: req)
