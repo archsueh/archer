@@ -43,10 +43,10 @@
 
 ## 3. Open failures / 进行中(stage 1→2)
 
-当前工作树未提交(HEAD `7ca06c2` 之后):
+当前(HEAD `e7b5f36`,工作树干净):
 
-- **分支未推送**:`chore/usage-tokenscope-stage0` 领先 main,待 merge/push。
-- **stash `inflight-skillsview-refactor` 可 drop**:那是 SkillsView 独立化重构的**早期不完整快照**;完整版已直接提交(见 §1 Skills 条),stash 留着只会误导。
+- **分支未推送**:`chore/usage-tokenscope-stage0` 领先 main 6 commit,待 merge/push。
+- ~~stash `inflight-skillsview-refactor`~~ 已 drop(过时快照,完整版在 `e7b5f36`);stash 现为空。
 
 **tokenscope 集成**:Stage 1 `PricingProvider` **已提交**(`9dc0bc9`,实现+测试)。余下:heatmap/donut 视图、MCP/Skill 成本归因(见 `docs/usage-tokenscope-plan.md`)。
 
@@ -65,9 +65,9 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
 ## 5. Last session(stage 5 — resume,别 restart)
 
-**2026-07-03** · HEAD `7ca06c2`,分支 `chore/usage-tokenscope-stage0`(领先 main 5 commit,未推送)。
+**2026-07-03** · HEAD `e7b5f36`,分支 `chore/usage-tokenscope-stage0`(领先 main 6 commit,未推送)。
 
-- 发生并发会话竞争(见 §4 新规则):旧会话的一锅端 commit `c85f514` 已被拆分重写为 `9dc0bc9 feat(usage): PricingProvider`(混入 droid.png 图标,hook 所为,无害)+ `2b7d20a feat(update): Sparkle 2.9.4` + `7ca06c2 fix(skills): GitHub token`;旧会话进程(PID 15445)已终止,其在途 SkillsView 重构存于 stash(见 §3)。
+- 发生并发会话竞争(见 §4 新规则):旧会话的一锅端 commit `c85f514` 已被拆分重写为 `9dc0bc9 feat(usage): PricingProvider`(混入 droid.png 图标,hook 所为,无害)+ `2b7d20a feat(update): Sparkle 2.9.4` + `7ca06c2 fix(skills): GitHub token`。竞争的收束:旧会话赶在被终止前提交了 `e7b5f36`(SkillsView 独立化完整版),此后所有并发会话已停,由单会话完成校验与本文件收尾。
 - `swift test`:**491 tests / 0 failures**(绿,每个 commit 均经 pre-commit hook 全量验证)。
 - v1.0.6 已本地构建并部署(见 §1 "本地发布产物")。
 
