@@ -10,10 +10,27 @@ enum AppPaths {
     static let collectorCacheJSON = appSupportRoot.appendingPathComponent("cache/collector-cache.json")
 }
 
+/// Orchestrates usage collection across all native agent parsers plus the
+/// ccSwitch proxy source. Individual parsers live under `Usage/Parsers/`;
+/// this file keeps orchestration, shared I/O utilities, cache management,
+/// deduplication, and aggregation. // [archer]
 enum UsageCollector {
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
     private static let ccSwitchSourceName = "CC Switch Proxy"
+
+    // ---- Parser registry ------------------------------------------------
+
+    /// All native parsers in collection order (Codex → Claude → Grok → Hermes).
+    /// ccSwitch is intentionally excluded — its signature and semantics differ. // [archer]
+    private nonisolated(unsafe) static let parsers: [any UsageParser.Type] = [
+        CodexParser.self,
+        ClaudeCodeParser.self,
+        GrokParser.self,
+        HermesParser.self,
+    ]
+
+    // ---- Main entry point -----------------------------------------------
 
     static func collect(
         historyDays: Int = 180,
@@ -28,10 +45,19 @@ enum UsageCollector {
         var livePaths = Set<String>()
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
 
-        let codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
-        let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
-        let grok = collectGrok(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
-        let hermes = collectHermes(modifiedSince: sourceCutoff)
+        // Loop over registered parsers — no per-agent hardcoding. // [archer]
+        var allResults: [(label: String, result: CollectorResult)] = []
+        var allRecords: [UsageRecord] = []
+
+        for parser in parsers {
+            let result = parser.collect(
+                cache: &cache,
+                livePaths: &livePaths,
+                modifiedSince: sourceCutoff
+            )
+            allResults.append((parser.sourceLabel, result))
+            allRecords.append(contentsOf: result.records)
+        }
 
         var ccSwitch = includeCCSwitchProxyUsage
             ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
@@ -40,282 +66,28 @@ enum UsageCollector {
         cache.files = cache.files.filter { livePaths.contains($0.key) }
         saveCache(cache)
 
-        let nativeRecords = codex.records + claude.records + grok.records + hermes.records
         let deduped = deduplicateCrossSource(
-            nativeRecords: nativeRecords,
+            nativeRecords: allRecords,
             proxyRecords: ccSwitch.records
         )
         if includeCCSwitchProxyUsage {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
-        return aggregate(
-            records: deduped.records,
-            sources: [
-                "Codex": codex.source,
-                "Claude Code": claude.source,
-                "Grok": grok.source,
-                "Hermes": hermes.source,
-                ccSwitchSourceName: ccSwitch.source,
-            ]
-        )
+
+        var sources: [String: SourceInfo] = [:]
+        for (label, result) in allResults {
+            sources[label] = result.source
+        }
+        sources[ccSwitchSourceName] = ccSwitch.source
+
+        return aggregate(records: deduped.records, sources: sources)
     }
 
-    private static func collectCodex(cache: inout CollectorCache, livePaths: inout Set<String>, modifiedSince cutoffDate: Date?) -> CollectorResult {
-        let jsonlResult = collectCodexFromJSONL(cache: &cache, livePaths: &livePaths, modifiedSince: cutoffDate)
-        if jsonlResult.source.status == "ok" {
-            return jsonlResult
-        }
-        return collectCodexFromSQLite(modifiedSince: cutoffDate) ?? jsonlResult
-    }
-
-    private static func collectCodexFromSQLite(modifiedSince cutoffDate: Date?) -> CollectorResult? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = [
-            home.appendingPathComponent(".codex/state_5.sqlite"),
-            home.appendingPathComponent(".codex/sqlite/state_5.sqlite"),
-        ]
-        guard let database = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
-            return nil
-        }
-
-        var query = "select created_at, model, tokens_used from threads where tokens_used > 0"
-        if let cutoffDate {
-            let cutoffTime = cutoffDate.timeIntervalSince1970
-            query += " and created_at >= \(cutoffTime)"
-        }
-
-        guard let rows = sqliteJSONRows(database: database, query: query) else {
-            return nil
-        }
-
-        let records = rows.compactMap { row -> UsageRecord? in
-            let tokens = integerValue(row["tokens_used"] as Any)
-            guard tokens > 0,
-                  let day = dayString(fromEpoch: row["created_at"] as Any)
-            else {
-                return nil
-            }
-            var usage = TokenUsageCounts()
-            usage.totalTokens = tokens
-            return UsageRecord(
-                date: day,
-                timestamp: nil,
-                tool: "Codex",
-                model: modelKey(row["model"] as? String),
-                usage: usage,
-                source: .nativeCodexSQLite
-            )
-        }
-
-        guard !records.isEmpty else { return nil }
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: "ok_sqlite",
-                files: 1,
-                records: records.count
-            )
-        )
-    }
-
-    private static func collectCodexFromJSONL(
-        cache: inout CollectorCache,
-        livePaths: inout Set<String>,
-        modifiedSince cutoffDate: Date?,
-        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
-        roots: [URL]? = nil
-    ) -> CollectorResult {
-        let roots = roots ?? [homeURL.appendingPathComponent(".codex/sessions", isDirectory: true)]
-        let paths = roots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
-        var records: [UsageRecord] = []
-        var seen = Set<String>()
-
-        for path in paths.sorted(by: { $0.path < $1.path }) {
-            livePaths.insert(path.path)
-            if let cached = cachedRecords(for: path, tool: "Codex", cache: cache) {
-                records.append(contentsOf: cached)
-                continue
-            }
-
-            var fileRecords: [UsageRecord] = []
-            var sessionID = path.deletingPathExtension().lastPathComponent
-            var currentModel = "unknown"
-            var eventIndex = 0
-            var lineNumber = 0
-            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
-
-            try? forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count"]) { line in
-                autoreleasepool {
-                    lineNumber += 1
-                    guard let obj = jsonObject(line) else { return }
-                    let type = obj["type"] as? String
-                    let payload = obj["payload"] as? [String: Any]
-
-                    if type == "session_meta", let id = payload?["id"] as? String, !id.isEmpty {
-                        sessionID = id
-                    }
-                    if type == "turn_context" {
-                        currentModel = modelKey(payload?["model"] as? String ?? currentModel)
-                    }
-                    guard type == "event_msg",
-                          payload?["type"] as? String == "token_count",
-                          let info = payload?["info"] as? [String: Any]
-                    else {
-                        return
-                    }
-
-                    let usage = normalizeUsage(info["last_token_usage"] as? [String: Any])
-                    guard usage.totalTokens > 0,
-                          let timestamp = obj["timestamp"] as? String,
-                          let day = dayString(fromISO: timestamp)
-                    else {
-                        return
-                    }
-
-                    eventIndex += 1
-                    let key = "\(sessionID)|\(timestamp)|\(eventIndex)|\(usage.totalTokens)"
-                    guard !seen.contains(key) else { return }
-                    seen.insert(key)
-                    fileRecords.append(
-                        UsageRecord(
-                            date: day,
-                            timestamp: timestamp,
-                            tool: "Codex",
-                            model: currentModel,
-                            usage: usage,
-                            source: .nativeCodex,
-                            requestID: key,
-                            sessionID: sessionID,
-                            sourcePath: path.path,
-                            lineNumber: lineNumber
-                        )
-                    )
-                }
-            }
-            records.append(contentsOf: fileRecords)
-            updateCache(path: path, tool: "Codex", records: fileRecords, cache: &cache)
-        }
-
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: records.isEmpty ? "missing" : "ok",
-                files: paths.count,
-                records: records.count
-            )
-        )
-    }
-
-    private static func collectClaudeCode(
-        cache: inout CollectorCache,
-        livePaths: inout Set<String>,
-        rootURL: URL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/projects", isDirectory: true),
-        modifiedSince cutoffDate: Date?
-    ) -> CollectorResult {
-        let paths = jsonlFiles(under: rootURL, modifiedSince: cutoffDate)
-        var records: [UsageRecord] = []
-
-        for path in paths.sorted(by: { $0.path < $1.path }) {
-            livePaths.insert(path.path)
-            if let cached = cachedRecords(for: path, tool: "Claude Code", cache: cache) {
-                records.append(contentsOf: cached)
-                continue
-            }
-
-            var fileRecords: [UsageRecord] = []
-            var responses = [String: ClaudeUsageCandidate]()
-            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
-
-            var lineNumber = 0
-
-            try? forEachLine(in: path, matchingAny: ["usage"]) { line in
-                autoreleasepool {
-                    lineNumber += 1
-                    guard let obj = jsonObject(line),
-                          obj["type"] as? String == "assistant",
-                          let message = obj["message"] as? [String: Any]
-                    else {
-                        return
-                    }
-
-                    let usage = normalizeUsage(message["usage"] as? [String: Any])
-                    guard usage.totalTokens > 0,
-                          let timestamp = obj["timestamp"] as? String,
-                          let day = dayString(fromISO: timestamp)
-                    else {
-                        return
-                    }
-
-                    let identity = claudeIdentity(obj: obj, message: message, path: path, lineNumber: lineNumber)
-                    let candidate = ClaudeUsageCandidate(
-                        date: day,
-                        timestamp: timestamp,
-                        model: modelKey(message["model"] as? String),
-                        usage: usage,
-                        hasStopReason: hasStopReason(message["stop_reason"]),
-                        lineNumber: lineNumber,
-                        requestID: identity.requestID,
-                        responseID: identity.responseID,
-                        sessionID: identity.sessionID,
-                        sourcePath: path.path
-                    )
-                    if let existing = responses[identity.deduplicationKey],
-                       !candidate.isPreferred(over: existing)
-                    {
-                        return
-                    }
-                    responses[identity.deduplicationKey] = candidate
-                }
-            }
-            fileRecords = responses.values.map(\.record)
-            records.append(contentsOf: fileRecords)
-            updateCache(path: path, tool: "Claude Code", records: fileRecords, cache: &cache)
-        }
-
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: records.isEmpty ? "missing" : "ok",
-                files: paths.count,
-                records: records.count
-            )
-        )
-    }
-
-    /// Grok logs per-turn token usage in `~/.grok/logs/unified.jsonl` as
-    /// `shell.turn.inference_done` events. Model ids come from session
-    /// `summary.json` files under `~/.grok/sessions/`.
-    private static func collectGrok(
-        cache: inout CollectorCache,
-        livePaths: inout Set<String>,
-        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
-        modifiedSince cutoffDate: Date?
-    ) -> CollectorResult {
-        collectGrokFromHome(cache: &cache, livePaths: &livePaths, homeURL: homeURL, modifiedSince: cutoffDate)
-    }
-
-    static func grokRecords(
-        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
-        modifiedSince cutoffDate: Date? = nil
-    ) -> [UsageRecord] {
-        var cache = CollectorCache()
-        var livePaths = Set<String>()
-        return collectGrokFromHome(
-            cache: &cache,
-            livePaths: &livePaths,
-            homeURL: homeURL,
-            modifiedSince: cutoffDate
-        ).records
-    }
+    // ---- Forwarding shims (public API, backward-compat) -----------------
 
     /// Per-Claude-Code-session token totals for the Sessions dashboard's
-    /// token column. Reuses `collectClaudeCode`'s existing JSONL parse path
-    /// (each record already carries `sessionID` via `claudeIdentity`) and
-    /// re-folds by session instead of by day — no new file/DB parsing.
-    /// Fresh local cache/livePaths per call (same throwaway-cache shape as
-    /// `grokRecords` above), so this never touches the shared persisted
-    /// collector cache the main `collect()` snapshot depends on.
+    /// token column. Reuses `ClaudeCodeParser`'s JSONL parse path and
+    /// re-folds by session instead of by day. // [archer]
     static func claudeSessionTokenTotals(
         historyDays: Int = 30,
         rootURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -323,7 +95,7 @@ enum UsageCollector {
     ) -> [String: Int] {
         var cache = CollectorCache()
         var livePaths = Set<String>()
-        let result = collectClaudeCode(
+        let result = ClaudeCodeParser.collectAsRecords(
             cache: &cache,
             livePaths: &livePaths,
             rootURL: rootURL,
@@ -337,13 +109,29 @@ enum UsageCollector {
         return totals
     }
 
+    /// Grok records for `UsageView` today-stats queries.
+    static func grokRecords(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        modifiedSince cutoffDate: Date? = nil
+    ) -> [UsageRecord] {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        return GrokParser.collect(
+            cache: &cache,
+            livePaths: &livePaths,
+            homeURL: homeURL,
+            modifiedSince: cutoffDate
+        ).records
+    }
+
+    /// Test-only entry point for Grok parser with custom home URL.
     static func collectGrokForTesting(
         homeURL: URL,
         modifiedSince cutoffDate: Date?
     ) -> (records: [UsageRecord], source: SourceInfo) {
         var cache = CollectorCache()
         var livePaths = Set<String>()
-        let result = collectGrokFromHome(
+        let result = GrokParser.collect(
             cache: &cache,
             livePaths: &livePaths,
             homeURL: homeURL,
@@ -352,212 +140,7 @@ enum UsageCollector {
         return (result.records, result.source)
     }
 
-    private static func collectGrokFromHome(
-        cache: inout CollectorCache,
-        livePaths: inout Set<String>,
-        homeURL: URL,
-        modifiedSince cutoffDate: Date?
-    ) -> CollectorResult {
-        let path = homeURL.appendingPathComponent(".grok/logs/unified.jsonl")
-        guard FileManager.default.fileExists(atPath: path.path) else {
-            return CollectorResult(
-                records: [],
-                source: SourceInfo(status: "missing", files: 0, records: 0)
-            )
-        }
-        if let cutoffDate,
-           let values = try? path.resourceValues(forKeys: [.contentModificationDateKey]),
-           let modificationDate = values.contentModificationDate,
-           modificationDate < cutoffDate
-        {
-            return CollectorResult(
-                records: [],
-                source: SourceInfo(status: "missing", files: 0, records: 0)
-            )
-        }
-
-        let modelBySession = grokSessionModels(homeURL: homeURL)
-        livePaths.insert(path.path)
-        if let cached = cachedRecords(for: path, tool: "Grok", cache: cache) {
-            return CollectorResult(
-                records: cached,
-                source: SourceInfo(status: cached.isEmpty ? "missing" : "ok", files: 1, records: cached.count)
-            )
-        }
-
-        var records: [UsageRecord] = []
-        var seen = Set<String>()
-        var lineNumber = 0
-        guard FileManager.default.isReadableFile(atPath: path.path) else {
-            return CollectorResult(
-                records: [],
-                source: SourceInfo(status: "missing", files: 1, records: 0)
-            )
-        }
-
-        try? forEachLine(in: path, matchingAny: ["shell.turn.inference_done"]) { line in
-            autoreleasepool {
-                lineNumber += 1
-                guard let obj = jsonObject(line),
-                      obj["msg"] as? String == "shell.turn.inference_done",
-                      let ctx = obj["ctx"] as? [String: Any]
-                else {
-                    return
-                }
-
-                let promptTokens = integerValue(ctx["prompt_tokens"] as Any)
-                let cachedPromptTokens = integerValue(ctx["cached_prompt_tokens"] as Any)
-                let completionTokens = integerValue(ctx["completion_tokens"] as Any)
-                let reasoningTokens = integerValue(ctx["reasoning_tokens"] as Any)
-                let totalTokens = promptTokens + completionTokens + reasoningTokens
-                guard totalTokens > 0,
-                      let timestamp = obj["ts"] as? String,
-                      let day = dayString(fromISO: timestamp)
-                else {
-                    return
-                }
-
-                let sessionID = nonEmptyString(obj["sid"] as? String)
-                let loopIndex = integerValue(ctx["loop_index"] as Any)
-                let dedupeKey = "\(sessionID ?? "unknown")|\(timestamp)|\(loopIndex)|\(totalTokens)"
-                guard !seen.contains(dedupeKey) else { return }
-                seen.insert(dedupeKey)
-
-                var usage = TokenUsageCounts()
-                usage.inputTokens = max(0, promptTokens - cachedPromptTokens)
-                usage.cacheReadInputTokens = cachedPromptTokens
-                usage.outputTokens = completionTokens
-                usage.reasoningOutputTokens = reasoningTokens
-                usage.totalTokens = totalTokens
-
-                let model = modelKey(sessionID.flatMap { modelBySession[$0] })
-                records.append(
-                    UsageRecord(
-                        date: day,
-                        timestamp: timestamp,
-                        tool: "Grok",
-                        model: model,
-                        usage: usage,
-                        source: .nativeGrok,
-                        requestID: dedupeKey,
-                        sessionID: sessionID,
-                        sourcePath: path.path,
-                        lineNumber: lineNumber
-                    )
-                )
-            }
-        }
-
-        updateCache(path: path, tool: "Grok", records: records, cache: &cache)
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: records.isEmpty ? "missing" : "ok",
-                files: 1,
-                records: records.count
-            )
-        )
-    }
-
-    private static func grokSessionModels(homeURL: URL) -> [String: String] {
-        let root = homeURL.appendingPathComponent(".grok/sessions", isDirectory: true)
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return [:]
-        }
-
-        var models: [String: String] = [:]
-        for case let url as URL in enumerator {
-            guard url.lastPathComponent == "summary.json",
-                  let data = try? Data(contentsOf: url),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else {
-                continue
-            }
-            let sessionID = [
-                (obj["info"] as? [String: Any])?["id"] as? String,
-                obj["session_id"] as? String,
-            ].compactMap(nonEmptyString).first
-            guard let sessionID,
-                  let model = nonEmptyString(obj["current_model_id"] as? String)
-            else {
-                continue
-            }
-            models[sessionID] = model
-        }
-        return models
-    }
-
-    private static func collectHermes(modifiedSince cutoffDate: Date?) -> CollectorResult {
-        let database = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".hermes/state.db")
-
-        guard FileManager.default.fileExists(atPath: database.path),
-              FileManager.default.isReadableFile(atPath: database.path)
-        else {
-            return CollectorResult(
-                records: [],
-                source: SourceInfo(status: "missing_db", files: 0, records: 0)
-            )
-        }
-
-        var query = "select id, started_at, model, input_tokens, output_tokens, cache_read_tokens, estimated_cost_usd from sessions"
-        if let cutoffDate {
-            let cutoffTime = cutoffDate.timeIntervalSince1970
-            query += " where started_at >= \(cutoffTime)"
-        }
-
-        guard let rows = sqliteJSONRows(database: database, query: query) else {
-            return CollectorResult(
-                records: [],
-                source: SourceInfo(status: "query_failed", files: 1, records: 0)
-            )
-        }
-
-        let records = rows.compactMap { row -> UsageRecord? in
-            let input = integerValue(row["input_tokens"] as Any)
-            let output = integerValue(row["output_tokens"] as Any)
-            let cacheRead = integerValue(row["cache_read_tokens"] as Any)
-            let total = input + output + cacheRead
-            guard total > 0,
-                  let day = dayString(fromEpoch: row["started_at"] as Any)
-            else {
-                return nil
-            }
-            var usage = TokenUsageCounts()
-            usage.inputTokens = input
-            usage.outputTokens = output
-            usage.cacheReadInputTokens = cacheRead
-            usage.totalTokens = total
-
-            let costVal = doubleValue(row["estimated_cost_usd"] as Any)
-
-            return UsageRecord(
-                date: day,
-                timestamp: isoString(fromEpoch: row["started_at"] as Any),
-                tool: "Hermes",
-                model: modelKey(row["model"] as? String),
-                usage: usage,
-                costUSD: costVal > 0 ? costVal : nil,
-                source: .nativeHermes,
-                requestID: nonEmptyString(row["id"] as? String),
-                sessionID: nonEmptyString(row["id"] as? String),
-                dataSource: "hermes"
-            )
-        }
-
-        return CollectorResult(
-            records: records,
-            source: SourceInfo(
-                status: records.isEmpty ? "missing_valid_rows" : "ok",
-                files: 1,
-                records: records.count
-            )
-        )
-    }
+    // ---- ccSwitch (not protocol — different signature/semantics) --------
 
     private static func collectCCSwitchProxyUsage(databaseURL: URL? = nil) -> CollectorResult {
         let database = databaseURL ?? FileManager.default.homeDirectoryForCurrentUser
@@ -674,6 +257,8 @@ enum UsageCollector {
             )
         )
     }
+
+    // ---- Deduplication --------------------------------------------------
 
     private static func deduplicateCrossSource(
         nativeRecords: [UsageRecord],
@@ -796,7 +381,7 @@ enum UsageCollector {
         if value.contains("claude") { return "claude" }
         if value.contains("codex") { return "codex" }
         if value.contains("gemini") { return "gemini" }
-        if value.contains("hermes") { return "gemini" }
+        if value.contains("hermes") { return "hermes" }
         return nil
     }
 
@@ -854,6 +439,8 @@ enum UsageCollector {
         let tolerance = max(4, Int((Double(baseline) * 0.01).rounded(.up)))
         return abs(lhs - rhs) <= tolerance
     }
+
+    // ---- Aggregation ----------------------------------------------------
 
     private static func aggregate(records: [UsageRecord], sources: [String: SourceInfo]) -> UsageSnapshot {
         var daily = [String: DailyAccumulator]()
@@ -921,7 +508,9 @@ enum UsageCollector {
         )
     }
 
-    private static func jsonlFiles(under root: URL, modifiedSince cutoffDate: Date? = nil) -> [URL] {
+    // ---- File I/O utilities (internal — used by parsers) ----------------
+
+    static func jsonlFiles(under root: URL, modifiedSince cutoffDate: Date? = nil) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path),
               let enumerator = FileManager.default.enumerator(
                   at: root,
@@ -950,7 +539,9 @@ enum UsageCollector {
         }
     }
 
-    private static func cachedRecords(for url: URL, tool: String, cache: CollectorCache) -> [UsageRecord]? {
+    // ---- Cache utilities (internal — used by parsers) -------------------
+
+    static func cachedRecords(for url: URL, tool: String, cache: CollectorCache) -> [UsageRecord]? {
         guard let metadata = fileMetadata(for: url),
               let cached = cache.files[url.path],
               cached.tool == tool,
@@ -962,7 +553,7 @@ enum UsageCollector {
         return cached.records
     }
 
-    private static func updateCache(path: URL, tool: String, records: [UsageRecord], cache: inout CollectorCache) {
+    static func updateCache(path: URL, tool: String, records: [UsageRecord], cache: inout CollectorCache) {
         guard let metadata = fileMetadata(for: path) else { return }
         cache.files[path.path] = CachedUsageFile(
             tool: tool,
@@ -1011,7 +602,9 @@ enum UsageCollector {
         Calendar.current.date(byAdding: .day, value: -max(7, historyDays + 1), to: Date())
     }
 
-    private static func forEachLine(in url: URL, matchingAny markers: [String] = [], _ body: (String) -> Void) throws {
+    // ---- Line streaming (internal — used by parsers) --------------------
+
+    static func forEachLine(in url: URL, matchingAny markers: [String] = [], _ body: (String) -> Void) throws {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
 
@@ -1075,7 +668,9 @@ enum UsageCollector {
         markers.isEmpty || markers.contains { data.range(of: $0) != nil }
     }
 
-    private static func jsonObject(_ line: String) -> [String: Any]? {
+    // ---- JSON helpers (internal — used by parsers) ----------------------
+
+    static func jsonObject(_ line: String) -> [String: Any]? {
         guard let data = line.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
               let dictionary = object as? [String: Any]
@@ -1085,7 +680,7 @@ enum UsageCollector {
         return dictionary
     }
 
-    private static func normalizeUsage(_ raw: [String: Any]?) -> TokenUsageCounts {
+    static func normalizeUsage(_ raw: [String: Any]?) -> TokenUsageCounts {
         guard let raw else { return TokenUsageCounts() }
         var usage = TokenUsageCounts()
         let aliases = [
@@ -1120,37 +715,41 @@ enum UsageCollector {
         return usage
     }
 
-    private static func integerValue(_ value: Any) -> Int {
+    // ---- Value coercion (internal — used by parsers) --------------------
+
+    static func integerValue(_ value: Any) -> Int {
         if let int = value as? Int { return int }
         if let double = value as? Double { return Int(double) }
         if let string = value as? String { return Int(string) ?? 0 }
         return 0
     }
 
-    private static func doubleValue(_ value: Any) -> Double {
+    static func doubleValue(_ value: Any) -> Double {
         if let double = value as? Double { return double }
         if let int = value as? Int { return Double(int) }
         if let string = value as? String { return Double(string) ?? 0 }
         return 0
     }
 
-    private static func nonEmptyString(_ value: String?) -> String? {
+    static func nonEmptyString(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func dayString(fromISO value: String) -> String? {
+    // ---- Date helpers (internal — used by parsers) ----------------------
+
+    static func dayString(fromISO value: String) -> String? {
         guard let date = parseISO(value) else { return nil }
         return dayFormatter.string(from: date)
     }
 
-    private static func dayString(fromEpoch value: Any?) -> String? {
+    static func dayString(fromEpoch value: Any?) -> String? {
         guard let seconds = epochSeconds(value) else { return nil }
         return dayFormatter.string(from: Date(timeIntervalSince1970: seconds))
     }
 
-    private static func isoString(fromEpoch value: Any?) -> String? {
+    static func isoString(fromEpoch value: Any?) -> String? {
         guard let seconds = epochSeconds(value) else { return nil }
         return isoFormatter.string(from: Date(timeIntervalSince1970: seconds))
     }
@@ -1172,60 +771,21 @@ enum UsageCollector {
         return seconds
     }
 
-    private static func parseISO(_ value: String) -> Date? {
+    static func parseISO(_ value: String) -> Date? {
         if let date = isoFormatterWithFractional.date(from: value) {
             return date
         }
         return isoFormatter.date(from: value)
     }
 
-    private static func modelKey(_ model: String?) -> String {
+    // ---- Model key (internal — used by parsers) -------------------------
+
+    static func modelKey(_ model: String?) -> String {
         let value = (model ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "unknown" : value
     }
 
-    private static func claudeIdentity(
-        obj: [String: Any],
-        message: [String: Any],
-        path: URL,
-        lineNumber: Int
-    ) -> ClaudeIdentity {
-        let responseID = nonEmptyString(message["id"] as? String)
-        let requestID = [
-            obj["requestId"] as? String,
-            obj["request_id"] as? String,
-            message["requestId"] as? String,
-            message["request_id"] as? String,
-        ].compactMap(nonEmptyString).first
-        let sessionID = [
-            obj["sessionId"] as? String,
-            obj["session_id"] as? String,
-            obj["sessionID"] as? String,
-        ].compactMap(nonEmptyString).first
-        let uuid = nonEmptyString(obj["uuid"] as? String)
-
-        let deduplicationKey: String
-        if let responseID {
-            deduplicationKey = "response:\(responseID)"
-        } else if let requestID {
-            deduplicationKey = "request:\(requestID)"
-        } else if let uuid {
-            deduplicationKey = "uuid:\(uuid)"
-        } else {
-            deduplicationKey = "line:\(path.path):\(lineNumber)"
-        }
-        return ClaudeIdentity(
-            deduplicationKey: deduplicationKey,
-            requestID: requestID,
-            responseID: responseID,
-            sessionID: sessionID
-        )
-    }
-
-    private static func hasStopReason(_ value: Any?) -> Bool {
-        guard let text = value as? String else { return false }
-        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    // ---- ccSwitch helpers -----------------------------------------------
 
     private static func ccSwitchToolName(appType: String?) -> String {
         let value = (appType ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1242,7 +802,9 @@ enum UsageCollector {
         }
     }
 
-    private static func sqliteJSONRows(database: URL, query: String) -> [[String: Any]]? {
+    // ---- SQLite helper (internal — used by parsers) ---------------------
+
+    static func sqliteJSONRows(database: URL, query: String) -> [[String: Any]]? {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tokenstep-sqlite-\(UUID().uuidString).json")
         _ = FileManager.default.createFile(atPath: outputURL.path, contents: nil)
@@ -1273,6 +835,8 @@ enum UsageCollector {
         return try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     }
 
+    // ---- Cost estimation ------------------------------------------------
+
     /// Cost for one record when the source didn't report one. Pricing numbers
     /// come from `PricingProvider` (models.dev cache → built-in family
     /// snapshot); only the flat total-token heuristic for unknown families
@@ -1297,7 +861,9 @@ enum UsageCollector {
         return (value * mult).rounded() / mult
     }
 
-    private nonisolated(unsafe) static let dayFormatter: DateFormatter = {
+    // ---- Formatters -----------------------------------------------------
+
+    private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -1318,58 +884,14 @@ enum UsageCollector {
     }()
 }
 
+// MARK: - Private types
+
 private struct CrossSourceDedupeResult {
     var records: [UsageRecord]
     var rawProxyRecords: Int
     var keptProxyRecords: Int
     var dedupedProxyRecords: Int
     var skippedProxyRecords: Int
-}
-
-private struct ClaudeIdentity {
-    var deduplicationKey: String
-    var requestID: String?
-    var responseID: String?
-    var sessionID: String?
-}
-
-private struct ClaudeUsageCandidate {
-    var date: String
-    var timestamp: String
-    var model: String
-    var usage: TokenUsageCounts
-    var hasStopReason: Bool
-    var lineNumber: Int
-    var requestID: String?
-    var responseID: String?
-    var sessionID: String?
-    var sourcePath: String
-
-    var record: UsageRecord {
-        UsageRecord(
-            date: date,
-            timestamp: timestamp,
-            tool: "Claude Code",
-            model: model,
-            usage: usage,
-            source: .nativeClaudeCode,
-            requestID: requestID,
-            sessionID: sessionID,
-            responseID: responseID,
-            sourcePath: sourcePath,
-            lineNumber: lineNumber
-        )
-    }
-
-    func isPreferred(over other: ClaudeUsageCandidate) -> Bool {
-        if hasStopReason != other.hasStopReason {
-            return hasStopReason
-        }
-        if timestamp != other.timestamp {
-            return timestamp > other.timestamp
-        }
-        return lineNumber > other.lineNumber
-    }
 }
 
 private struct UsageAccumulator {
@@ -1407,7 +929,8 @@ private struct ModelKey: Hashable {
     var model: String
 }
 
-private struct CollectorResult {
+/// Returned by each parser's `collect()` — lightweight value type. // [archer]
+struct CollectorResult {
     var records: [UsageRecord]
     var source: SourceInfo
 }
