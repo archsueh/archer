@@ -91,6 +91,12 @@ private struct AddTabButton: View {
     @Binding var isMenuOpen: Bool
 
     @State private var isTargeted = false
+    // Worktree side-buttons only render when the workspace sits in a git
+    // repo; `repoRoot` shells out to git, so probe once per popover open
+    // instead of in the row builder.
+    @State private var worktreeCapable = false
+    @State private var worktreeError: String? = nil
+    @State private var creatingWorktreeFor: String? = nil
 
     var body: some View {
         HoverableIconButton(
@@ -119,17 +125,60 @@ private struct AddTabButton: View {
         .popover(isPresented: $isMenuOpen, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared)) { template in
-                    ArcherMenuRow(title: template.title) {
-                        AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 16)
-                    } action: {
-                        store.addTab(in: workspace, pane: pane, template: template)
-                        isMenuOpen = false
+                    HStack(spacing: 0) {
+                        ArcherMenuRow(title: template.title) {
+                            AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 16)
+                        } action: {
+                            store.addTab(in: workspace, pane: pane, template: template)
+                            isMenuOpen = false
+                        }
+                        // Secondary action: open the agent in a fresh git
+                        // worktree. Agent sessions only — a plain shell in a
+                        // worktree is what the sidebar flow is for.
+                        if worktreeCapable, template.id != AgentTemplate.terminal.id {
+                            if creatingWorktreeFor == template.id {
+                                ProgressView()
+                                    .scaleEffect(0.5)
+                                    .frame(width: 24, height: 24)
+                            } else {
+                                HoverableIconButton(
+                                    systemName: "arrow.triangle.branch",
+                                    fontSize: 11,
+                                    size: 24,
+                                    help: "Open \(template.title) in a new worktree"
+                                ) {
+                                    creatingWorktreeFor = template.id
+                                    worktreeError = nil
+                                    Task {
+                                        let error = await store.openTabInNewWorktree(source: workspace, template: template)
+                                        creatingWorktreeFor = nil
+                                        if let error {
+                                            worktreeError = error
+                                        } else {
+                                            isMenuOpen = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
+                }
+                if let worktreeError {
+                    Text(worktreeError)
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.activityFailure)
+                        .lineLimit(2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                 }
             }
             .padding(Theme.space1)
             .frame(minWidth: 220)
             .background(Theme.chromeBackground)
+            .task {
+                let cwd = workspace.workingDirectory
+                worktreeCapable = await Task.detached { WorktreeManager.repoRoot(near: cwd) != nil }.value
+            }
         }
         .dropDestination(for: String.self) { dropped, _ in
             defer { store.draggingTabId = nil }

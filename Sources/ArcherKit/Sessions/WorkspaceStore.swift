@@ -365,6 +365,39 @@ final class WorkspaceStore {
         return nil
     }
 
+    /// One-click "open this agent in a fresh worktree" from the `+` menu —
+    /// the single-slot sibling of `launchParallelTask`: auto-named branch,
+    /// no prompt, no sheet. Goes through `addWorkspace(worktreeParent:)`
+    /// rather than a bare cwd tab so sidebar grouping and the close-time
+    /// worktree cleanup chain behave identically to every other worktree.
+    /// Returns nil on success, an error string for the caller to surface.
+    func openTabInNewWorktree(source: Workspace, template: AgentTemplate) async -> String? {
+        guard let repoPath = WorktreeManager.repoRoot(near: source.workingDirectory) else {
+            return "not inside a git repository"
+        }
+        let parentDir = repoPath.deletingLastPathComponent()
+        let repoName = repoPath.lastPathComponent
+        let slug = template.id == AgentTemplate.terminal.id ? "shell" : template.id
+        // Random suffix keeps repeated one-clicks for the same agent from
+        // colliding on branch or directory names.
+        let suffix = String(UUID().uuidString.prefix(4)).lowercased()
+        let branchName = "archer/\(slug)-\(suffix)"
+        let dirName = WorktreeManager.defaultDirectoryName(sourceName: repoName, branch: branchName)
+        let path = parentDir.appendingPathComponent(dirName)
+        let result = await Task.detached(priority: .userInitiated) {
+            WorktreeManager.add(repoPath: repoPath, path: path,
+                                mode: .newBranch(name: branchName, base: nil))
+        }.value
+        if case let .failure(err) = result { return err.description }
+        addWorkspace(
+            workingDirectory: path,
+            worktreeParent: source,
+            worktreeBranch: branchName,
+            template: template
+        )
+        return nil
+    }
+
     /// Worktree workspaces close through this request first so the
     /// sidebar can pop the brutalist confirm sheet before anything
     /// destructive runs. Plain workspaces skip the prompt and go
