@@ -282,6 +282,11 @@ struct UsageView: View {
             usedIds.insert("grok")
         }
 
+        let geminiDBPath = (home as NSString).appendingPathComponent(".gemini/antigravity-cli/conversation_summaries.db")
+        if fm.fileExists(atPath: geminiDBPath) {
+            usedIds.insert("gemini")
+        }
+
         // 3. Make sure the currently selected agent or active cockpit agent is in the list
         if let activeAgentId = store.active?.activeSession?.agent.id, !activeAgentId.isEmpty {
             usedIds.insert(activeAgentId)
