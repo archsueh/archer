@@ -4,7 +4,7 @@
 > **两条纪律**:①**走前必写**——每次会话结束更新本文件(试了什么/过了什么/败了什么/新规则);不写则下次从零。②**开局必读**——新会话先读本文件 + CLAUDE.md,再动手;别凭记忆重推已验证过的事实。
 > 与 `~/.claude` 全局 memory 的分工:本文件是**项目级、随仓库走**;全局 memory 是**跨项目习惯/偏好**。事实以本文件为准,过期即改。
 >
-> Verified date: 2026-07-03 · HEAD `7ca06c2`（本文件随下一提交入库）
+> Verified date: 2026-07-06 · HEAD `6a47419`（本文件随下一提交入库）
 
 ---
 
@@ -43,12 +43,13 @@
 
 ## 3. Open failures / 进行中(stage 1→2)
 
-当前(HEAD `e7b5f36`,工作树干净):
+当前(HEAD `6a47419`,分支 `refactor/usage-parsers`,领先 main 8 commit):
 
-- **分支未推送**:`chore/usage-tokenscope-stage0` 领先 main 6 commit,待 merge/push。
-- ~~stash `inflight-skillsview-refactor`~~ 已 drop(过时快照,完整版在 `e7b5f36`);stash 现为空。
+- **分支未推送**:`refactor/usage-parsers` + `chore/usage-tokenscope-stage0` 合计 8 commit,待 merge/push。
+- **UsageParser 协议化已完成** (commit `805406f`): protocol + 4 parser 文件 + collect() 循环化,501 test 全绿。
+- **Gemini 调研完成** (commit `6a47419`): 确认 CLI 不落纯文本 token,降级为 BACKLOG。
 
-**tokenscope 集成**:Stage 1 `PricingProvider` **已提交**(`9dc0bc9`,实现+测试)。余下:heatmap/donut 视图、MCP/Skill 成本归因(见 `docs/usage-tokenscope-plan.md`)。
+**tokenscope 集成**:Stage 1 `PricingProvider` **已提交**(`9dc0bc9`,实现+测试)。Stage 2 `UsageParser` 协议化 **已完成**。余下:heatmap/donut 视图、MCP/Skill 成本归因(见 `docs/usage-tokenscope-plan.md`)。
 
 _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
@@ -77,4 +78,14 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 - 重新打包 v1.0.6 并覆盖 /Applications(此前部署的包不含本重构)。
 - stash `inflight-skillsview-refactor` 已过时,可 drop(见 §3)。
 
-**Next**:① merge/push 本分支;② tokenscope 余下(heatmap/donut、成本归因);③ release 流程(DMG + Sparkle appcast 生成与签名)。
+**2026-07-06 · UsageParser 协议化 + Gemini 调研**
+
+- 分支 `refactor/usage-parsers`(基于 `chore/usage-tokenscope-stage0`,2 commit 领先):
+  - `805406f` refactor(usage): extract UsageParser protocol, split collectors to Parsers/
+  - `6a47419` feat(usage): add nativeGemini source + agent probe, backlog for protobuf parser
+- **UsageParser protocol**: `sourceLabel` + `collect(cache:livePaths:modifiedSince:)`, 4 个 native parser(Codex/ClaudeCode/Grok/Hermes) 各自文件在 `Usage/Parsers/`;ccSwitch 不进 protocol(签名/角色不同);`collect()` 循环化;共享工具暴露为 internal
+- **Gemini**: 调研确认 CLI 不落纯文本 token(全在 protobuf blob),降级为 `docs/BACKLOG-gemini-parser.md`;预埋 `nativeGemini` enum + UsageView 探测(检查 `~/.gemini/antigravity-cli/conversation_summaries.db`)
+- `swift test`: **501 tests / 0 failures**(含新增 WorktreeManagerTests ×10),零测试文件改动
+- `scripts/git-pre-commit.sh` 有 agent-session 检测(非本次改动,未被提交)
+
+**Next**:① merge/push 本分支;② tokenscope 余下(heatmap/donut、成本归因);③ release 流程(DMG + Sparkle appcast 生成与签名);④ Gemini parser 等 protobuf schema 公开后解锁;⑤ 其余 8 agent(Aider/Cursor/Windsurf/Copilot/Cline/Augment/Qwen/Goose)调研。
