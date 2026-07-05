@@ -31,6 +31,9 @@ struct SkillsView: View {
     @State private var isCheckingUpdates = false
     @State private var lastUpdateCheck: Date? = nil
     @State private var installErrorMessage: String? = nil
+    @State private var activeSource: SkillSourceId = .skillsSh
+    @State private var aiWorkflowIndex: [SkillsShResult]? = nil
+    @State private var aiWorkflowLoadError: String? = nil
 
     /// A skill Archer itself installed from a GitHub repo, persisted in
     /// `~/.archer/skills.json` so update checks work without any external app.
@@ -54,6 +57,60 @@ struct SkillsView: View {
         let name: String
         let source: String // "owner/repo"
         let installs: Int
+        /// Path of the skill directory inside the repo. `nil` means the
+        /// skills.sh monorepo convention `skills/<id>`; marketplace sources
+        /// with a different layout (ai-workflow) carry their full path here.
+        var repoPath: String? = nil
+        /// Optional grouping badge (ai-workflow: the workflow the skill
+        /// belongs to). skills.sh results have none.
+        var groupLabel: String? = nil
+
+        var resolvedRepoPath: String {
+            repoPath ?? "skills/\(id)"
+        }
+
+        /// Directory name used on disk under each agent's skills dir, and as
+        /// the registry key. Equals `id` for skills.sh (`skills/<id>`).
+        var installDirName: String {
+            (resolvedRepoPath as NSString).lastPathComponent
+        }
+    }
+
+    /// A skill marketplace the discover tab can browse. Two entries — not
+    /// worth a protocol; a third source is one more case + switch arms.
+    enum SkillSourceId: String, CaseIterable {
+        case skillsSh
+        case aiWorkflow
+
+        var label: String {
+            switch self {
+            case .skillsSh: "skills.sh"
+            case .aiWorkflow: "ai-workflow"
+            }
+        }
+
+        var searchPlaceholder: String {
+            switch self {
+            case .skillsSh: "搜索 skills.sh 市场…"
+            case .aiWorkflow: "过滤 ai-workflow 技能…"
+            }
+        }
+
+        var homepageURL: URL? {
+            switch self {
+            case .skillsSh: URL(string: "https://www.skills.sh/")
+            case .aiWorkflow: URL(string: "https://github.com/nicepkg/ai-workflow")
+            }
+        }
+
+        func detailURL(for result: SkillsShResult) -> URL? {
+            switch self {
+            case .skillsSh:
+                URL(string: "https://www.skills.sh/\(result.source)/\(result.name)")
+            case .aiWorkflow:
+                URL(string: "https://github.com/\(result.source)/tree/main/\(result.resolvedRepoPath)")
+            }
+        }
     }
 
     @State private var watcher: DirectoryWatcher?
@@ -309,16 +366,40 @@ struct SkillsView: View {
 
     private var discoverView: some View {
         VStack(spacing: 0) {
-            // Search bar
+            // Search bar + source switch
             HStack(spacing: 8) {
+                // Marketplace source chips — low-contrast, active one carries the accent
+                HStack(spacing: 2) {
+                    ForEach(SkillSourceId.allCases, id: \.self) { source in
+                        Button {
+                            guard activeSource != source else { return }
+                            activeSource = source
+                            discoverQuery = ""
+                            discoverResults = []
+                            if source == .aiWorkflow { fetchAIWorkflowIndex() }
+                        } label: {
+                            Text(source.label)
+                                .font(Theme.mono(10, weight: activeSource == source ? .semibold : .regular))
+                                .foregroundStyle(activeSource == source ? Theme.activityRunning : Theme.chromeMuted)
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(activeSource == source ? Theme.chromeActive : .clear)
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.chromeMuted)
-                TextField("搜索 skills.sh 市场…", text: $discoverQuery)
+                TextField(activeSource.searchPlaceholder, text: $discoverQuery)
                     .font(Theme.mono(12))
                     .foregroundStyle(Theme.chromeForeground)
                     .textFieldStyle(.plain)
-                    .onSubmit { searchSkillsSh() }
+                    .onSubmit {
+                        if activeSource == .skillsSh { searchSkillsSh() }
+                        // ai-workflow filters locally as the query changes; no request
+                    }
                 if isSearching {
                     ProgressView()
                         .scaleEffect(0.6)
@@ -336,12 +417,12 @@ struct SkillsView: View {
                 }
 
                 Button {
-                    if let url = URL(string: "https://www.skills.sh/") {
+                    if let url = activeSource.homepageURL {
                         NSWorkspace.shared.open(url)
                     }
                 } label: {
                     HStack(spacing: 3) {
-                        Text("访问 skills.sh")
+                        Text("访问 \(activeSource.label)")
                         Image(systemName: "arrow.up.right")
                     }
                     .font(Theme.mono(10))
@@ -351,167 +432,59 @@ struct SkillsView: View {
                     .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
-                .help("在浏览器中打开 skills.sh 官方市场")
+                .help("在浏览器中打开该技能市场")
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
             .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
 
-            if discoverResults.isEmpty && !isSearching {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.orange)
-                        Text("热门推荐技能 (Featured on skills.sh)")
-                            .font(Theme.mono(11, weight: .bold))
-                            .foregroundStyle(Theme.chromeMuted)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Theme.chromeActive.opacity(0.4))
-                    .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
-
-                    ForEach(SkillsView.featuredSkills) { result in
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(result.name)
-                                    .font(Theme.mono(12, weight: .medium))
-                                    .foregroundStyle(Theme.chromeForeground)
-                                Text(result.source)
-                                    .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.chromeFaint)
-                            }
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 9))
-                                Text(result.installs >= 1_000_000 ? String(format: "%.1fM", Double(result.installs) / 1_000_000.0) : "\(result.installs)")
-                                    .font(Theme.mono(10))
-                            }
-                            .foregroundStyle(Theme.chromeMuted)
-
-                            if installingSkillId == result.id {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                                    .frame(width: 40, height: 20)
-                            } else {
-                                Button {
-                                    installingSkillId = result.id
-                                    Task {
-                                        await installSkillFromSh(result, targets: ["claude", "agents"])
-                                        installingSkillId = nil
-                                    }
-                                } label: {
-                                    Text("安装")
-                                        .font(Theme.mono(10))
-                                        .foregroundStyle(Theme.activityRunning)
-                                        .padding(.horizontal, 8).padding(.vertical, 4)
-                                        .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                                .help("安装到 ~/.claude/skills 和 ~/.agents/skills")
-
-                                Button {
-                                    installingSkillId = result.id
-                                    Task {
-                                        await installSkillFromSh(result, targets: SkillsView.agentDefs.map { $0.key })
-                                        installingSkillId = nil
-                                    }
-                                } label: {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Theme.chromeMuted)
-                                }
-                                .buttonStyle(.plain)
-                                .help("安装到全部 agent")
-                            }
-
-                            Button {
-                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.name)") {
-                                    NSWorkspace.shared.open(url)
-                                }
-                            } label: {
-                                Text("详情")
-                                    .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.chromeMuted)
-                                    .padding(.horizontal, 6).padding(.vertical, 4)
-                            }
-                            .buttonStyle(.plain)
+            switch activeSource {
+            case .skillsSh:
+                if discoverResults.isEmpty && !isSearching {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "flame.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.orange)
+                            Text("热门推荐技能 (Featured on skills.sh)")
+                                .font(Theme.mono(11, weight: .bold))
+                                .foregroundStyle(Theme.chromeMuted)
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Theme.chromeActive.opacity(0.4))
                         .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+
+                        ForEach(SkillsView.featuredSkills) { result in
+                            discoverRow(result)
+                        }
+                    }
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(discoverResults) { result in
+                            discoverRow(result)
+                        }
                     }
                 }
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(discoverResults) { result in
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(result.name)
-                                    .font(Theme.mono(12, weight: .medium))
-                                    .foregroundStyle(Theme.chromeForeground)
-                                Text(result.source)
-                                    .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.chromeFaint)
-                            }
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 9))
-                                Text(result.installs >= 1_000_000 ? String(format: "%.1fM", Double(result.installs) / 1_000_000.0) : "\(result.installs)")
-                                    .font(Theme.mono(10))
-                            }
-                            .foregroundStyle(Theme.chromeMuted)
-
-                            if installingSkillId == result.id {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                                    .frame(width: 40, height: 20)
-                            } else {
-                                Button {
-                                    installingSkillId = result.id
-                                    Task {
-                                        await installSkillFromSh(result, targets: ["claude", "agents"])
-                                        installingSkillId = nil
-                                    }
-                                } label: {
-                                    Text("安装")
-                                        .font(Theme.mono(10))
-                                        .foregroundStyle(Theme.activityRunning)
-                                        .padding(.horizontal, 8).padding(.vertical, 4)
-                                        .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                                .help("安装到 ~/.claude/skills 和 ~/.agents/skills")
-
-                                Button {
-                                    installingSkillId = result.id
-                                    Task {
-                                        await installSkillFromSh(result, targets: SkillsView.agentDefs.map { $0.key })
-                                        installingSkillId = nil
-                                    }
-                                } label: {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Theme.chromeMuted)
-                                }
-                                .buttonStyle(.plain)
-                                .help("安装到全部 agent")
-                            }
-
-                            Button {
-                                if let url = URL(string: "https://www.skills.sh/\(result.source)/\(result.name)") {
-                                    NSWorkspace.shared.open(url)
-                                }
-                            } label: {
-                                Text("详情")
-                                    .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.chromeMuted)
-                                    .padding(.horizontal, 6).padding(.vertical, 4)
-                            }
+            case .aiWorkflow:
+                if let message = aiWorkflowLoadError {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.activityFailure)
+                        Text(message)
+                            .font(Theme.mono(11))
+                            .foregroundStyle(Theme.chromeForeground)
+                        Spacer()
+                        Button("重试") { fetchAIWorkflowIndex(force: true) }
+                            .font(Theme.mono(10))
                             .buttonStyle(.plain)
+                            .foregroundStyle(Theme.activityRunning)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredAIWorkflowResults) { result in
+                            discoverRow(result)
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 10)
-                        .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
                     }
                 }
             }
@@ -519,6 +492,101 @@ struct SkillsView: View {
         .bracketBorder()
         .onAppear {
             if installedSkills.isEmpty { loadInstalledRegistry() }
+        }
+    }
+
+    /// Shared row for featured + search results across both sources.
+    private func discoverRow(_ result: SkillsShResult) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(result.name)
+                        .font(Theme.mono(12, weight: .medium))
+                        .foregroundStyle(Theme.chromeForeground)
+                    if let group = result.groupLabel {
+                        Text(group)
+                            .font(Theme.mono(9))
+                            .foregroundStyle(Theme.chromeMuted)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Theme.chromeActive.opacity(0.6))
+                            .cornerRadius(3)
+                    }
+                }
+                Text(result.source)
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.chromeFaint)
+            }
+            Spacer()
+            if result.installs > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 9))
+                    Text(result.installs >= 1_000_000 ? String(format: "%.1fM", Double(result.installs) / 1_000_000.0) : "\(result.installs)")
+                        .font(Theme.mono(10))
+                }
+                .foregroundStyle(Theme.chromeMuted)
+            }
+
+            if installingSkillId == result.id {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(width: 40, height: 20)
+            } else {
+                Button {
+                    installingSkillId = result.id
+                    Task {
+                        await installSkillFromSh(result, targets: ["claude", "agents"])
+                        installingSkillId = nil
+                    }
+                } label: {
+                    Text("安装")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.activityRunning)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("安装到 ~/.claude/skills 和 ~/.agents/skills")
+
+                Button {
+                    installingSkillId = result.id
+                    Task {
+                        await installSkillFromSh(result, targets: SkillsView.agentDefs.map { $0.key })
+                        installingSkillId = nil
+                    }
+                } label: {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+                .buttonStyle(.plain)
+                .help("安装到全部 agent")
+            }
+
+            Button {
+                if let url = activeSource.detailURL(for: result) {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Text("详情")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.chromeMuted)
+                    .padding(.horizontal, 6).padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+    }
+
+    /// ai-workflow discovery is a one-shot tree listing filtered locally —
+    /// the repo has no search API, and 170-odd names filter instantly.
+    private var filteredAIWorkflowResults: [SkillsShResult] {
+        guard let index = aiWorkflowIndex else { return [] }
+        let query = discoverQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return index }
+        return index.filter {
+            $0.name.lowercased().contains(query) || ($0.groupLabel?.lowercased().contains(query) ?? false)
         }
     }
 
@@ -957,6 +1025,69 @@ struct SkillsView: View {
                 return SkillsShResult(id: skillId, name: name, source: source, installs: installs)
             }
             await MainActor.run { discoverResults = results }
+        }
+    }
+
+    /// One-shot index of nicepkg/ai-workflow via the Git Trees API. Cached in
+    /// memory for the panel's lifetime; `force` re-fetches (retry button).
+    private func fetchAIWorkflowIndex(force: Bool = false) {
+        if aiWorkflowIndex != nil, !force { return }
+        isSearching = true
+        aiWorkflowLoadError = nil
+        let token = resolveGitHubToken()
+        Task {
+            defer { Task { @MainActor in isSearching = false } }
+            guard let url = URL(string: "https://api.github.com/repos/nicepkg/ai-workflow/git/trees/HEAD?recursive=1") else { return }
+            var req = URLRequest(url: url)
+            req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+            req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
+            if let token {
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            guard let (data, resp) = try? await URLSession.shared.data(for: req),
+                  (resp as? HTTPURLResponse)?.statusCode == 200
+            else {
+                await MainActor.run {
+                    aiWorkflowLoadError = "加载 ai-workflow 索引失败(GitHub API 不可达或限流,可运行 gh auth login)"
+                }
+                return
+            }
+            let parsed = SkillsView.parseAIWorkflowTree(data)
+            await MainActor.run { aiWorkflowIndex = parsed }
+        }
+    }
+
+    /// Parses a Git Trees API response into skill entries. ai-workflow keeps
+    /// skills at exactly `workflows/<wf>/.claude/skills/<name>/SKILL.md`;
+    /// deeper matches are sub-skills bundled inside a skill's assets and the
+    /// top-level `.claude/skills/` holds the repo's own meta skills — both
+    /// deliberately excluded. Static + pure so tests can feed it fixtures.
+    static func parseAIWorkflowTree(_ data: Data) -> [SkillsShResult] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tree = json["tree"] as? [[String: Any]] else { return [] }
+        var results: [SkillsShResult] = []
+        for node in tree {
+            guard let path = node["path"] as? String else { continue }
+            let parts = path.split(separator: "/").map(String.init)
+            guard parts.count == 6,
+                  parts[0] == "workflows",
+                  parts[2] == ".claude",
+                  parts[3] == "skills",
+                  parts[5] == "SKILL.md" else { continue }
+            let workflow = parts[1]
+            let name = parts[4]
+            let group = workflow.hasSuffix("-workflow") ? String(workflow.dropLast("-workflow".count)) : workflow
+            results.append(SkillsShResult(
+                id: "\(workflow)/\(name)",
+                name: name,
+                source: "nicepkg/ai-workflow",
+                installs: 0,
+                repoPath: "workflows/\(workflow)/.claude/skills/\(name)",
+                groupLabel: group
+            ))
+        }
+        return results.sorted {
+            ($0.groupLabel ?? "", $0.name) < ($1.groupLabel ?? "", $1.name)
         }
     }
 
@@ -1445,7 +1576,7 @@ struct SkillsView: View {
                     let (fileData, _) = try await URLSession.shared.data(from: dlUrl)
 
                     for destBase in destBasePaths {
-                        let prefix = "skills/\(result.id)/"
+                        let prefix = "\(result.resolvedRepoPath)/"
                         var relPath = file.path
                         if relPath.hasPrefix(prefix) {
                             relPath = String(relPath.dropFirst(prefix.count))
@@ -1467,24 +1598,24 @@ struct SkillsView: View {
             var destPaths: [String] = []
             for target in targets {
                 if let def = SkillsView.agentDefs.first(where: { $0.key == target }) {
-                    let path = (home as NSString).appendingPathComponent(def.subdir).appending("/\(result.id)")
+                    let path = (home as NSString).appendingPathComponent(def.subdir).appending("/\(result.installDirName)")
                     destPaths.append(path)
                 }
             }
 
             if destPaths.isEmpty { return }
 
-            try await downloadDirectory(repo: result.source, pathInRepo: "skills/\(result.id)", destBasePaths: destPaths)
+            try await downloadDirectory(repo: result.source, pathInRepo: result.resolvedRepoPath, destBasePaths: destPaths)
 
             let parts = result.source.split(separator: "/")
             let owner = parts.count > 0 ? String(parts[0]) : ""
             let repo = parts.count > 1 ? String(parts[1]) : ""
-            registerInstalledSkill(name: result.id, repoOwner: owner, repoName: repo)
+            registerInstalledSkill(name: result.installDirName, repoOwner: owner, repoName: repo)
 
             await MainActor.run {
                 self.loadSkills(silent: true)
                 self.loadInstalledRegistry()
-                if self.updatableSkillNames.remove(result.id) != nil {
+                if self.updatableSkillNames.remove(result.installDirName) != nil {
                     self.updateCount = self.updatableSkillNames.count
                 }
             }
