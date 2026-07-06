@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Archer</title>
+    <link>https://github.com/archsueh/archer</link>
+    <description>Archer release feed</description>
+    <language>en</language>
+    <item>
+      <title>Archer v1.0.7</title>
+      <pubDate>Sun, 06 Jul 2026 21:45:00 +0800</pubDate>
+      <sparkle:version>1.0.7</sparkle:version>
+      <sparkle:shortVersionString>1.0.7</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>v1.0.7</h2>
+        <ul>
+          <li><b>ai-workflow Skill Marketplace</b> — second discover source: 168 skills across 6 workflow groups, local filtering, installs and update checks wired through the existing pipeline.</li>
+          <li><b>One-Click Worktree Tabs</b> — branch side-button on agent rows in the + menu opens the agent in a fresh auto-named git worktree.</li>
+          <li><b>Usage Parser Protocol + Gemini</b> — native collectors behind a UsageParser protocol; new parser for stock gemini-cli session shards.</li>
+          <li><b>Grok full integration</b> — lifecycle + tool-call hooks, session resume, Ask Grok.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/archsueh/archer/releases/download/v1.0.7/Archer-v1.0.7.dmg"
+        sparkle:edSignature="Kw6+2DilcwE1wQvIuPvtut3xj6QrCg/9/nEEopwH0lxziG+lBZQFF8oEAZmgwBOE3kli1NoMdF3Nie3BiacTCw=="
+        length="10990237"
+        type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
