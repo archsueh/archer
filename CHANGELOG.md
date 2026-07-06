@@ -2,8 +2,11 @@
 
 Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 
-## Unreleased
+## v1.0.7 — 2026-07-06
 
+- **ai-workflow Skill Marketplace** — The Skills discover tab now has a source switch: alongside skills.sh, browse nicepkg/ai-workflow's 168 skills (6 workflow groups) listed via the GitHub Trees API with instant local filtering. Install pipeline handles both repos' directory layouts; update checks cover both.
+- **One-Click Worktree Tabs** — Agent rows in the `+` menu grow a branch side-button (git repos only): one click creates an auto-named worktree (`archer/<agent>-<rand>`) and opens the agent there as a child workspace, with the same sidebar grouping and close-time cleanup as sheet-created worktrees.
+- **Usage Parser Protocol + Gemini** — Native usage collectors now conform to a `UsageParser` protocol (Codex/Claude Code/Grok/Hermes each in their own file), and a new Gemini parser reads stock gemini-cli session shards (`~/.gemini/tmp/<hash>/chats/session-*.json`) with thinking tokens billed at the output rate.
 - **Grok full integration** — Renamed **Grok Build** → **Grok** across the agent menu and docs. Detects `~/.grok/bin/grok`, installs Claude-compatible lifecycle + tool-call hooks into `~/.grok/hooks/archer.json`, captures `sessionId` for `--resume` on relaunch, wires `-p` for Ask Grok, and feeds the activity strip from PreToolUse/PostToolUse events.
 
 ## v1.0.3 — 2026-06-22
