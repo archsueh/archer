@@ -47,7 +47,7 @@
 
 - **分支未推送**:`refactor/usage-parsers` + `chore/usage-tokenscope-stage0` 合计 8 commit,待 merge/push。
 - **UsageParser 协议化已完成** (commit `805406f`): protocol + 4 parser 文件 + collect() 循环化,501 test 全绿。
-- **Gemini 调研完成** (commit `6a47419`): 确认 CLI 不落纯文本 token,降级为 BACKLOG。
+- ~~Gemini 降级 BACKLOG~~ **已推翻并实现**:`6a47419` 的结论("CLI 不落纯文本 token")误把 Antigravity CLI 的 protobuf DB 当成 Gemini CLI 的存储。**原版 gemini-cli 落纯 JSON**——`~/.gemini/tmp/<hash>/chats/session-*.json`,消息级 `tokens {input,output,cached,thoughts}`(依据: kenn-io/agentsview `internal/parser/gemini.go` + testdata fixture)。`GeminiParser.swift` 已实现并注册,thoughts 计入 output(按 output 计费)。本机无此数据仅因未装原版 gemini CLI(只有 Archer wrapper)。
 
 **tokenscope 集成**:Stage 1 `PricingProvider` **已提交**(`9dc0bc9`,实现+测试)。Stage 2 `UsageParser` 协议化 **已完成**。余下:heatmap/donut 视图、MCP/Skill 成本归因(见 `docs/usage-tokenscope-plan.md`)。
 

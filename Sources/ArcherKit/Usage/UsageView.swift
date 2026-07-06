@@ -282,8 +282,12 @@ struct UsageView: View {
             usedIds.insert("grok")
         }
 
+        // Antigravity's conversation DB or stock gemini-cli's session shards
+        // (~/.gemini/tmp/<hash>/chats, what GeminiParser reads) — either
+        // means Gemini-family usage exists on this machine.
         let geminiDBPath = (home as NSString).appendingPathComponent(".gemini/antigravity-cli/conversation_summaries.db")
-        if fm.fileExists(atPath: geminiDBPath) {
+        let geminiTmpPath = (home as NSString).appendingPathComponent(".gemini/tmp")
+        if fm.fileExists(atPath: geminiDBPath) || fm.fileExists(atPath: geminiTmpPath) {
             usedIds.insert("gemini")
         }
 

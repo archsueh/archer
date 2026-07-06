@@ -28,6 +28,7 @@ enum UsageCollector {
         ClaudeCodeParser.self,
         GrokParser.self,
         HermesParser.self,
+        GeminiParser.self,
     ]
 
     // ---- Main entry point -----------------------------------------------
