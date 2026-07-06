@@ -86,6 +86,18 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 - **UsageParser protocol**: `sourceLabel` + `collect(cache:livePaths:modifiedSince:)`, 4 个 native parser(Codex/ClaudeCode/Grok/Hermes) 各自文件在 `Usage/Parsers/`;ccSwitch 不进 protocol(签名/角色不同);`collect()` 循环化;共享工具暴露为 internal
 - **Gemini**: 调研确认 CLI 不落纯文本 token(全在 protobuf blob),降级为 `docs/BACKLOG-gemini-parser.md`;预埋 `nativeGemini` enum + UsageView 探测(检查 `~/.gemini/antigravity-cli/conversation_summaries.db`)
 - `swift test`: **501 tests / 0 failures**(含新增 WorktreeManagerTests ×10),零测试文件改动
+
+**2026-07-06(续)· 三工作流收官(竞品调研落地)**
+
+- 三分支全部 ff-merge 回 main(共 4 commit,`swift test` 505/0):
+  - `4972b97` feat(skills): ai-workflow 第二发现源(SkillSourceId 枚举、install 前缀参数化、Trees API 168 技能、SkillSourceTests ×7)
+  - `5571e22` feat(sessions): `+` 菜单 agent 行 branch 副按钮一键开 worktree tab(`openTabInNewWorktree`,OpenTabInNewWorktreeTests ×3)
+  - `805406f`+`6a47419`(另一会话) + 本会话 GeminiParser commit
+- **又一次并发会话竞争**(§4 规则第三次应验):本会话按计划做 C 时发现另一会话已在同一分支完成协议化拆分并提交。处置:废弃本会话的重复文件,改为在对方协议上追加。
+- **推翻对方 Gemini 结论**:`6a47419` 说"CLI 不落纯文本 token"——调研对象错了(看的是 antigravity-cli/ 的 protobuf DB)。原版 gemini-cli 落纯 JSON(`~/.gemini/tmp/<hash>/chats/session-*.json`,agentsview gemini.go+fixture 为证)。`GeminiParser` 已实现注册,`docs/BACKLOG-gemini-parser.md` 已更正为 Antigravity 条目。
+- 工作树残留(未提交,非本会话所有,勿卷入 commit):`scripts/git-pre-commit.sh`(agent 会话跳过全量测试的修改)+ ShellIntegration readlink-f(从 stash 恢复,stash@{0} 本体保留未 drop,由用户决定去留)。
+
+**Next**:① push main(领先 origin 6 commit);② 手动验证三功能(Skills 面板切 ai-workflow 源装一个技能 / git 仓库 `+` 菜单开 worktree tab / 装了 gemini CLI 的机器看 Usage);③ 处置 stash@{0} 与 pre-commit 脚本改动。
 - `scripts/git-pre-commit.sh` 有 agent-session 检测(非本次改动,未被提交)
 
 **Next**:① merge/push 本分支;② tokenscope 余下(heatmap/donut、成本归因);③ release 流程(DMG + Sparkle appcast 生成与签名);④ Gemini parser 等 protobuf schema 公开后解锁;⑤ 其余 8 agent(Aider/Cursor/Windsurf/Copilot/Cline/Augment/Qwen/Goose)调研。
