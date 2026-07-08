@@ -208,12 +208,12 @@ final class ShellIntegrationTests: XCTestCase {
 
     func testAntigravityWrapperGuardsAgainstIDEShim() {
         // Antigravity 2.0 IDE installs a launcher also called `agy` that
-        // symlinks into `/Applications/Antigravity.app/...`. Without
-        // detection, an IDE-only-installed user picking "Antigravity CLI"
-        // from `+` would accidentally open the GUI app.
+        // may sit behind one or more symlinks into `/Applications/Antigravity.app/...`.
+        // Without full resolution + detection, an IDE-only-installed user picking
+        // "Antigravity CLI" from `+` would accidentally open the GUI app.
         let script = ArcherShellIntegration.antigravityWrapperScript
 
-        XCTAssertTrue(script.contains("readlink \"$real\""), "must resolve symlink one hop")
+        XCTAssertTrue(script.contains("readlink -f \"$real\""), "must fully resolve symlink chain (one hop is not enough for IDE launchers)")
         XCTAssertTrue(script.contains("*/Antigravity.app/*"), "must match IDE launcher resolved path")
         XCTAssertTrue(script.contains("antigravity.google/cli/install.sh"), "must surface CLI install command")
         XCTAssertTrue(script.contains("\"$ARCHER_HOOK_BIN\" agy ended"), "must revert tab icon on shim-detection bail")

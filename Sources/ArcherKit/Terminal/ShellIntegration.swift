@@ -1038,16 +1038,20 @@ enum ArcherShellIntegration {
     /// is a symlink into `/Applications/Antigravity.app/...`). With only
     /// the IDE installed, PATH-resolution would pick up the launcher and
     /// a plain `exec agy` opens the GUI — surprising the user who picked
-    /// "Antigravity CLI" from the `+` menu. Detect the IDE shim by
-    /// resolving one symlink hop and matching `/Antigravity.app/`; on
-    /// match, route through the same "not installed" path the preamble
-    /// uses (red message + ArcherHook `ended` ping so the tab icon
-    /// reverts) plus surface the official CLI install command.
+    /// "Antigravity CLI" from the `+` menu.
+    ///
+    /// The launcher may sit behind multiple symlinks, so we fully resolve
+    /// the chain (readlink -f) before checking for an /Antigravity.app/ path.
+    /// On match we emit the same "not installed" UX as the preamble (red
+    /// message + ArcherHook ended ping so the tab reverts) and surface the
+    /// official CLI install command.
     static let antigravityWrapperScript = """
     \(wrapperPreamble(binary: "agy"))
 
-    real_target="$(readlink "$real" 2>/dev/null || true)"
-    case "${real_target:-$real}" in
+    # Fully resolve symlinks — IDE launcher is often reached via a chain
+    # (e.g. ~/.local/bin/agy -> ~/.antigravity/.../agy -> /Applications/...).
+    resolved="$(readlink -f "$real" 2>/dev/null || echo "$real")"
+    case "$resolved" in
         */Antigravity.app/*)
             printf '\\n  \\033[33mThe `agy` on PATH is the Antigravity IDE launcher, not the CLI.\\033[0m\\n' >&2
             printf '  Install the CLI:\\n' >&2
