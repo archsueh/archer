@@ -39,6 +39,15 @@
 - **面板 = 独立窗口时清理导航残留**:把 in-app screen 提升为独立 NSWindow 后,删掉 View 里所有"回父容器"的调用(`store.activeScreen`/`dismiss`/`presentationMode`——面板持孤立 store,这些形同虚设),改用 `window.close()`。最后一个主窗口关闭时,面板不在 `windowControllers` → AppKit 不触发退出 → 僵尸态;修复靠 `handleWindowWillClose` 里遍历 `NSApp.windows` cascade-close,**别用** `NSApp.terminate(nil)`(太暴力)。
 - **Skills mutation 必落盘**:对 SkillItem 的修复/中继/删除,操作后必须同步磁盘文件,不能只改 `@State private var skills`。
 
+**AI Collaboration & Memory Patterns (solidified from user memory exports 2026-07)**:
+- **Evidence-only reviews**: Apply "老规矩" three-phase protocol adapted to code/spec/docs: (1) Logic/structure analysis, (2) Revision check against sources, (3) Formal decisive report. Only cite clear textual/artifact evidence; no speculative padding.
+- **Project memory files**: Maintain CLAUDE.md / STATE.md / DESIGN.md as living artifacts. On every nontrivial handoff or new session, surface key models/decisions/progress explicitly. Cross-AI validation (Claude/Gemini/Grok/Hermes) is the norm—treat outputs as candidates until verified.
+- **Full artifacts rule**: Any generated code, script, prompt, or config delivered must be complete + runnable + accompanied by changelog or usage notes. Confirm framework + boundaries first for taxonomy/file-org/system tasks.
+- **Memory update discipline**: Periodically run "memory update review" passes (as done in export history) to distill new rules, deprecate drift, and keep this file + CLAUDE.md authoritative. Global habits live in ~/.claude or equivalent; project facts here.
+
+**File Organization Taxonomy (reusable pattern from export)**:
+Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` by shoot date + EXIF (Camera vs Graphics routing). Use whitelists, project markers for bundling, and read-only scans before moves. See extracted rules in conversation history for the full tree.
+
 ---
 
 ## 3. Open failures / 进行中(stage 1→2)

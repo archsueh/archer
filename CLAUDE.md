@@ -7,12 +7,18 @@ Rebranded from Kooky/Sailor. Archer is a lightweight, vibe-coding developer cock
 - **开局必读**: Before doing anything, read [`STATE.md`](STATE.md) — it holds verified facts (paths/ports/schema), general rules distilled from past bugs, open in-progress work, and a resume pointer. Treat its **Verified facts** as ground truth; don't re-derive them. If a fact there contradicts the live repo, the repo wins — fix `STATE.md`.
 - **走前必写**: Before ending a nontrivial session, update `STATE.md` — what was tried, what passed/failed, any new rule that survived, and the **Last session** resume pointer. If a session doesn't finish with a write, the next one restarts from zero.
 
+**Project Memory Pattern** (from long-term practice): Use this CLAUDE.md + STATE.md + DESIGN.md + specs/ as living memory. On new session or handoff, paste key sections (data models, design decisions, current progress, open questions). This pattern has been validated across multiple ongoing projects (e.g. cost-tracking apps, design systems, toolchains).
+
 ## Key Commands
 
 - **Build**: `swift build`
 - **Test**: `swift test`
 - **Run**: `swift run`
 - **Clean Build Cache**: `rm -rf .build`
+
+## Interaction & Engineering Style
+
+Cross-project user preferences live in global memory (`~/.claude/.../memory/`: `feedback-response-style`, `feedback-laoguiju-review`, `user-identity`) — honesty-first, expert depth, evidence-only reviews, full ready-to-run artifacts. Not duplicated here per STATE.md's 分工 rule: project files carry project facts only.
 
 ## Code & Design Standards
 
