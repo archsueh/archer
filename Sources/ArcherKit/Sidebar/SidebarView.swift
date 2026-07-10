@@ -26,12 +26,14 @@ private enum SidebarRowItem: Identifiable, Hashable {
     case workspace(UUID)
     case developerRoot
     case memory
+    case rules
 
     var id: String {
         switch self {
         case let .workspace(id): return id.uuidString
         case .developerRoot: return "developer-root"
         case .memory: return "memory"
+        case .rules: return "rules"
         }
     }
 }
@@ -232,17 +234,23 @@ private struct DeveloperTreeRow: View {
     }
 }
 
-// MARK: - Memory Bank Section (from original)
+// MARK: - Memory Bank Section (A-mem style local link graph)
 
+/// Replaces the old flat file list with a local, dependency-free memory
+/// network (inspired by agiresearch/A-mem): notes are ranked by link
+/// centrality (hubs first), grouped by #tag, orphans flagged, and copyable
+/// `[[wikilinks]]` are offered so the user curates the graph by hand —
+/// matching Archer's "human high-signal curation over auto capture" stance.
 struct MemoryBankSection: View {
-    @Environment(\.controlActiveState) private var controlActive
     @FocusState private var focusedField: String?
 
     private let fm = FileManager.default
-    private var memos: [URL] {
-        let dir = memoryDir
-        guard let urls = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return [] }
-        return urls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    /// Built lazily in onAppear — `memoryDir` is a computed property and can't
+    /// be referenced from the property initializer.
+    @State private var graph = MemoryGraph(directory: FileManager.default.temporaryDirectory)
+
+    private var memos: [MemoNode] {
+        graph.ranked
     }
 
     var body: some View {
@@ -256,69 +264,152 @@ struct MemoryBankSection: View {
                     .font(Theme.mono(11, weight: .semibold))
                     .foregroundStyle(Theme.chromeForeground.opacity(0.9))
                 Spacer(minLength: 0)
-                Text(memoryDir.lastPathComponent)
+                // A-mem style: expose graph size as a signal of how connected the memory is.
+                Text("\(graph.nodes.count)·\(graph.tagClusters.count)")
                     .font(Theme.mono(9))
                     .foregroundStyle(Theme.chromeForeground.opacity(0.45))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HoverableIconButton(systemName: "plus", fontSize: 10, size: 18, help: L10n.string("New memo")) {
+                    newMemo()
+                }
+                .opacity(0.7)
             }
             .padding(.horizontal, Theme.space2)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
-            .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { focusedField = "memory-open" } }
+            .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { isExpanded.toggle() } }
 
             if isExpanded {
-                ScrollView(showsIndicators: true) {
-                    LazyVStack(alignment: .trailing, spacing: 0) {
-                        ForEach(memos, id: \.path) { memo in
-                            HStack(alignment: .firstTextBaseline, spacing: Theme.space1) {
-                                Text("→")
-                                    .font(Theme.mono(9))
-                                    .foregroundStyle(Theme.chromeForeground.opacity(0.45))
-                                Text(memo.lastPathComponent)
-                                    .font(Theme.mono(10))
-                                    .foregroundStyle(Theme.chromeForeground.opacity(0.8))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                Spacer(minLength: 0)
+                if memos.isEmpty {
+                    Text(L10n.string("No memory yet"))
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.chromeForeground.opacity(0.4))
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    ScrollView(showsIndicators: true) {
+                        LazyVStack(alignment: .trailing, spacing: 0) {
+                            // 1) Hubs — most connected notes float to the top.
+                            ForEach(memos, id: \.id) { memo in
+                                memoRow(memo)
                             }
-                            .padding(.horizontal, Theme.space3)
-                            .padding(.vertical, 3)
-                            .contentShape(Rectangle())
-                            .onTapGesture { copyToPasteboard(memo.path) }
+                            // 2) Tag clusters — collapse by default; tap to peek.
+                            ForEach(graph.tagClusters, id: \.tag) { cluster in
+                                tagClusterRow(cluster)
+                            }
+                            // 3) Orphans — isolated notes that should be connected.
+                            if !graph.orphans.isEmpty {
+                                sectionHeader(L10n.string("Orphans"), count: graph.orphans.count)
+                                ForEach(graph.orphans, id: \.id) { memo in
+                                    memoRow(memo, dimmed: true)
+                                }
+                            }
                         }
-                        if memos.isEmpty {
-                            Text("暂无记忆")
-                                .font(Theme.mono(10))
-                                .foregroundStyle(Theme.chromeForeground.opacity(0.4))
-                                .padding(.vertical, 4)
-                        }
+                        .padding(.horizontal, Theme.space2)
+                        .padding(.vertical, Theme.space1)
                     }
-                    .padding(.horizontal, Theme.space2)
-                    .padding(.vertical, Theme.space1)
+                    .frame(maxHeight: 220)
                 }
-                .frame(maxHeight: 180)
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.vertical, 2)
-        .onAppear { ensureMemoryDir() }
+        .onAppear { ensureMemoryDir(); graph = MemoryGraph(directory: memoryDir); graph.build() }
+        .onChange(of: focusedField) { _, _ in graph.build() }
     }
 
     @State private var isExpanded = true
 
+    // MARK: - Rows
+
+    private func memoRow(_ memo: MemoNode, dimmed: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.space1) {
+            let degree = memo.degree
+            Text(degree > 0 ? "●" : "○")
+                .font(Theme.mono(8))
+                .foregroundStyle(degree > 1 ? Theme.chromeForeground.opacity(0.7) : Theme.chromeForeground.opacity(0.3))
+            Text(memo.title)
+                .font(Theme.mono(10))
+                .foregroundStyle(Theme.chromeForeground.opacity(dimmed ? 0.45 : 0.8))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            if degree > 0 {
+                Text("\(degree)")
+                    .font(Theme.mono(9))
+                    .foregroundStyle(Theme.chromeForeground.opacity(0.4))
+            }
+        }
+        .padding(.horizontal, Theme.space3)
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture { copyToPasteboard("[[\(memo.title)]]") }
+        .help("\(memo.title) · \(memo.backlinks.count) \(L10n.string("backlinks")) · 点击复制 [[\(memo.title)]]")
+    }
+
+    private func tagClusterRow(_ cluster: (tag: String, nodes: [MemoNode])) -> some View {
+        DisclosureGroup {
+            ForEach(cluster.nodes, id: \.id) { memo in
+                memoRow(memo)
+            }
+        } label: {
+            sectionHeader("#\(cluster.tag)", count: cluster.nodes.count)
+        }
+        .padding(.leading, Theme.space2)
+    }
+
+    private func sectionHeader(_ label: String, count: Int) -> some View {
+        HStack(spacing: Theme.space1) {
+            Text(label)
+                .font(Theme.mono(9, weight: .semibold))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.6))
+            Text("\(count)")
+                .font(Theme.mono(8))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.35))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.space3)
+        .padding(.vertical, 2)
+    }
+
+    // MARK: - Actions
+
+    /// A-mem style new memo: atomic note with a `[[ ]]` placeholder and a
+    /// #tag slot so the graph grows by explicit linking, not auto-capture.
+    private func newMemo() {
+        let stamp = ISO8601DateFormatter().string(from: Date()).prefix(19).replacingOccurrences(of: ":", with: "")
+        let title = "memo-\(stamp)"
+        let url = memoryDir.appendingPathComponent("\(title).md")
+        let template = """
+        # \(title)
+
+        > \(L10n.string("Link suggestions")): 把相关记忆写成 [[对方标题]] 来连成网络。
+
+        ## 内容
+        -
+
+        ## 关联
+        - [[ ]]
+
+        #\(L10n.string("Memory"))
+        """
+        try? template.write(to: url, atomically: true, encoding: .utf8)
+        graph.build()
+        copyToPasteboard("[[\(title)]]")
+    }
+
     private var memoryDir: URL {
-        let activeBranch: String = {
+        let branch: String = {
             let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             let head = cwd.appendingPathComponent(".git/HEAD")
             guard let content = try? String(contentsOf: head, encoding: .utf8),
                   content.hasPrefix("ref: refs/heads/") else { return "default" }
-            let ref = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            return ref.replacingOccurrences(of: "ref: ", with: "").components(separatedBy: "/").last ?? "default"
+            return content.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "ref: ", with: "")
+                .components(separatedBy: "/").last ?? "default"
         }()
         return URL(fileURLWithPath: "~/Library/Application Support/Archer/memory/claude")
             .standardizedFileURL
-            .appendingPathComponent(activeBranch)
+            .appendingPathComponent(branch)
     }
 
     private func ensureMemoryDir() {
@@ -328,9 +419,8 @@ struct MemoryBankSection: View {
     private func copyToPasteboard(_ text: String) {
         let escaped = text.replacingOccurrences(of: " ", with: "\\ ")
         guard let data = "\(escaped)\n".data(using: .utf8) else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setData(data, forType: .string)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setData(data, forType: .string)
     }
 }
 
@@ -508,7 +598,7 @@ struct SidebarView: View {
     }
 
     private var toolItems: [SidebarRowItem] {
-        [.developerRoot, .memory]
+        [.developerRoot, .memory, .rules]
     }
 
     private func isSectionCollapsed(_ section: SidebarSection) -> Bool {
@@ -654,15 +744,6 @@ struct SidebarView: View {
                     ) {
                         UsagePanelWindowController.show()
                     }
-
-                    HoverableIconButton(
-                        systemName: "text.justify.left",
-                        fontSize: 12,
-                        size: 28,
-                        help: "Bridge & hook log"
-                    ) {
-                        LogPanelWindowController.show()
-                    }
                 }
             } else {
                 VStack(spacing: 4) {
@@ -680,14 +761,6 @@ struct SidebarView: View {
                         isActive: false
                     ) {
                         UsagePanelWindowController.show()
-                    }
-
-                    HoverableNavButton(
-                        title: "LOG",
-                        iconName: "text.justify.left",
-                        isActive: false
-                    ) {
-                        LogPanelWindowController.show()
                     }
                 }
                 .padding(.horizontal, Theme.space2)
@@ -814,6 +887,9 @@ private struct SectionView: View {
 
         case .memory:
             MemoryBankSection()
+
+        case .rules:
+            ProjectRulesSection(store: store)
         }
     }
 
