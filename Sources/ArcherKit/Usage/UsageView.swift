@@ -414,16 +414,22 @@ struct UsageView: View {
     }
 
     private var statStrip: some View {
-        let (fiveHourPercent, weeklyPercent) = getUsagePercentages()
+        let usagePct = getUsagePercentages()
 
         return HStack(spacing: 0) {
             if resolvedBaseAgentId == "claude-code" {
                 // Stat 1: Claude 5h
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        Text("\(fiveHourPercent)")
-                            .font(Theme.display(38, weight: .semibold))
-                            .foregroundStyle(fiveHourPercent > 75 ? Theme.activityAttention : Theme.activityRunning)
+                        if let pct = usagePct {
+                            Text("\(pct.fiveHour)")
+                                .font(Theme.display(38, weight: .semibold))
+                                .foregroundStyle(pct.fiveHour > 75 ? Theme.activityAttention : Theme.activityRunning)
+                        } else {
+                            Text("—")
+                                .font(Theme.display(38, weight: .semibold))
+                                .foregroundStyle(Theme.chromeMuted)
+                        }
                         Text("%")
                             .font(Theme.display(17, weight: .medium))
                             .foregroundStyle(Theme.chromeMuted)
@@ -437,7 +443,7 @@ struct UsageView: View {
                             .font(Theme.mono(10.5))
                             .foregroundStyle(Theme.chromeMuted)
                     } else {
-                        Text("重置 1h 12m")
+                        Text("未连接")
                             .font(Theme.mono(10.5))
                             .foregroundStyle(Theme.chromeMuted)
                     }
@@ -454,9 +460,15 @@ struct UsageView: View {
                 // Stat 2: Claude Weekly
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        Text("\(weeklyPercent)")
-                            .font(Theme.display(38, weight: .semibold))
-                            .foregroundStyle(Theme.activityRunning)
+                        if let pct = usagePct {
+                            Text("\(pct.weekly)")
+                                .font(Theme.display(38, weight: .semibold))
+                                .foregroundStyle(Theme.activityRunning)
+                        } else {
+                            Text("—")
+                                .font(Theme.display(38, weight: .semibold))
+                                .foregroundStyle(Theme.chromeMuted)
+                        }
                         Text("%")
                             .font(Theme.display(17, weight: .medium))
                             .foregroundStyle(Theme.chromeMuted)
@@ -464,9 +476,15 @@ struct UsageView: View {
                     Text("Claude · 周配额")
                         .font(Theme.display(13))
                         .foregroundStyle(Theme.chromeForeground)
-                    Text("重置 周一 09:00")
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.chromeMuted)
+                    if let resets = viewModel.usage?.weekly?.resetsAt {
+                        Text("重置 \(countdown(resets))")
+                            .font(Theme.mono(10.5))
+                            .foregroundStyle(Theme.chromeMuted)
+                    } else {
+                        Text("未连接")
+                            .font(Theme.mono(10.5))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
@@ -738,40 +756,65 @@ struct UsageView: View {
                     }
 
                     // Meter 1: 5h Window
-                    let (fiveHourPercent, weeklyPercent) = getUsagePercentages()
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("5 小时滚动窗口")
-                                .font(Theme.display(13))
-                            Spacer()
-                            Text("\(Int(Double(fiveHourPercent) / 100.0 * 50000.0))")
-                                .font(Theme.mono(12))
-                                .foregroundStyle(Theme.chromeForeground) +
-                                Text(" / 50,000")
-                                .font(Theme.mono(12))
-                                .foregroundStyle(Theme.chromeMuted)
-                        }
+                    let usagePct = getUsagePercentages()
+                    if let pct = usagePct {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("5 小时滚动窗口")
+                                    .font(Theme.display(13))
+                                Spacer()
+                                Text("\(Int(Double(pct.fiveHour) / 100.0 * 50000.0))")
+                                    .font(Theme.mono(12))
+                                    .foregroundStyle(Theme.chromeForeground) +
+                                    Text(" / 50,000")
+                                    .font(Theme.mono(12))
+                                    .foregroundStyle(Theme.chromeMuted)
+                            }
 
-                        GeometryReader { geo in
-                            Rectangle()
-                                .fill(fiveHourPercent > 75 ? Theme.activityAttention : Theme.activityRunning)
-                                .frame(width: geo.size.width * CGFloat(Double(fiveHourPercent) / 100.0))
-                        }
-                        .frame(height: 14)
-                        .background(Color.gray.opacity(0.1))
-                        .bracketBorder()
+                            GeometryReader { geo in
+                                Rectangle()
+                                    .fill(pct.fiveHour > 75 ? Theme.activityAttention : Theme.activityRunning)
+                                    .frame(width: geo.size.width * CGFloat(Double(pct.fiveHour) / 100.0))
+                            }
+                            .frame(height: 14)
+                            .background(Color.gray.opacity(0.1))
+                            .bracketBorder()
 
-                        HStack {
-                            Text("\(fiveHourPercent)% 已用")
-                            Spacer()
-                            if let resets = viewModel.usage?.fiveHour?.resetsAt {
-                                Text("重置于 \(timeStr(resets)) · \(countdown(resets)) 后")
-                            } else {
-                                Text("重置于 14:30 · 1h 12m 后")
+                            HStack {
+                                Text("\(pct.fiveHour)% 已用")
+                                Spacer()
+                                if let resets = viewModel.usage?.fiveHour?.resetsAt {
+                                    Text("重置于 \(timeStr(resets)) · \(countdown(resets)) 后")
+                                } else {
+                                    Text("重置时间未知")
+                                }
+                            }
+                            .font(Theme.mono(10.5))
+                            .foregroundStyle(Theme.chromeMuted)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "exclamationmark.lock")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(Theme.activityAttention)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("未连接 Anthropic 用量")
+                                        .font(Theme.mono(12, weight: .bold))
+                                        .foregroundStyle(Theme.chromeForeground)
+                                    Text("在终端运行 `claude` 并完成登录后，重选此面板即可加载 5h / 周配额。")
+                                        .font(Theme.mono(10.5))
+                                        .foregroundStyle(Theme.chromeMuted)
+                                }
+                            }
+                            if let err = viewModel.error {
+                                Text("原因：\(err)")
+                                    .font(Theme.mono(10))
+                                    .foregroundStyle(Theme.activityFailure)
+                                    .padding(.leading, 28)
                             }
                         }
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.chromeMuted)
+                        .padding(.vertical, 6)
                     }
 
                     // Meter 2: Weekly Quota
@@ -780,27 +823,41 @@ struct UsageView: View {
                             Text("本周配额")
                                 .font(Theme.display(13))
                             Spacer()
-                            Text(String(format: "%.1fM", Double(weeklyPercent) / 100.0 * 5.8))
-                                .font(Theme.mono(12))
-                                .foregroundStyle(Theme.chromeForeground) +
-                                Text(" / 5.8M")
-                                .font(Theme.mono(12))
-                                .foregroundStyle(Theme.chromeMuted)
+                            if let pct = usagePct {
+                                Text(String(format: "%.1fM", Double(pct.weekly) / 100.0 * 5.8))
+                                    .font(Theme.mono(12))
+                                    .foregroundStyle(Theme.chromeForeground) +
+                                    Text(" / 5.8M")
+                                    .font(Theme.mono(12))
+                                    .foregroundStyle(Theme.chromeMuted)
+                            } else {
+                                Text("—")
+                                    .font(Theme.mono(12))
+                                    .foregroundStyle(Theme.chromeMuted)
+                            }
                         }
 
                         GeometryReader { geo in
                             Rectangle()
                                 .fill(Theme.activityRunning)
-                                .frame(width: geo.size.width * CGFloat(Double(weeklyPercent) / 100.0))
+                                .frame(width: geo.size.width * CGFloat(Double(usagePct?.weekly ?? 0) / 100.0))
                         }
                         .frame(height: 14)
                         .background(Color.gray.opacity(0.1))
                         .bracketBorder()
 
                         HStack {
-                            Text("\(weeklyPercent)% 已用")
+                            if let pct = usagePct {
+                                Text("\(pct.weekly)% 已用")
+                            } else {
+                                Text("无数据")
+                            }
                             Spacer()
-                            Text("重置 周一 09:00 · 3 天后")
+                            if let resets = viewModel.usage?.weekly?.resetsAt {
+                                Text("重置于 \(timeStr(resets)) · \(countdown(resets)) 后")
+                            } else {
+                                Text("重置时间未知")
+                            }
                         }
                         .font(Theme.mono(10.5))
                         .foregroundStyle(Theme.chromeMuted)
@@ -866,7 +923,7 @@ struct UsageView: View {
                         HStack {
                             Text("缓存效率")
                             Spacer()
-                            Text("基于最近 of API 会话统计")
+                            Text("基于本地 state.db 会话统计")
                         }
                         .font(Theme.mono(10.5))
                         .foregroundStyle(Theme.chromeMuted)
@@ -1119,13 +1176,12 @@ struct UsageView: View {
 
     // MARK: - Helper Methods
 
-    private func getUsagePercentages() -> (fiveHour: Int, weekly: Int) {
-        if let u = viewModel.usage {
-            let fh = u.fiveHour?.percent ?? 68
-            let wk = u.weekly?.percent ?? 41
-            return (fh, wk)
-        }
-        return (68, 41)
+    /// Real Claude usage percentages, or `nil` when no data is available
+    /// (not signed in / keychain token missing / API unreachable). Never
+    /// fabricates numbers — the caller renders an explicit "未连接" state.
+    private func getUsagePercentages() -> (fiveHour: Int, weekly: Int)? {
+        guard let u = viewModel.usage else { return nil }
+        return (u.fiveHour?.percent ?? 0, u.weekly?.percent ?? 0)
     }
 
     private func countdown(_ date: Date) -> String {

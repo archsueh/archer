@@ -28,6 +28,13 @@ struct SkillsView: View {
     @State private var isSearching = false
     @State private var installingSkillId: String? = nil
     @State private var isUpdatingAll = false
+    /// [archer] Hermes skills (`~/.hermes/skills`) update state. Hermes
+    /// updates via its own CLI (`hermes update`), not a bare git pull —
+    /// the skills dir has no usable remote here. We surface it in the
+    /// same "检查更新" surface so Hermes skills aren't a dead end.
+    @State private var hermesUpdateAvailable = false
+    @State private var hermesBehindCount = 0
+    @State private var isUpdatingHermes = false
     @State private var isCheckingUpdates = false
     @State private var lastUpdateCheck: Date? = nil
     @State private var installErrorMessage: String? = nil
@@ -125,18 +132,35 @@ struct SkillsView: View {
     struct SkillItem: Identifiable, Equatable {
         let id = UUID()
         let name: String
-        let source: String // "~/.claude", "~/.agents", "~/.codex", "项目"
+        /// Source label, e.g. "~/.hermes" — derived from the agentDef's subdir.
+        let source: String
         let path: String
         let skillDirName: String // e.g. "archviz-diagram"
         let canonicalDirPath: String // parent directory of SKILL.md
         var description: String
-        var triggerCount: Int
-        var lastTriggered: String
+        /// Real signal: how many agent endpoints expose this skill
+        /// (cross-endpoint replicas + 1). 0 only if the scan found nothing.
+        var endpointCount: Int
+        /// Real signal: file modification date of SKILL.md (nil if unreadable).
+        var lastModified: Date?
+        /// Derived display string from `lastModified` (relative time).
+        var lastModifiedLabel: String
+        /// True when `canonicalDirPath` is a symlink (relayed, not owned).
+        var isSymlink: Bool
         var isDuplicate: Bool
         var duplicateCount: Int
         var hasIssue: Bool
         var issueDescription: String?
         var agentPresence: Set<String> // "claude", "codex", "agents", "hermes", "gemini"
+
+        /// Back-compat aliases so the rest of the view keeps compiling.
+        var triggerCount: Int {
+            endpointCount
+        }
+
+        var lastTriggered: String {
+            lastModifiedLabel
+        }
     }
 
     static let agentDefs: [(key: String, label: String, icon: String, subdir: String)] = [
@@ -314,15 +338,15 @@ struct SkillsView: View {
             .padding(20)
             .overlay(HStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(width: 1) })
 
-            // Stat 2: Active
+            // Stat 2: Recently modified (real signal)
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(activeCount)")
                     .font(Theme.display(38, weight: .semibold))
                     .foregroundStyle(Theme.activityRunning)
-                Text("45 天内活跃")
+                Text("近 45 天修改")
                     .font(Theme.display(13))
                     .foregroundStyle(Theme.chromeForeground)
-                Text("按触发记录统计")
+                Text("按 SKILL.md 修改时间统计")
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.chromeMuted)
             }
@@ -663,6 +687,49 @@ struct SkillsView: View {
             .padding(.horizontal, 14).padding(.vertical, 12)
             .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
 
+            // [archer] Hermes skills update block — separate from GitHub
+            // skills because they update via `hermes update`, not the
+            // archer install registry.
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(hermesUpdateAvailable ? Color.orange : Theme.activityRunning)
+                    .frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Hermes skills")
+                            .font(Theme.mono(12, weight: .medium))
+                            .foregroundStyle(Theme.chromeForeground)
+                        if hermesUpdateAvailable {
+                            Text("有新版本")
+                                .font(Theme.mono(9))
+                                .foregroundStyle(Color.orange)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .overlay(Rectangle().stroke(Color.orange.opacity(0.4), lineWidth: 1))
+                        }
+                    }
+                    Text("~/.hermes/skills · \(hermesUpdateAvailable ? "\(hermesBehindCount) commits behind" : "已是最新")")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.chromeFaint)
+                }
+                Spacer()
+                if isUpdatingHermes {
+                    ProgressView().scaleEffect(0.6).frame(width: 40, height: 20)
+                } else if hermesUpdateAvailable {
+                    Button {
+                        runHermesUpdate()
+                    } label: {
+                        Text("更新")
+                            .font(Theme.mono(10))
+                            .foregroundStyle(Theme.activityRunning)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .overlay(Rectangle().stroke(Theme.activityRunning.opacity(0.4), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+
             let githubSkills = installedSkills
             if githubSkills.isEmpty {
                 VStack(spacing: 8) {
@@ -792,7 +859,7 @@ struct SkillsView: View {
                 }
             }) {
                 HStack(spacing: 7) {
-                    Text("按触发次数")
+                    Text("按端点数")
                     Image(systemName: sortDescending ? "chevron.down" : "chevron.up")
                         .font(.system(size: 8, weight: .bold))
                 }
@@ -840,9 +907,9 @@ struct SkillsView: View {
                 GridRow {
                     Text("Skill 来源")
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("45 天触发")
+                    Text("端点数")
                         .frame(width: 120, alignment: .trailing)
-                    Text("最后触发")
+                    Text("修改时间")
                         .frame(width: 150, alignment: .trailing)
                 }
                 .font(Theme.mono(10, weight: .semibold))
@@ -902,7 +969,7 @@ struct SkillsView: View {
         }
 
         result.sort { a, b in
-            sortDescending ? a.triggerCount > b.triggerCount : a.triggerCount < b.triggerCount
+            sortDescending ? a.endpointCount > b.endpointCount : a.endpointCount < b.endpointCount
         }
 
         return result
@@ -993,7 +1060,7 @@ struct SkillsView: View {
 
         await MainActor.run {
             updatableSkillNames = names
-            updateCount = names.count
+            updateCount = names.count + (hermesUpdateAvailable ? 1 : 0)
             lastUpdateCheck = Date()
             isCheckingUpdates = false
             if repoLatest.isEmpty, let code = firstErrorCode {
@@ -1001,6 +1068,68 @@ struct SkillsView: View {
                     ? "检查更新失败:GitHub API 限流(403)。登录 gh(gh auth login)或设置 GITHUB_TOKEN 可提升到 5000 次/小时。"
                     : "检查更新失败(HTTP \(code))。"
             }
+        }
+        // [archer] Hermes skills live in a git repo with no usable remote
+        // here; they update via `hermes update`, which we invoke read-only.
+        await checkHermesUpdates()
+    }
+
+    /// [archer] Read-only check: runs `hermes update --check` and parses the
+    /// "N commits behind origin/main" line. Never mutates the repo.
+    private func checkHermesUpdates() async {
+        let hermesPath = "/Users/mac/.local/bin/hermes"
+        guard FileManager.default.isExecutableFile(atPath: hermesPath) else {
+            await MainActor.run { hermesUpdateAvailable = false; hermesBehindCount = 0 }
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: hermesPath)
+        process.arguments = ["update", "--check"]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            await MainActor.run { hermesUpdateAvailable = false; hermesBehindCount = 0 }
+            return
+        }
+        let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        // Match "Update available: 6 commits behind origin/main."
+        var behind = 0
+        if let range = text.range(of: "(\\d+) commits behind", options: .regularExpression),
+           let n = Int(text[range].replacingOccurrences(of: " commits behind", with: ""))
+        {
+            behind = n
+        }
+        let available = behind > 0
+        await MainActor.run {
+            hermesUpdateAvailable = available
+            hermesBehindCount = behind
+            // Fold Hermes into the global "可更新" count.
+            updateCount = self.updatableSkillNames.count + (available ? 1 : 0)
+        }
+    }
+
+    /// [archer] Fire-and-forget `hermes update --yes` to pull + reinstall.
+    private func runHermesUpdate() {
+        isUpdatingHermes = true
+        Task {
+            let hermesPath = "/Users/mac/.local/bin/hermes"
+            guard FileManager.default.isExecutableFile(atPath: hermesPath) else {
+                await MainActor.run { isUpdatingHermes = false }
+                return
+            }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: hermesPath)
+            process.arguments = ["update", "--yes"]
+            process.standardOutput = Pipe()
+            process.standardError = Pipe()
+            do { try process.run(); process.waitUntilExit() } catch {}
+            await MainActor.run { isUpdatingHermes = false }
+            await checkHermesUpdates()
         }
     }
 
@@ -1175,7 +1304,19 @@ struct SkillsView: View {
                 let name = nameOpt ?? subdir
                 let desc = descOpt ?? "No description available."
 
-                let seed = seedTriggerInfo(name: name)
+                // Real signals — no fabricated trigger counts.
+                // `endpointCount` is filled after the duplicate/group pass
+                // (it equals the number of agent endpoints exposing this
+                // skill). `lastModified` reads SKILL.md's mtime; symlink
+                // detection tells owned vs relayed skills apart.
+                var isSym = false
+                if let attrs = try? fm.attributesOfItem(atPath: skillDirPath),
+                   let ft = attrs[.type] as? FileAttributeType,
+                   ft == .typeSymbolicLink
+                {
+                    isSym = true
+                }
+                let mtime = try? fm.attributesOfItem(atPath: skillFilePath.isEmpty ? skillDirPath : skillFilePath)[.modificationDate] as? Date
 
                 items.append(SkillItem(
                     name: name,
@@ -1184,8 +1325,10 @@ struct SkillsView: View {
                     skillDirName: subdir,
                     canonicalDirPath: skillDirPath,
                     description: desc,
-                    triggerCount: seed.count,
-                    lastTriggered: seed.last,
+                    endpointCount: 0,
+                    lastModified: mtime,
+                    lastModifiedLabel: mtime.map { Self.relativeTime($0) } ?? "未知",
+                    isSymlink: isSym,
                     isDuplicate: false,
                     duplicateCount: 1,
                     hasIssue: hasIssue,
@@ -1227,6 +1370,7 @@ struct SkillsView: View {
             _ = name
             for idx in indices {
                 items[idx].agentPresence = presence
+                items[idx].endpointCount = max(1, presence.count)
             }
 
             if indices.count > 1 {
@@ -1332,14 +1476,30 @@ struct SkillsView: View {
         return (count, last)
     }
 
+    /// Relative-time formatter for skill file mtimes. Pure + static so the
+    /// scan can call it without a `DateFormatter` per row.
+    static func relativeTime(_ date: Date) -> String {
+        let days = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        if days <= 0 {
+            let hrs = Calendar.current.dateComponents([.hour], from: date, to: Date()).hour ?? 0
+            return hrs <= 0 ? "今天" : "\(hrs) 小时前"
+        }
+        if days < 30 { return "\(days) 天前" }
+        let months = days / 30
+        if months < 12 { return "\(months) 个月前" }
+        return "\(days / 365) 年前"
+    }
+
     private func calculateStats() {
         totalCount = skills.count
         var uniqueNames = Set<String>()
         var issues = 0, active = 0, inactive = 0
+        let fortyFiveDaysAgo = Calendar.current.date(byAdding: .day, value: -45, to: Date()) ?? Date.distantPast
         for s in skills {
             uniqueNames.insert(s.name)
             if s.hasIssue { issues += 1 }
-            if s.triggerCount > 0 { active += 1 } else { inactive += 1 }
+            // Real activity signal: SKILL.md modified within the last 45 days.
+            if let m = s.lastModified, m >= fortyFiveDaysAgo { active += 1 } else { inactive += 1 }
         }
         uniqueCount = uniqueNames.count
         issueCount = issues
@@ -1694,12 +1854,12 @@ private struct SkillRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(skill.triggerCount == 0 ? "0" : "\(skill.triggerCount)")
-                    .font(Theme.mono(15, weight: skill.triggerCount == 0 ? .regular : .bold))
-                    .foregroundStyle(skill.triggerCount == 0 ? Theme.chromeMuted : Theme.chromeForeground)
+                Text(skill.endpointCount == 0 ? "0" : "\(skill.endpointCount)")
+                    .font(Theme.mono(15, weight: skill.endpointCount == 0 ? .regular : .bold))
+                    .foregroundStyle(skill.endpointCount == 0 ? Theme.chromeMuted : Theme.chromeForeground)
                     .frame(width: 120, alignment: .trailing)
 
-                Text(skill.lastTriggered)
+                Text(skill.lastModifiedLabel)
                     .font(Theme.mono(11.5))
                     .foregroundStyle(Theme.chromeMuted)
                     .frame(width: 150, alignment: .trailing)
@@ -1728,7 +1888,7 @@ private struct SkillRow: View {
         if skill.hasIssue {
             return Theme.activityFailure
         }
-        if skill.triggerCount > 0 {
+        if skill.endpointCount > 0 {
             return Theme.activityRunning
         }
         return Theme.chromeMuted
