@@ -2,6 +2,17 @@ import AppKit
 import Foundation
 import SwiftUI
 
+/// Role hint for a fable-advisor-style orchestration (see
+/// github.com/DannyMac180/fable-advisor). `.architect` = judgment/spec/
+/// review lane (expensive model, few tokens); `.implementer` = typing lane
+/// (cheap model, many tokens); `.general` = neutral. Archer uses this only
+/// as a UI signal — it never coerces routing or rewrites launches.
+enum AgentRole: String, Codable, Hashable {
+    case architect
+    case implementer
+    case general
+}
+
 /// A named profile that turns into a `TerminalSessionConfig` when the user
 /// picks it from the "+" menu. The shell starts under our wrapper `.zshrc`
 /// (ArcherShellIntegration), which sources the user's config, then — if
@@ -55,6 +66,13 @@ struct AgentTemplate: Identifiable, Hashable {
     /// consumes it for Claude-Code-based customs — `spawnSession` writes
     /// it into a per-agent Claude settings file.
     let extraEnv: [String: String]
+    /// Architect/implementer role in a fable-advisor-style orchestration.
+    /// `.architect` agents own judgment/spec/review (run the expensive
+    /// model, emit few tokens); `.implementer` agents do the typing (cheap
+    /// lane); `.general` is the neutral default. Purely a UI/routing hint —
+    /// Archer never forces routing or rewrites the agent's launch; the user
+    /// decides who does what. Inspired by github.com/DannyMac180/fable-advisor.
+    let role: AgentRole
     /// Pinned initial working directory snapshotted from `TerminalPreset.path`
     /// in `fromTerminalPreset`. Nil for builtins and customs. When set,
     /// `WorkspaceStore.addTab` uses it instead of the workspace cwd unless
@@ -85,7 +103,8 @@ struct AgentTemplate: Identifiable, Hashable {
         resumeFlag: String? = nil,
         reportsToolCalls: Bool = false,
         extraEnv: [String: String] = [:],
-        extraCwd: String? = nil
+        extraCwd: String? = nil,
+        role: AgentRole = .general
     ) {
         self.id = id
         self.title = title
@@ -99,6 +118,7 @@ struct AgentTemplate: Identifiable, Hashable {
         self.reportsToolCalls = reportsToolCalls
         self.extraEnv = extraEnv
         self.extraCwd = extraCwd
+        self.role = role
     }
 
     var tint: Color? {
@@ -238,7 +258,8 @@ extension AgentTemplate {
         symbol: "terminal",
         iconAsset: nil,
         tintHex: nil,
-        initialCommand: nil
+        initialCommand: nil,
+        role: .general
     )
 
     static let claudeCode = AgentTemplate(
@@ -249,7 +270,8 @@ extension AgentTemplate {
         tintHex: "D97757",
         initialCommand: "claude",
         resumeFlag: "--resume",
-        reportsToolCalls: true
+        reportsToolCalls: true,
+        role: .architect
     )
 
     static let codex = AgentTemplate(
@@ -258,7 +280,8 @@ extension AgentTemplate {
         symbol: "chevron.left.forwardslash.chevron.right",
         iconAsset: "codex",
         tintHex: "7A9DFF",
-        initialCommand: "codex"
+        initialCommand: "codex",
+        role: .implementer
     )
 
     static let gemini = AgentTemplate(
@@ -267,7 +290,8 @@ extension AgentTemplate {
         symbol: "diamond",
         iconAsset: "gemini",
         tintHex: "3186FF",
-        initialCommand: "gemini"
+        initialCommand: "gemini",
+        role: .implementer
     )
 
     static let opencode = AgentTemplate(
@@ -276,7 +300,8 @@ extension AgentTemplate {
         symbol: "curlybraces",
         iconAsset: "opencode",
         tintHex: "B0B0B0",
-        initialCommand: "opencode"
+        initialCommand: "opencode",
+        role: .implementer
     )
 
     static let amp = AgentTemplate(
@@ -284,9 +309,10 @@ extension AgentTemplate {
         title: "Amp",
         symbol: "bolt.fill",
         iconAsset: "amp",
-        tintHex: "E8B168",
+        tintHex: "E8B068",
         initialCommand: "amp",
-        promptLaunchFlag: "-x"
+        promptLaunchFlag: "-x",
+        role: .implementer
     )
 
     static let cursor = AgentTemplate(
@@ -295,7 +321,8 @@ extension AgentTemplate {
         symbol: "cube",
         iconAsset: "cursor",
         tintHex: "F54E00",
-        initialCommand: "cursor-agent"
+        initialCommand: "cursor-agent",
+        role: .implementer
     )
 
     static let copilot = AgentTemplate(
@@ -305,7 +332,8 @@ extension AgentTemplate {
         iconAsset: "githubcopilot",
         tintHex: "6E40C9",
         initialCommand: "copilot",
-        promptLaunchFlag: "-p"
+        promptLaunchFlag: "-p",
+        role: .implementer
     )
 
     static let grok = AgentTemplate(
@@ -314,7 +342,8 @@ extension AgentTemplate {
         symbol: "x.square.fill",
         iconAsset: "grok",
         tintHex: "E8E8E8",
-        initialCommand: "grok"
+        initialCommand: "grok",
+        role: .implementer
     )
 
     /// Antigravity CLI — Google's Go-based successor to Gemini CLI; binary
@@ -332,13 +361,6 @@ extension AgentTemplate {
     /// `-i` (`--prompt-interactive`) is the right flag for Ask <agent>:
     /// runs the initial prompt and keeps the session alive. `-p`
     /// (`--print`) would single-shot exit.
-    ///
-    /// Resume / mid-run attention dot deferred: Antigravity has hooks
-    /// (SessionStart / UserPromptSubmit / Stop per third-party docs) and
-    /// `--conversation <id>`, but the JSON schema, settings-file location,
-    /// and a system-inject env var (no `ANTIGRAVITY_CLI_SYSTEM_SETTINGS_PATH`
-    /// analogue of Gemini's) are all undocumented. Revisit when
-    /// antigravity.google/docs/hooks publishes the schema.
     static let antigravity = AgentTemplate(
         id: "antigravity",
         title: "Antigravity CLI",
@@ -346,7 +368,8 @@ extension AgentTemplate {
         iconAsset: "antigravity",
         tintHex: "4285F4",
         initialCommand: "agy",
-        promptLaunchFlag: "-i"
+        promptLaunchFlag: "-i",
+        role: .implementer
     )
 
     /// Kimi Code — Moonshot AI's coding CLI; binary `kimi` (npm
@@ -372,29 +395,10 @@ extension AgentTemplate {
         iconAsset: "kimi",
         tintHex: "C9C3D6",
         initialCommand: "kimi",
-        promptLaunchFlag: "-p"
+        promptLaunchFlag: "-p",
+        role: .implementer
     )
 
-    /// Pi — Earendil's minimal terminal coding harness; binary `pi` (npm
-    /// `@earendil-works/pi-coding-agent`). No JSON lifecycle hooks, but pi
-    /// auto-loads TypeScript extensions with a rich event API, so archer ships a
-    /// managed `~/.pi/agent/extensions/archer.ts` (see `piExtensionScript`) that
-    /// maps pi's session / turn events to running / attention / ended (same
-    /// model as the OpenCode plugin) AND reports the session id back so resume
-    /// works (below). The bracket wrapper stays as the running/ended fallback +
-    /// not-installed message.
-    ///
-    /// `-p` is pi's one-off non-interactive prompt (streams output then exits),
-    /// so "Ask Pi" single-shots rather than seeding a live session. Resume IS
-    /// wired: pi takes a launch-time `--session <id>` (`resumeFlag`), and the
-    /// extension hands archer the current session id via
-    /// `archer-hook pi conversation <id>` — that reuses the generic
-    /// `conversationId` path (persist on `Session` → prepend `--session <id>`
-    /// next launch, gated by `agents.resumeConversations`), so the end result
-    /// matches Claude's `--resume` without any Claude-specific JSON parsing.
-    /// Model selection (`/model`) stays mid-session. The blocky π logo is
-    /// monochrome (single fill, white-on-transparent) → registered in
-    /// `AgentIcon.monochromeAssets` so it adapts to light themes.
     static let pi = AgentTemplate(
         id: "pi",
         title: "Pi",
@@ -404,7 +408,21 @@ extension AgentTemplate {
         initialCommand: "pi",
         promptLaunchFlag: "-p",
         resumeFlag: "--session",
-        reportsToolCalls: true
+        reportsToolCalls: true,
+        role: .implementer
+    )
+
+    static let omp = AgentTemplate(
+        id: "omp",
+        title: "Oh My Pi",
+        symbol: "pi",
+        iconAsset: "pi",
+        tintHex: "C2C5CE",
+        initialCommand: "omp",
+        promptLaunchFlag: "-p",
+        resumeFlag: "--session",
+        reportsToolCalls: true,
+        role: .implementer
     )
 
     /// Kiro CLI — AWS's agentic coding CLI, the terminal sibling of the Kiro
@@ -433,7 +451,8 @@ extension AgentTemplate {
         symbol: "cloud.fill",
         iconAsset: "kiro",
         tintHex: "9046FF",
-        initialCommand: "kiro-cli"
+        initialCommand: "kiro-cli",
+        role: .implementer
     )
 
     /// Droid — Factory.ai's agentic coding CLI; binary `droid`
@@ -460,12 +479,13 @@ extension AgentTemplate {
         symbol: "asterisk",
         iconAsset: "droid",
         tintHex: "C9CDD3",
-        initialCommand: "droid"
+        initialCommand: "droid",
+        role: .implementer
     )
 
     /// The 14 templates shipped with archer. User-defined custom agents are
     /// merged on top via `all` at runtime.
-    static let builtin: [AgentTemplate] = [.terminal, .claudeCode, .codex, .gemini, .opencode, .amp, .cursor, .copilot, .grok, .antigravity, .kimi, .pi, .kiro, .droid]
+    static let builtin: [AgentTemplate] = [.terminal, .claudeCode, .codex, .gemini, .opencode, .amp, .cursor, .copilot, .grok, .antigravity, .kimi, .pi, .omp, .kiro, .droid]
 
     /// All templates available right now — `builtin` plus the user's custom
     /// agents from Settings → Agents. MainActor-isolated because it
@@ -569,7 +589,8 @@ extension AgentTemplate {
             promptLaunchFlag: base?.promptLaunchFlag,
             resumeFlag: base?.resumeFlag,
             reportsToolCalls: base?.reportsToolCalls ?? false,
-            extraEnv: parseEnv(data.env)
+            extraEnv: parseEnv(data.env),
+            role: base?.role ?? .general
         )
     }
 
@@ -585,7 +606,8 @@ extension AgentTemplate {
             iconAsset: AgentTemplate.terminal.iconAsset,
             tintHex: AgentTemplate.terminal.tintHex,
             initialCommand: nil,
-            extraCwd: preset.path.isEmpty ? nil : preset.path
+            extraCwd: preset.path.isEmpty ? nil : preset.path,
+            role: .general
         )
     }
 }
