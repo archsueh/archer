@@ -24,7 +24,7 @@
 
 ![左侧竖直 tab，一个 pane 分成四块](img/screenshot-2.png)
 
-**一键启动各种 agent。** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok · Antigravity CLI · Kimi Code · Pi · Kiro CLI。`+` 菜单里选一个,agent 会在第一个 prompt 出现前启动。Claude 和 Grok 对话还会跨 archer 重启自动 resume,关掉 tab 再打开能从离开的地方接上。
+**一键启动各种 agent。** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok · Antigravity CLI · Kimi Code · Pi · Oh My Pi (omp) · Kiro CLI。`+` 菜单里选一个,agent 会在第一个 prompt 出现前启动。Claude 和 Grok 对话还会跨 archer 重启自动 resume,关掉 tab 再打开能从离开的地方接上。
 
 **Git worktree。** 右键任意 git workspace → "Create Worktree…",在新 branch 上(或 checkout 已有 branch)起一个 worktree。Worktree 在 sidebar 里缩进显示在源 repo 下面,有自己的 tab + agent —— 让 Claude 在 feature branch 上跑活,不打扰 main 上正在跑的进程。命令行 `git worktree add` 建的 worktree,下次启动 archer 也会自动出现在 sidebar。
 
@@ -36,7 +36,7 @@
 
 **Prompt composer (⌘L)。** pane 底部升起一个聊天式输入框，让你安心写长的、多行的 prompt——不会手一抖回车就发出去。回车发给当前 agent（或 shell），Shift+回车换行，Esc 取消并保留草稿。⌘L 或 pane 底部状态栏的 compose 按钮打开。
 
-**Agent 状态实时展示。** 侧边栏圆点显示每个 agent 的状态：运行中（蓝）、等待你处理（琥珀）、空闲（无色）。上一条命令非零退出时，tab 和 workspace 会同步显示红点；悬停可看到 `exit N · 12.4s`。Claude Code、Grok 和 Pi 会话还会在 pane 底部状态栏显示 agent 当前正在跑的工具（Bash / Edit / Read 等）和已运行的时间——点击 pill 看完整历史；失败的工具调用立刻变红。可在 Settings → Status Bar 里按 agent 单独开关这个 pill。
+**Agent 状态实时展示。** 侧边栏圆点显示每个 agent 的状态：运行中（蓝）、等待你处理（琥珀）、空闲（无色）。上一条命令非零退出时，tab 和 workspace 会同步显示红点；悬停可看到 `exit N · 12.4s`。Claude Code、Grok、Pi 和 Oh My Pi (omp) 会话还会在 pane 底部状态栏显示 agent 当前正在跑的工具（Bash / Edit / Read 等）和已运行的时间——点击 pill 看完整历史；失败的工具调用立刻变红。可在 Settings → Status Bar 里按 agent 单独开关这个 pill。
 
 **通知。** 你没在看的某个 tab 里 agent 开始等你处理、或那里命令失败时，archer 会发一条 macOS 系统通知——每一类都能在 Settings → Notifications 里单独开关。顶栏还有个铃铛（⇧⌘I），把这些提醒跨窗口收进一个收件箱——谁在等你、什么失败了、什么跑完了——有没读的就亮红点。点一条直接跳到对应 tab；切到那个 tab，它的提醒会自己清掉。
 

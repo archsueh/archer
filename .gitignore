@@ -68,3 +68,9 @@ scripts/knowledge-loop/
 
 # Claude agent workspace settings
 .claude/settings.json
+
+# Local multi-agent workspace state (not archer source)
+.codex/
+.opencode/
+.trellis/
+OMP_INTEGRATION_PLAN.md

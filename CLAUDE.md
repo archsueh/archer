@@ -29,6 +29,21 @@ Cross-project user preferences live in global memory (`~/.claude/.../memory/`: `
 - **No Placeholders**: Never use placeholder images. Generate assets as needed.
 - **Indentation**: Swift standard 4-space indentation.
 
+<!-- guardrails-kit: distilled from altafino/FableClaudeMDForOpus (Guardrails Kit v1.0) -->
+## Engineering Guardrails
+
+Discipline rules to keep multi-file Swift edits safe. These are procedures, not advice — follow literally.
+
+- **Reference Sweep (after any signature/enum/route change)**: When you change a function signature, symbol name, return shape, `enum` member (e.g. adding a `PaletteItemKind` case), CLI flag, or route, grep the whole repo for old call sites before claiming done. Missed callers break silently at runtime, not compile time. (Verified need: adding `.showAgent` required touching `CommandPalette.swift` + `AppDelegate.swift` + a new view — a 3rd caller is easy to miss.)
+- **Verify, don't assert**: Claim `done`/`fixed`/`works`/`passing`/`complete` only beside fresh command output in the same turn — e.g. `swift build -c release` succeeded, or `swift test` passed. If you have not run it, report `EDITED-UNVERIFIED: <file>`. Never write "should work" / "likely resolves" — hedges hide skipped runs.
+- **Edit over Write**: Modify existing files with targeted Edit/patch, never a full-file Write — sole exception: a deliberate rewrite the user asked for. Full-file Write of a file you only partially read deletes real code.
+- **Hard stops**:
+  - Never `git push` unless the user explicitly asked for a push *in this conversation* — commit locally and report instead.
+  - Never delete files / run `git reset --hard` / `git checkout -- <file>` without first pasting exactly what will be lost and waiting for approval.
+  - Never kill processes by image name (`pkill node`, `killall X`); find the PID via the port first.
+- **Read before Edit**: Before your first Edit of a file, Read the enclosing function/class plus the import block. A Grep snippet is not a Read. Under 250 lines, Read it all.
+<!-- end guardrails-kit -->
+
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan

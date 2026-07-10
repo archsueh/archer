@@ -24,7 +24,7 @@ AI コーディングのために作られた、ミニマルでモダンな macO
 
 ![左側に垂直 tab、1 つの pane を 4 分割](img/screenshot-2.png)
 
-**ワンクリックで AI agent セッション。** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok · Antigravity CLI · Kimi Code · Pi · Kiro CLI。`+` メニューから选ぶだけで、最初の prompt を打つ前に agent が起動します。Claude と Grok の会話は archer の再起動を跨いで自動で resume されるので、tab を閉じて再度開いても直前の続きから再開できます。
+**ワンクリックで AI agent セッション。** Claude Code · Codex · Gemini CLI · OpenCode · Amp · Cursor CLI · Copilot CLI · Grok · Antigravity CLI · Kimi Code · Pi · Oh My Pi (omp) · Kiro CLI。`+` メニューから选ぶだけで、最初の prompt を打つ前に agent が起動します。Claude と Grok の会話は archer の再起動を跨いで自動で resume されるので、tab を閉じて再度開いても直前の続きから再開できます。
 
 **Git worktree。** 任意の git workspace を右クリック → "Create Worktree…" で新しい branch (または既存 branch の checkout) に対する worktree を作成します。worktree はサイドバーで元のリポジトリの下にネストして表示され、独自の tab + agent を持ちます —— main で何かが走っている最中でも、Claude を feature branch で並行して動かせます。コマンドラインで `git worktree add` した worktree も、次回 archer 起動時に自動でサイドバーに現れます。
 
@@ -36,7 +36,7 @@ AI コーディングのために作られた、ミニマルでモダンな macO
 
 **Prompt composer (⌘L)。** pane 下部からチャット風の入力ボックスがせり上がり、長い複数行の prompt を落ち着いて書けます —— うっかり Return で途中送信されることはありません。Return で現在の agent (または shell) に送信、Shift+Return で改行、Esc でキャンセル (下書きは保持)。⌘L か pane 下部ステータスバーの compose ボタンで開きます。
 
-**Agent ステータスをリアルタイム表示。** サイドバーのドットが各 agent の状態を示します —— 実行中 (青)、ユーザー待ち (琥珀)、アイドル (なし)。直前のコマンドが非ゼロ終了したときは tab と workspace のドットが赤くなり、ホバーで `exit N · 12.4s` が確認できます。Claude Code、Grok、Pi のセッションでは pane 下部のステータスバーに agent が今走らせているツール (Bash / Edit / Read など) と経過時間も表示されます —— pill をクリックすればセッション全体の履歴を確認でき、失敗したツール呼び出しはすぐに赤くなります。pill は Settings → Status Bar で agent ごとに表示/非表示を切り替えられます。
+**Agent ステータスをリアルタイム表示。** サイドバーのドットが各 agent の状態を示します —— 実行中 (青)、ユーザー待ち (琥珀)、アイドル (なし)。直前のコマンドが非ゼロ終了したときは tab と workspace のドットが赤くなり、ホバーで `exit N · 12.4s` が確認できます。Claude Code、Grok、Pi、Oh My Pi (omp) のセッションでは pane 下部のステータスバーに agent が今走らせているツール (Bash / Edit / Read など) と経過時間も表示されます —— pill をクリックすればセッション全体の履歴を確認でき、失敗したツール呼び出しはすぐに赤くなります。pill は Settings → Status Bar で agent ごとに表示/非表示を切り替えられます。
 
 **通知。** 見ていない tab で agent がユーザー待ちになったり、そこでコマンドが失敗したりすると、archer が macOS 通知を出します —— 種類ごとに Settings → Notifications でオン / オフできます。上部 chrome のベル (⇧⌘I) は、それらの通知を全ウィンドウ横断で 1 つの受信箱にまとめます —— 誰が待っているか、何が失敗したか、何が完了したか —— 未読があれば赤いドットが点きます。エントリをクリックすればその tab に直接ジャンプ、tab に切り替えればその通知は自動でクリアされます。
 
