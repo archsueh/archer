@@ -18,12 +18,12 @@ import Foundation
 //       cache permanently.
 //
 // Usage: archer-hook <agent> <event>
-//   <agent> ∈ claude | codex | pi (or any AgentTemplate.id)
+//   <agent> ∈ claude | codex | pi | omp (or any AgentTemplate.id)
 //   <event> ∈ running | attention | idle    (lifecycle events)
 //           | PreToolUse | PostToolUse      (Claude tool events — stdin JSON)
-//           | conversation <id>             (extension-reported resume id — Pi)
+//           | conversation <id>             (extension-reported resume id — Pi / omp)
 //           | tool <pre|post> <id> <name> <identifier> [ok|fail]
-//                                            (extension-reported tool call — Pi)
+//                                            (extension-reported tool call — Pi / omp)
 // Usage: archer-hook env <VIRTUAL_ENV> <CONDA_DEFAULT_ENV> <NVM_BIN> <NVM_DIR> <NODE_VERSION> <https_proxy> <http_proxy> <all_proxy>
 // Reads:  $ARCHER_SURFACE_ID       UUID of the originating session
 // Reads:  stdin                   Claude pipes a JSON object on every

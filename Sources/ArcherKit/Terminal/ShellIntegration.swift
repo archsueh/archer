@@ -346,6 +346,7 @@ enum ArcherShellIntegration {
         writeWrapper(name: "agy", script: antigravityWrapperScript)
         writeWrapper(name: "kimi", script: bracketWrapperScript(slug: "kimi"))
         writeWrapper(name: "pi", script: bracketWrapperScript(slug: "pi"))
+        writeWrapper(name: "omp", script: bracketWrapperScript(slug: "omp"))
         writeWrapper(name: "kiro-cli", script: bracketWrapperScript(slug: "kiro-cli"))
         writeWrapper(name: "droid", script: bracketWrapperScript(slug: "droid"))
         refreshSshRemoteAgentDetection(enabled: sshRemoteAgentDetection)
@@ -356,6 +357,7 @@ enum ArcherShellIntegration {
         installCopilotHooksIfPresent(hookCmd: hookCmd)
         writeManagedFile(at: opencodePluginPath, contents: opencodePluginScript)
         installPiExtensionIfPresent()
+        installOmpExtensionIfPresent()
         installFishVendorConf()
         // Grok CLI has no JSON hook file like Claude — its `~/.grok/hooks/`
         // is a script directory driven by env vars (GROK_HOOK_EVENT /
@@ -496,6 +498,99 @@ enum ArcherShellIntegration {
       pi.on("tool_execution_end", async (event) => {
         try {
           await pi.exec(hookBin, ["pi", "tool", "post", event.toolCallId || "", event.toolName || "", "", event.isError ? "fail" : "ok"])
+        } catch {}
+      })
+    }
+    """
+    /// Writes the Oh My Pi (omp) extension only when the user already has a
+    /// `~/.omp/` directory — i.e. they've installed omp at least once. Mirrors
+    /// `installPiExtensionIfPresent`: omp auto-loads every `*.ts` in
+    /// `~/.omp/hooks/` (the fork moved Pi's `agent/extensions` dir), and keeps
+    /// Pi's `pi.on` / `pi.exec` extension API. The only two deltas from the Pi
+    /// extension: the install dir (`~/.omp/hooks/`) and the tool events
+    /// (`tool_call` / `tool_result` instead of Pi's `tool_execution_start/end`).
+    /// Session lifecycle events (`session_start` / `turn_start` / `turn_end` /
+    /// `session_shutdown`) are unchanged, so the running/attention/ended mapping
+    /// is identical. Reports on the `omp` slug so ArcherHook routes it to the
+    /// omp template (no Pi slug reuse — cleaner semantics).
+    private static func installOmpExtensionIfPresent() {
+        let ompHome = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".omp", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: ompHome.path) else { return }
+        let dir = ompHome.appendingPathComponent("hooks", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        writeManagedFile(at: dir.appendingPathComponent("archer.ts").path, contents: ompExtensionScript)
+    }
+
+    /// Oh My Pi (omp) extension (TypeScript, auto-loaded from `~/.omp/hooks/`).
+    /// Same shape as `piExtensionScript` but on omp's tool events
+    /// (`tool_call` / `tool_result`). Pings ArcherHook on the `omp` slug so the
+    /// sidebar dot tracks per-session activity and the pane status bar shows the
+    /// tool omp is running right now. Safe to delete; regenerated next launch.
+    static let ompExtensionScript = """
+    // \(managedFileMarker) — pings ArcherHook on omp's session / turn / tool
+    // events so the sidebar agent dot tracks per-session activity (running
+    // while a turn runs, attention when it ends and waits on you), the pane
+    // status bar shows the tool omp is running right now (its tool_call /
+    // tool_result events), and the session id is reported so archer can resume
+    // the conversation (`omp --session <id>`) after a restart. Safe to delete;
+    // it is regenerated next time archer launches.
+    export default function (pi) {
+      const surface = process.env.ARCHER_SURFACE_ID
+      const hookBin = process.env.ARCHER_HOOK_BIN
+      if (!surface || !hookBin) return
+
+      const ping = async (state) => {
+        try { await pi.exec(hookBin, ["omp", state]) } catch {}
+      }
+      const reportSession = async (ctx) => {
+        try {
+          const file = ctx && ctx.sessionManager && ctx.sessionManager.getSessionFile()
+          if (!file) return
+          const id = file.split("/").pop().replace(/\\.jsonl$/, "")
+          if (id) await pi.exec(hookBin, ["omp", "conversation", id])
+        } catch {}
+      }
+      // The "what" shown in the tool-call pill. omp's args use `path` (not
+      // Claude's `file_path`) and lowercase tool names; unknown / custom tools
+      // fall back to the first non-empty string arg (keys sorted for a stable
+      // pick). Mirrors ArcherHookKit.extractIdentifier on the Claude side.
+      const toolIdentifier = (toolName, args) => {
+        if (!args || typeof args !== "object") return ""
+        switch (toolName) {
+          case "bash": return typeof args.command === "string" ? args.command : ""
+          case "read": case "edit": case "write": case "ls":
+            return typeof args.path === "string" ? args.path : ""
+          case "grep": case "find": case "glob":
+            return typeof args.pattern === "string"
+              ? args.pattern
+              : (typeof args.path === "string" ? args.path : "")
+          default:
+            for (const k of Object.keys(args).sort()) {
+              if (typeof args[k] === "string" && args[k]) return args[k]
+            }
+            return ""
+        }
+      }
+
+      pi.on("session_start", async (event, ctx) => { await reportSession(ctx); await ping("running") })
+      pi.on("turn_start", async () => { await ping("running") })
+      pi.on("turn_end", async () => { await ping("attention") })
+      pi.on("session_shutdown", async () => { await ping("ended") })
+
+      // Tool-call activity pill. omp renames Pi's `tool_execution_start/end` to
+      // `tool_call` / `tool_result`; `tool_call` carries the args (ships the
+      // identifier), `tool_result` has no args so it ships an empty identifier +
+      // ok/fail. omp's toolCallId is stable across the pair, so archer matches
+      // start/end by it — same contract as the Pi extension.
+      pi.on("tool_call", async (event) => {
+        try {
+          await pi.exec(hookBin, ["omp", "tool", "pre", event.toolCallId || "", event.toolName || "", toolIdentifier(event.toolName, event.input)])
+        } catch {}
+      })
+      pi.on("tool_result", async (event) => {
+        try {
+          await pi.exec(hookBin, ["omp", "tool", "post", event.toolCallId || "", event.toolName || "", "", event.isError ? "fail" : "ok"])
         } catch {}
       })
     }

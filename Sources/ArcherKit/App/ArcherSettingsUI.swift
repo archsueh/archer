@@ -1785,13 +1785,14 @@ private struct StatusBarReorderList: View {
         [AgentTemplate.codex.id]
     }
 
-    /// Builtin agents with any status-bar feature (tool-call activity and/or a
-    /// usage gauge), in builtin order — so the per-agent sections read
-    /// Claude Code → Codex → Pi. Each renders one section (header + the
-    /// feature toggles that apply to it); a future agent slots in by its
-    /// builtin position automatically.
+    /// Builtin agents with any status-bar feature (tool-call activity, session
+    /// cost, and/or a usage gauge), in builtin order. // [archer]
     private var statusAgents: [AgentTemplate] {
-        AgentTemplate.builtin.filter { $0.reportsToolCalls || usageAgentIds.contains($0.id) }
+        AgentTemplate.builtin.filter {
+            $0.reportsToolCalls
+                || usageAgentIds.contains($0.id)
+                || SessionLiveUsageSource.settingsAgentIDs.contains($0.id)
+        }
     }
 
     var body: some View {
@@ -1826,6 +1827,26 @@ private struct StatusBarReorderList: View {
                         isDragging: false,
                         reorderable: false,
                         onToggleVisible: { model.hiddenToolCallAgents.formSymmetricDifference([agent.id]) },
+                        onBeginDrag: nil,
+                        onDrop: nil
+                    )
+                }
+                // Session cost pill — Claude / Grok / Codex / Gemini. One
+                // global switch (`hiddenStatusBarItems`) covers all agents
+                // that report a session id (or Codex rollout match). // [archer]
+                if SessionLiveUsageSource.settingsAgentIDs.contains(agent.id) {
+                    StatusBarRow(
+                        item: .sessionCost,
+                        visible: !model.hiddenStatusBarItems.contains(.sessionCost),
+                        isDragging: false,
+                        reorderable: false,
+                        onToggleVisible: {
+                            if model.hiddenStatusBarItems.contains(.sessionCost) {
+                                model.hiddenStatusBarItems.remove(.sessionCost)
+                            } else {
+                                model.hiddenStatusBarItems.insert(.sessionCost)
+                            }
+                        },
                         onBeginDrag: nil,
                         onDrop: nil
                     )

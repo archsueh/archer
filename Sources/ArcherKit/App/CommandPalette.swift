@@ -55,6 +55,8 @@ enum PaletteItemKind: Hashable {
     case createWorktree(workspaceId: UUID, windowId: UUID)
     /// Spawn a new tab with this agent / preset in the active workspace.
     case agent(templateId: String)
+    /// [archer] open the ShowAgent session surface (aytzey/showagent).
+    case showAgent
 }
 
 struct PaletteItem: Identifiable, Hashable {
@@ -119,6 +121,15 @@ enum PaletteIndex {
                 iconAsset: template.iconAsset
             ))
         }
+        // [archer] ShowAgent surface — open the session browser.
+        items.append(PaletteItem(
+            id: "showagent",
+            title: "ShowAgent — browse & convert agent sessions",
+            subtitle: "showagent",
+            kind: .showAgent,
+            symbol: "arrow.triangle.branch",
+            iconAsset: nil
+        ))
         return items
     }
 

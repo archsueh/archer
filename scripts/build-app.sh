@@ -53,6 +53,15 @@ mkdir -p "${APP}/Contents/Resources"
 cp .build/release/Archer "${APP}/Contents/MacOS/${APP_NAME}"
 cp .build/release/ArcherHook "${APP}/Contents/MacOS/ArcherHook"
 
+# [archer] Vendored showagent (aytzey/showagent) Go binary — sits
+# next to the app executable so the bridge resolves it via
+# Bundle.main.executableURL. Git-ignored under Vendor/.
+if [ -f "Vendor/showagent/showagent" ]; then
+    echo "==> Embedding showagent binary"
+    cp Vendor/showagent/showagent "${APP}/Contents/MacOS/showagent"
+    chmod +x "${APP}/Contents/MacOS/showagent"
+fi
+
 # Sparkle.framework — SwiftPM resolves and copies it next to the build
 # products but (unlike Xcode's "Embed Frameworks" phase) does nothing to get
 # it into an app bundle. Embed it under Contents/Frameworks and add the

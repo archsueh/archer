@@ -818,6 +818,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             let template = AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared)
                 .first(where: { $0.id == templateId }) ?? .terminal
             store.addTab(in: ws, template: template)
+        case .showAgent:
+            // [archer] ShowAgent surface — browse/convert local agent sessions.
+            ShowAgentWindowController.shared.show()
         }
     }
 

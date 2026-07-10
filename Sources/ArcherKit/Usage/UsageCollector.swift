@@ -94,20 +94,184 @@ enum UsageCollector {
         rootURL: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/projects", isDirectory: true)
     ) -> [String: Int] {
-        var cache = CollectorCache()
-        var livePaths = Set<String>()
-        let result = ClaudeCodeParser.collectAsRecords(
-            cache: &cache,
-            livePaths: &livePaths,
-            rootURL: rootURL,
-            modifiedSince: sourceFileCutoffDate(historyDays: historyDays)
-        )
         var totals: [String: Int] = [:]
-        for record in result.records {
+        for record in claudeSessionRecords(historyDays: historyDays, rootURL: rootURL) {
             guard let sessionID = record.sessionID else { continue }
             totals[sessionID, default: 0] += record.usage.totalTokens
         }
         return totals
+    }
+
+    /// Live cost + tokens for one Claude conversation (status-bar pill).
+    /// Filters jsonl records by `sessionID` and folds with PricingProvider. // [archer]
+    static func claudeSessionLiveUsage(
+        sessionID: String,
+        historyDays: Int = 30,
+        rootURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/projects", isDirectory: true)
+    ) -> SessionLiveUsage? {
+        sessionLiveUsage(
+            sessionID: sessionID,
+            tool: "Claude Code",
+            historyDays: historyDays,
+            claudeRootURL: rootURL
+        )
+    }
+
+    /// Live cost + tokens for one agent conversation, routed by Usage tool
+    /// label (`Claude Code` / `Grok` / `Codex` / `Gemini` / …).
+    /// When `preferredSourcePath` is set (file-watch path), only that file is
+    /// parsed — avoids a full projects walk on every log append. // [archer]
+    static func sessionLiveUsage(
+        sessionID: String,
+        tool: String,
+        historyDays: Int = 30,
+        preferredSourcePath: String? = nil,
+        claudeRootURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/projects", isDirectory: true),
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> SessionLiveUsage? {
+        let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let preferredSourcePath,
+           let scoped = recordsFromSourcePath(tool: tool, path: preferredSourcePath)
+        {
+            let filtered = filterSessionRecords(scoped, sessionID: trimmed, tool: tool)
+            return SessionLiveUsageAggregator.fold(filtered, pricing: PricingProvider.table())
+        }
+
+        let cutoff = sourceFileCutoffDate(historyDays: historyDays)
+        let records = sessionRecords(
+            tool: tool,
+            historyDays: historyDays,
+            cutoff: cutoff,
+            claudeRootURL: claudeRootURL,
+            homeURL: homeURL
+        ).filter { $0.sessionID == trimmed }
+        return SessionLiveUsageAggregator.fold(records, pricing: PricingProvider.table())
+    }
+
+    /// Keep rows for this session. Claude files are 1:1 with session id — if
+    /// rows lack sessionID, keep the whole file. // [archer]
+    private static func filterSessionRecords(
+        _ records: [UsageRecord],
+        sessionID: String,
+        tool: String
+    ) -> [UsageRecord] {
+        let matched = records.filter { $0.sessionID == sessionID }
+        if !matched.isEmpty { return matched }
+        if tool == "Claude Code" { return records }
+        return matched
+    }
+
+    /// Parse a single known log path for the watch fast-path. Returns nil to
+    /// fall back to full multi-file collect. // [archer]
+    private static func recordsFromSourcePath(tool: String, path: String) -> [UsageRecord]? {
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.isReadableFile(atPath: path) else { return nil }
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        switch tool {
+        case "Claude Code":
+            // Collect only under the file's parent directory, then keep this path.
+            let dir = url.deletingLastPathComponent()
+            let all = ClaudeCodeParser.collectAsRecords(
+                cache: &cache,
+                livePaths: &livePaths,
+                rootURL: dir,
+                modifiedSince: nil
+            ).records
+            let standardized = url.resolvingSymlinksInPath().path
+            return all.filter {
+                guard let sp = $0.sourcePath else { return false }
+                return sp == path
+                    || sp == url.path
+                    || URL(fileURLWithPath: sp).resolvingSymlinksInPath().path == standardized
+            }
+        case "Grok":
+            // `…/.grok/logs/unified.jsonl` → home is three levels up.
+            let home = url.deletingLastPathComponent() // logs
+                .deletingLastPathComponent() // .grok
+                .deletingLastPathComponent() // home
+            return GrokParser.collect(
+                cache: &cache,
+                livePaths: &livePaths,
+                homeURL: home,
+                modifiedSince: nil
+            ).records
+        case "Gemini":
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return GeminiParser.parseSession(data, sourcePath: path)
+        case "Codex":
+            // No single-file public API — fall back to full collect.
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    /// Collect records for one tool without full multi-parser aggregation. // [archer]
+    private static func sessionRecords(
+        tool: String,
+        historyDays _: Int,
+        cutoff: Date?,
+        claudeRootURL: URL,
+        homeURL: URL
+    ) -> [UsageRecord] {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        switch tool {
+        case "Claude Code":
+            return ClaudeCodeParser.collectAsRecords(
+                cache: &cache,
+                livePaths: &livePaths,
+                rootURL: claudeRootURL,
+                modifiedSince: cutoff
+            ).records
+        case "Grok":
+            return GrokParser.collect(
+                cache: &cache,
+                livePaths: &livePaths,
+                homeURL: homeURL,
+                modifiedSince: cutoff
+            ).records
+        case "Codex":
+            return CodexParser.collect(
+                cache: &cache,
+                livePaths: &livePaths,
+                modifiedSince: cutoff
+            ).records
+        case "Gemini":
+            return GeminiParser.collect(
+                cache: &cache,
+                livePaths: &livePaths,
+                homeURL: homeURL,
+                modifiedSince: cutoff
+            ).records
+        case "Hermes":
+            return HermesParser.collect(
+                cache: &cache,
+                livePaths: &livePaths,
+                modifiedSince: cutoff
+            ).records
+        default:
+            return []
+        }
+    }
+
+    /// Shared Claude jsonl collect for session-keyed token totals. // [archer]
+    private static func claudeSessionRecords(
+        historyDays: Int,
+        rootURL: URL
+    ) -> [UsageRecord] {
+        sessionRecords(
+            tool: "Claude Code",
+            historyDays: historyDays,
+            cutoff: sourceFileCutoffDate(historyDays: historyDays),
+            claudeRootURL: rootURL,
+            homeURL: FileManager.default.homeDirectoryForCurrentUser
+        )
     }
 
     /// Grok records for `UsageView` today-stats queries.
