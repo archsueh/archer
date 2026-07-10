@@ -361,6 +361,35 @@ final class CodexUsageMonitor {
     /// any fixed size — and a truncated chunk is invalid JSON that would never
     /// match, silently disabling the gauge for that session.
     nonisolated static func sessionMetaCwd(atPath path: String) -> String? {
+        sessionMetaPayload(atPath: path)?["cwd"] as? String
+    }
+
+    /// Session id from `session_meta.payload.id` — same key CodexParser
+    /// writes onto `UsageRecord.sessionID`. Falls back to the rollout file
+    /// basename (minus `.jsonl`) when meta has no id yet. // [archer]
+    nonisolated static func sessionMetaId(atPath path: String) -> String? {
+        if let id = sessionMetaPayload(atPath: path)?["id"] as? String, !id.isEmpty {
+            return id
+        }
+        let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        return name.isEmpty ? nil : name
+    }
+
+    /// Resolve this tab's Codex session id by matching the newest own rollout
+    /// to `cwd`. Used by the session-cost pill when `Session.conversationId`
+    /// is still empty (Codex has no hook that mirrors the id). // [archer]
+    nonisolated static func resolveSessionID(
+        forCwd cwd: URL,
+        sessionsRoot: URL = CodexUsageMonitor.defaultSessionsRoot(),
+        excluding: Set<String> = []
+    ) -> String? {
+        guard let url = resolveRollout(forCwd: cwd, sessionsRoot: sessionsRoot, excluding: excluding)
+        else { return nil }
+        return sessionMetaId(atPath: url.path)
+    }
+
+    /// First-line `session_meta` payload object, or nil. // [archer]
+    nonisolated static func sessionMetaPayload(atPath path: String) -> [String: Any]? {
         guard let fh = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? fh.close() }
         var data = Data()
@@ -375,10 +404,9 @@ final class CodexUsageMonitor {
         }
         guard
             let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let payload = obj["payload"] as? [String: Any],
-            let cwd = payload["cwd"] as? String
+            let payload = obj["payload"] as? [String: Any]
         else { return nil }
-        return cwd
+        return payload
     }
 
     // MARK: - Usage parsing (pure, background-safe)
