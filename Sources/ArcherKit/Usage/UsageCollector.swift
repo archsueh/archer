@@ -28,7 +28,6 @@ enum UsageCollector {
         ClaudeCodeParser.self,
         GrokParser.self,
         HermesParser.self,
-        GeminiParser.self,
     ]
 
     // ---- Main entry point -----------------------------------------------
@@ -200,9 +199,6 @@ enum UsageCollector {
                 homeURL: home,
                 modifiedSince: nil
             ).records
-        case "Gemini":
-            guard let data = try? Data(contentsOf: url) else { return nil }
-            return GeminiParser.parseSession(data, sourcePath: path)
         case "Codex":
             // No single-file public API — fall back to full collect.
             return nil
@@ -240,13 +236,6 @@ enum UsageCollector {
             return CodexParser.collect(
                 cache: &cache,
                 livePaths: &livePaths,
-                modifiedSince: cutoff
-            ).records
-        case "Gemini":
-            return GeminiParser.collect(
-                cache: &cache,
-                livePaths: &livePaths,
-                homeURL: homeURL,
                 modifiedSince: cutoff
             ).records
         case "Hermes":

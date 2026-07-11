@@ -23,9 +23,79 @@ final class UsageViewModel: ObservableObject {
         }
 
         // 2. Query usage.db for tokens and 7-day usage
-        stats = fetchStatsFromDB()
+        var stats = fetchStatsFromDB()
 
+        // 3. Year-long lightweight per-day aggregation for the heatmap.
+        stats.yearlyTokens = collectYearlyTokens()
+
+        self.stats = stats
         isLoading = false
+    }
+
+    /// Lightweight year-long per-day token totals across Claude/Hermes/Grok
+    /// sources. Each source is queried with a `-365 days` window and GROUP BY
+    /// day; only the day→sum dictionary is kept (no record details), so a
+    /// full year never resides in memory as records. // [archer]
+    private func collectYearlyTokens() -> [String: Int] {
+        let home = NSHomeDirectory()
+        let fm = FileManager.default
+        var totals: [String: Int] = [:]
+
+        let claudeDbPath = (home as NSString).appendingPathComponent(".claude/usage.db")
+        if fm.fileExists(atPath: claudeDbPath), let db = openReadOnly(claudeDbPath) {
+            let q = """
+                SELECT date(timestamp, 'localtime') as day, SUM(input_tokens) + SUM(output_tokens)
+                FROM turns
+                WHERE timestamp >= datetime('now', '-365 days')
+                GROUP BY day;
+            """
+            queryDayTotals(db: db, query: q, into: &totals)
+            sqlite3_close(db)
+        }
+
+        let hermesDbPath = (home as NSString).appendingPathComponent(".hermes/state.db")
+        if fm.fileExists(atPath: hermesDbPath), let db = openReadOnly(hermesDbPath) {
+            let q = """
+                SELECT date(started_at, 'unixepoch', 'localtime') as day,
+                       SUM(input_tokens) + SUM(output_tokens)
+                FROM sessions
+                WHERE started_at >= strftime('%s', 'now', '-365 days')
+                GROUP BY day;
+            """
+            queryDayTotals(db: db, query: q, into: &totals)
+            sqlite3_close(db)
+        }
+
+        let grokLogPath = (home as NSString).appendingPathComponent(".grok/logs/unified.jsonl")
+        if fm.fileExists(atPath: grokLogPath) {
+            let records = UsageCollector.grokRecords(
+                homeURL: URL(fileURLWithPath: home),
+                modifiedSince: Calendar.current.date(byAdding: .day, value: -365, to: Date())
+            )
+            for record in records {
+                totals[record.date, default: 0] += record.usage.totalTokens
+            }
+        }
+
+        return totals
+    }
+
+    private func openReadOnly(_ path: String) -> OpaquePointer? {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return nil }
+        return db
+    }
+
+    private func queryDayTotals(db: OpaquePointer, query: String, into totals: inout [String: Int]) {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let dayChars = sqlite3_column_text(stmt, 0) else { continue }
+            let day = String(cString: dayChars)
+            let sum = Int(sqlite3_column_int64(stmt, 1))
+            totals[day, default: 0] += sum
+        }
+        sqlite3_finalize(stmt)
     }
 
     private func fetchStatsFromDB() -> UsageStats {
@@ -246,6 +316,11 @@ struct UsageStats {
     }
 
     var chartDays: [DayUsage] = []
+
+    /// Year-long per-day token totals (lightweight: only day→sum, no
+    /// record details) for the heatmap. Populated by
+    /// `UsageViewModel.collectYearlyTokens()`. // [archer]
+    var yearlyTokens: [String: Int] = [:]
 }
 
 @MainActor
@@ -274,7 +349,6 @@ struct UsageView: View {
         }
         if fm.fileExists(atPath: hermesDbPath) {
             usedIds.insert("hermes")
-            usedIds.insert("antigravity")
         }
 
         let grokLogPath = (home as NSString).appendingPathComponent(".grok/logs/unified.jsonl")
@@ -285,10 +359,12 @@ struct UsageView: View {
         // Antigravity's conversation DB or stock gemini-cli's session shards
         // (~/.gemini/tmp/<hash>/chats, what GeminiParser reads) — either
         // means Gemini-family usage exists on this machine.
+        // [archer] Gemini / Antigravity usage tracking dropped 2026-07-10;
+        // keep the agent selectable but route it to the generic empty panel.
         let geminiDBPath = (home as NSString).appendingPathComponent(".gemini/antigravity-cli/conversation_summaries.db")
         let geminiTmpPath = (home as NSString).appendingPathComponent(".gemini/tmp")
         if fm.fileExists(atPath: geminiDBPath) || fm.fileExists(atPath: geminiTmpPath) {
-            usedIds.insert("gemini")
+            // intentionally not inserted — no stats collected
         }
 
         // 3. Make sure the currently selected agent or active cockpit agent is in the list
@@ -332,6 +408,7 @@ struct UsageView: View {
                         statStrip
                         gridPanels
                         chartPanel
+                        heatmapPanel
                     }
                     .padding(32)
                 }
@@ -515,8 +592,8 @@ struct UsageView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
-            } else if resolvedBaseAgentId == "hermes" || resolvedBaseAgentId == "antigravity" {
-                // Gemini/Hermes stats
+            } else if resolvedBaseAgentId == "hermes" {
+                // Hermes stats
                 let totalInput = viewModel.stats.hermesTodayInput + viewModel.stats.hermesTodayCacheRead
                 let hitRate = totalInput > 0 ? Double(viewModel.stats.hermesTodayCacheRead) / Double(totalInput) : 0.0
 
@@ -877,20 +954,19 @@ struct UsageView: View {
                 }
                 .padding(24)
                 .bracketBorder()
-            } else if resolvedBaseAgentId == "hermes" || resolvedBaseAgentId == "antigravity" {
-                // Hermes / Antigravity Panel (shares state.db)
+            } else if resolvedBaseAgentId == "hermes" {
+                // Hermes Panel (shares state.db)
                 let agent = AgentTemplate.all.first { $0.id == selectedAgentId }
-                let title = agent?.title ?? (selectedAgentId == "antigravity" ? "Antigravity CLI" : "Hermes")
-                let symbol = agent?.symbol ?? (selectedAgentId == "antigravity" ? "arrow.up.circle" : "cpu")
-                let isAgy = resolvedBaseAgentId == "antigravity"
+                let title = agent?.title ?? "Hermes"
+                let symbol = agent?.symbol ?? "cpu"
 
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(spacing: 8) {
                         Image(systemName: symbol)
-                            .foregroundStyle(isAgy ? Theme.activityRunning : Theme.chromeMuted)
+                            .foregroundStyle(Theme.chromeMuted)
                         Text(title)
                             .font(Theme.mono(12, weight: .bold))
-                        Text(isAgy ? "Gemini 3.5 Flash · API 计费" : "Nous Research · token 计费")
+                        Text("Nous Research · token 计费")
                             .font(Theme.mono(9.5))
                             .foregroundStyle(Theme.chromeMuted)
                             .padding(.horizontal, 6)
@@ -946,7 +1022,7 @@ struct UsageView: View {
                         Text(String(format: "$%.2f", cost))
                         .font(Theme.mono(10.5, weight: .bold))
                         .foregroundStyle(Theme.gitInsertion) +
-                        Text(isAgy ? " · Google Cloud / Vertex API 计费估算。" : " · 本地大模型 & API 计费估算。")
+                        Text(" · 本地大模型 & API 计费估算。")
                         .font(Theme.mono(10.5))
                         .foregroundStyle(Theme.chromeMuted)
                 }
@@ -1157,7 +1233,7 @@ struct UsageView: View {
                         Rectangle()
                             .fill(Theme.gitInsertion)
                             .frame(width: 10, height: 10)
-                        Text("Gemini / Hermes")
+                        Text("Hermes")
                     }
                     HStack(spacing: 7) {
                         Rectangle()
@@ -1172,6 +1248,10 @@ struct UsageView: View {
         }
         .padding(24)
         .bracketBorder()
+    }
+
+    private var heatmapPanel: some View {
+        YearHeatmapView(yearlyTokens: viewModel.stats.yearlyTokens)
     }
 
     // MARK: - Helper Methods

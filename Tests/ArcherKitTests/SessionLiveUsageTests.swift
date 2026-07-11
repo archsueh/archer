@@ -132,7 +132,7 @@ final class SessionLiveUsageTests: XCTestCase {
         XCTAssertEqual(SessionLiveUsageSource.toolLabel(for: .claudeCode), "Claude Code")
         XCTAssertEqual(SessionLiveUsageSource.toolLabel(for: .grok), "Grok")
         XCTAssertEqual(SessionLiveUsageSource.toolLabel(for: .codex), "Codex")
-        XCTAssertEqual(SessionLiveUsageSource.toolLabel(for: .gemini), "Gemini")
+        XCTAssertNil(SessionLiveUsageSource.toolLabel(for: .gemini)) // Gemini usage dropped 2026-07-10
         XCTAssertNil(SessionLiveUsageSource.toolLabel(for: .terminal))
         XCTAssertNil(SessionLiveUsageSource.toolLabel(for: .pi))
     }

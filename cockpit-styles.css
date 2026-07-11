@@ -1,5 +1,7 @@
 /* Archer — global design tokens & brand fonts.
-   The DS compiler reads @font-face + tokens from this file. */
+   The DS compiler reads @font-face + tokens from this file.
+   SINGLE SOURCE OF TRUTH for all Archer frontends (cockpit, bridge, specs). */
+
 @import url("https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 :root {
@@ -8,24 +10,43 @@
   /* ── Brand type ── */
   --font-sans: "Onest", -apple-system, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  /* aliases — cockpit.html vocabulary */
+  --sans: var(--font-sans);
+  --mono: var(--font-mono);
+
+  /* easing — strong curve for all UI motion (no weak built-in easing) */
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 
   /* ── Chrome ── */
   --primary:        #EFEFF1;   /* chrome-foreground */
-  --secondary:      #9E9EA0;   /* chrome-muted */
+  --secondary:      #9E9EA0;   /* chrome-muted (≥4.5:1 on dark surfaces) */
   --neutral:        #282C34;   /* terminal-surface */
+  --surface:        #282C34;   /* alias used by cockpit vocabulary */
   --surface-2:      #21242b;
-  --chrome-hairline: rgba(255,255,255,.07);
+  --chrome-hairline: rgba(255,255,255,.08);  /* standardized — was .07/.08 drift */
   --chrome-hover:    rgba(255,255,255,.07);
   --chrome-active:   rgba(255,255,255,.15);
+  /* aliases — cockpit.html vocabulary */
+  --muted:    var(--secondary);
+  --hairline: var(--chrome-hairline);
+  --hover:    var(--chrome-hover);
+  --active:   var(--chrome-active);
 
   /* ── Activity status ── */
   --active-running:   #69B0D6;  /* cool blue */
   --active-attention: #E8B068;  /* warm amber */
   --active-failure:   #E86666;  /* warm red */
+  /* aliases — cockpit/bridge vocabulary */
+  --running:   var(--active-running);
+  --attention: var(--active-attention);
+  --failure:   var(--active-failure);
 
   /* ── Git diff ── */
   --git-insertion: #73C780;
   --git-deletion:  #E86666;
+  /* alias */
+  --insert: var(--git-insertion);
 
   /* ── Glass ── */
   --glass-opacity: 0.72; /* @kind other */

@@ -28,6 +28,20 @@ struct SkillsView: View {
     @State private var isSearching = false
     @State private var installingSkillId: String? = nil
     @State private var isUpdatingAll = false
+    /// [archer] Live progress for the update flow so the UI shows a real
+    /// countdown/ETA instead of an infinite spinner. `updateDone`/`updateTotal`
+    /// drive "N/M 已完成"; `updateBytesDone`/`updateBytesTotal` drive the
+    /// per-file download bar; `updateStartedAt` seeds the ETA.
+    @State private var updateDone = 0
+    @State private var updateTotal = 0
+    @State private var updateBytesDone: Int64 = 0
+    @State private var updateBytesTotal: Int64 = 0
+    @State private var updateStartedAt: Date? = nil
+    /// True while a per-file download is streaming (for the indeterminate→
+    /// determinate handoff).
+    @State private var updateDownloading = false
+    /// Ticks once a second while updating so the ETA label re-renders live.
+    @State private var etaTick = 0
     /// [archer] Hermes skills (`~/.hermes/skills`) update state. Hermes
     /// updates via its own CLI (`hermes update`), not a bare git pull —
     /// the skills dir has no usable remote here. We surface it in the
@@ -616,6 +630,13 @@ struct SkillsView: View {
 
     private var updatesView: some View {
         VStack(spacing: 0) {
+            // [archer] Live update progress — replaces the previous infinite
+            // spinner so the user sees a real countdown (N/M 已完成 + ETA)
+            // instead of "is it even doing anything?".
+            if isUpdatingAll {
+                updateProgressBanner
+            }
+
             // Header row
             HStack {
                 Text("已安装的 GitHub 技能")
@@ -630,6 +651,13 @@ struct SkillsView: View {
                     Button {
                         Task {
                             isUpdatingAll = true
+                            await MainActor.run {
+                                updateTotal = githubSkills.count
+                                updateDone = 0
+                                updateBytesDone = 0
+                                updateBytesTotal = 0
+                                updateStartedAt = Date()
+                            }
                             for skill in githubSkills {
                                 let result = SkillsShResult(id: skill.name, name: skill.name, source: "\(skill.repoOwner)/\(skill.repoName)", installs: 0)
                                 var targets: [String] = []
@@ -643,6 +671,7 @@ struct SkillsView: View {
                                 }
                                 if targets.isEmpty { targets = ["claude", "agents"] }
                                 await installSkillFromSh(result, targets: targets)
+                                await MainActor.run { updateDone += 1 }
                             }
                             isUpdatingAll = false
                         }
@@ -713,7 +742,12 @@ struct SkillsView: View {
                 }
                 Spacer()
                 if isUpdatingHermes {
-                    ProgressView().scaleEffect(0.6).frame(width: 40, height: 20)
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.6).frame(width: 40, height: 20)
+                        Text("更新中…")
+                            .font(Theme.mono(10))
+                            .foregroundStyle(Theme.activityRunning)
+                    }
                 } else if hermesUpdateAvailable {
                     Button {
                         runHermesUpdate()
@@ -838,6 +872,44 @@ struct SkillsView: View {
             loadInstalledRegistry()
             Task { await checkForUpdates() }
         }
+        // Re-render the ETA once a second while an update is in flight.
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            if isUpdatingAll { etaTick += 1 }
+        }
+    }
+
+    /// Banner shown at the top of the Updates tab while skills are updating.
+    /// Shows a determinate progress bar (skills done / total) plus a live ETA
+    /// so the operation is never a silent infinite spinner.
+    private var updateProgressBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ProgressView(value: Double(updateTotal > 0 ? updateDone : 0),
+                             total: Double(max(updateTotal, 1)))
+                    .progressViewStyle(.linear)
+                    .frame(maxWidth: .infinity)
+                Text("\(updateDone)/\(updateTotal) 已完成")
+                    .font(Theme.mono(10, weight: .medium))
+                    .foregroundStyle(Theme.activityRunning)
+            }
+            HStack(spacing: 6) {
+                if let eta = updateETALabel() {
+                    Image(systemName: "timer")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.chromeMuted)
+                    Text("预计剩余 \(eta)")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.chromeMuted)
+                } else {
+                    Text("正在连接 GitHub…")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.chromeMuted)
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(Theme.activityRunning.opacity(0.08))
+        .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
     }
 
     private var filterBar: some View {
@@ -981,6 +1053,61 @@ struct SkillsView: View {
         (NSHomeDirectory() as NSString).appendingPathComponent(".archer/skills.json")
     }
 
+    /// [archer] Shared session with a finite timeout + connectivity wait. The
+    /// previous code used `URLSession.shared.data(for:)` with NO timeout —
+    /// any stalled GitHub request hung the whole update Task forever, which
+    /// surfaced as "skills won't update" (infinite spinner). 30s is generous
+    /// for the GitHub API; `waitsForConnectivity` lets the OS resolve a
+    /// transient outage instead of failing instantly at launch.
+    private static let apiSession: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 30
+        cfg.timeoutIntervalForResource = 60
+        cfg.waitsForConnectivity = true
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: cfg)
+    }()
+
+    /// Build a GitHub API request (auth via resolved token) with a 30s timeout.
+    private func makeAPIRequest(_ urlString: String, token: String?) -> URLRequest? {
+        guard let url = URL(string: urlString) else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 30)
+        req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        return req
+    }
+
+    /// Human-readable ETA for the in-flight update: from bytes done / elapsed
+    /// we extrapolate total time, then subtract elapsed. Returns nil until we
+    /// have a stable sample (avoids a wild "99 小时" on the first byte).
+    private func updateETALabel() -> String? {
+        guard let start = updateStartedAt, updateBytesDone > 0 else { return nil }
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 0.5, updateBytesDone < updateBytesTotal || updateBytesTotal == 0 else {
+            return nil
+        }
+        // If we know the total size, extrapolate precisely; otherwise fall back
+        // to per-skill pacing (done/total skills).
+        if updateBytesTotal > 0 {
+            let rate = Double(updateBytesDone) / elapsed
+            let remain = Double(updateBytesTotal - updateBytesDone) / rate
+            return Self.etaString(remain)
+        }
+        // No content-length: estimate from skills completed.
+        guard updateTotal > 0, updateDone < updateTotal else { return nil }
+        let perSkill = elapsed / Double(max(updateDone, 1))
+        return Self.etaString(perSkill * Double(updateTotal - updateDone))
+    }
+
+    private static func etaString(_ seconds: Double) -> String {
+        let s = max(0, Int(seconds))
+        if s < 60 { return "约 \(s) 秒" }
+        let m = s / 60
+        if m < 60 { return "约 \(m) 分" }
+        return String(format: "约 %.1f 小时", Double(s) / 3600)
+    }
+
     private static func readRegistry() -> [InstalledSkill] {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: registryPath)),
               let rows = try? JSONDecoder().decode([InstalledSkill].self, from: data)
@@ -1031,13 +1158,13 @@ struct SkillsView: View {
 
         for slug in repos {
             guard let url = URL(string: "https://api.github.com/repos/\(slug)/commits?per_page=1") else { continue }
-            var req = URLRequest(url: url)
+            var req = URLRequest(url: url, timeoutInterval: 30)
             req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
             req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
             if let token {
                 req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
-            guard let (data, resp) = try? await URLSession.shared.data(for: req) else { continue }
+            guard let (data, resp) = try? await SkillsView.apiSession.data(for: req) else { continue }
             guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
                 if firstErrorCode == nil { firstErrorCode = (resp as? HTTPURLResponse)?.statusCode ?? -1 }
                 continue
@@ -1143,7 +1270,9 @@ struct SkillsView: View {
         }
         Task {
             defer { Task { @MainActor in isSearching = false } }
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
+            var req = URLRequest(url: url, timeoutInterval: 30)
+            req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
+            guard let (data, _) = try? await SkillsView.apiSession.data(for: req),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let list = json["skills"] as? [[String: Any]] else { return }
             let results: [SkillsShResult] = list.compactMap { item in
@@ -1689,7 +1818,7 @@ struct SkillsView: View {
             let urlString = "https://api.github.com/repos/\(repo)/contents/\(pathInRepo)"
             guard let url = URL(string: urlString) else { return }
 
-            var req = URLRequest(url: url)
+            var req = URLRequest(url: url, timeoutInterval: 30)
             req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
             req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
 
@@ -1697,14 +1826,14 @@ struct SkillsView: View {
                 req.setValue("Bearer \(githubToken)", forHTTPHeaderField: "Authorization")
             }
 
-            let (data, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await SkillsView.apiSession.data(for: req)
             guard let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 else {
                 if !urlString.contains("?ref=") {
                     let masterUrlString = urlString + "?ref=master"
                     if let masterUrl = URL(string: masterUrlString) {
                         var masterReq = req
                         masterReq.url = masterUrl
-                        let (mData, mResp) = try await URLSession.shared.data(for: masterReq)
+                        let (mData, mResp) = try await SkillsView.apiSession.data(for: masterReq)
                         if let mHttpResp = mResp as? HTTPURLResponse, mHttpResp.statusCode == 200 {
                             try await parseAndDownload(data: mData, repo: repo, destBasePaths: destBasePaths)
                             return
@@ -1733,7 +1862,19 @@ struct SkillsView: View {
 
             for file in files {
                 if file.type == "file", let dlUrlStr = file.download_url, let dlUrl = URL(string: dlUrlStr) {
-                    let (fileData, _) = try await URLSession.shared.data(from: dlUrl)
+                    // Stream the file so we can surface a real download progress
+                    // (bytes received) instead of blocking on an all-or-nothing
+                    // `data(from:)`. Times out via apiSession's 30s request limit.
+                    var dlReq = URLRequest(url: dlUrl, timeoutInterval: 30)
+                    dlReq.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
+                    let (bytes, _) = try await SkillsView.apiSession.bytes(for: dlReq)
+                    var fileData = Data()
+                    for try await byte in bytes {
+                        fileData.append(byte)
+                        await MainActor.run {
+                            updateBytesDone += 1
+                        }
+                    }
 
                     for destBase in destBasePaths {
                         let prefix = "\(result.resolvedRepoPath)/"

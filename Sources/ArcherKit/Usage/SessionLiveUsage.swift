@@ -38,7 +38,6 @@ enum SessionLiveUsageSource {
         case AgentTemplate.claudeCodeID: return "Claude Code"
         case "grok": return "Grok"
         case "codex": return "Codex"
-        case "gemini": return "Gemini"
         default: return nil
         }
     }
@@ -48,7 +47,6 @@ enum SessionLiveUsageSource {
         AgentTemplate.claudeCodeID,
         "grok",
         "codex",
-        "gemini",
     ]
 
     /// Prefer hook `conversationId`. Codex falls back to the cwd-matched

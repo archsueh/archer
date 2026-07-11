@@ -4,7 +4,7 @@
 > **两条纪律**:①**走前必写**——每次会话结束更新本文件(试了什么/过了什么/败了什么/新规则);不写则下次从零。②**开局必读**——新会话先读本文件 + CLAUDE.md,再动手;别凭记忆重推已验证过的事实。
 > 与 `~/.claude` 全局 memory 的分工:本文件是**项目级、随仓库走**;全局 memory 是**跨项目习惯/偏好**。事实以本文件为准,过期即改。
 >
-> Verified date: 2026-07-06 · HEAD `6a47419`（本文件随下一提交入库）
+> Verified date: 2026-07-10 · HEAD `535 green baseline`（本文件随下一提交入库）
 
 ---
 
@@ -16,13 +16,14 @@
 - **主模块**:`Sources/ArcherKit/` 下 App / Bridge / Cockpit / Dashboard / Diff / EdgeGlow / Resize / Sessions / Settings / Sidebar / Terminal / Usage / Utilities 等。
 - **Bridge(P0/P1 已落地并在跑)**:`Sources/ArcherKit/Bridge/` = PaneRegistry.swift + BridgeServer.swift + BridgeEventLog.swift + LogPanelView.swift。运行时 socket:`~/.archer/bridge.sock`(存在=服务活着)。
 - **Skills(独立,2026-07-03 起不依赖 CC Switch)**:安装注册表 `~/.archer/skills.json`(JSON `InstalledSkill` 数组;cc-switch.db 读写、「管理」按钮、`import SQLite3` 已全部移除)。搜索源 `https://skills.sh/api/search`。「发现技能」原生安装(GitHub Contents API 递归下载,`resolveGitHubToken`:env → `gh auth token`,认证 5000 req/hr;匿名仅 60/hr 极易耗尽——2026-07-03 「安装拉不起来」的根因就是匿名限流,不是死链)。「检查更新」已实现:按 upstream repo 去重查 `commits?per_page=1`,commit 时间 > max(installedAt, updatedAt) 即标橙。⚠️ skills.sh 的 skillId ≠ 仓库目录名(例:市场名 vercel-react-best-practices → 实际 `skills/react-best-practices`),featured/安装 id 必须用仓库路径。扫描本地 agent skills 目录 + 健康检查 + 跨端去重 + symlink 继电器不变。
+  - **[2026-07-11 修复] 更新卡死 + 无进度反馈**:根因是 `URLSession.shared.data(for:)` **零超时**——GitHub API 实测单次 5.6s(带 auth),递归下载一技能十几~几十次请求,任一网络波动即永久挂起 → 更新 `Task` 卡死 = 用户看到"无法更新" + 无限转圈无倒计时。修复:`SkillsView.apiSession`(30s 请求超时 + `waitsForConnectivity`)、`makeAPIRequest` helper、所有 GitHub 调用(检查更新/搜索/递归下载/master 回退/文件下载)换用并加 `timeoutInterval=30`;文件下载改 `bytes(for:)` 流式以接入字节进度;`updatesView` 顶部加 `updateProgressBanner`(N/M 已完成进度条 + 每秒刷新的 ETA 倒计时),Hermes 更新加"更新中…"文案。编译 0 错、`swift test` 531/0。v1.0.7 已部署。
 - **Glass 全局基线(不可被 per-theme 覆盖)**:`Theme.glassOpacity` / `chromeBackgroundBlur` / `chromeBackgroundSaturate`(见 `Theme.swift`)。`aver-light` 象牙白 `#FDF9F4` 是外观基准。
 - **知识循环(你自建,在跑)**:`scripts/knowledge-loop/kl.py`(ingest→detect→propose→approve→re-verify)+ `com.hsueh.knowledge-loop.plist`;manifest 在 `~/Documents/Notes/Knowledge/.knowledge-loop/manifest.yaml`,含 proposals/ queue/ snapshots/;最近扫描 2026-07-02 08:30(`scan.log`)。已入 `.gitignore`(本地运维,不入库)。
 - **更新器 = Sparkle 2.9.4**(`2b7d20a`):`SPUUpdater` + 自定义 `ArcherUpdateUserDriver`/`UpdateFlowController`(保 glass 样式);仅手动检查(`SUEnableAutomaticChecks=false`),feed URL 由 `build-app.sh` 注入 Info.plist。旧 `UpdateChecker.swift`(GitHub releases API)已删。
 - **定价 = PricingProvider**(`9dc0bc9`):`Usage/PricingProvider.swift` 单一定价源(models.dev 动态 + 内置兜底),`UsageCollector`/`UsageView` 两处硬编码定价表已收敛。
 - **Memory 面板 A-mem 化(2026-07-09)**:`Sidebar/MemoryGraph.swift`(纯 Swift/Foundation,零依赖) + `SidebarView.MemoryBankSection` 重写。取代原傻瓜文件列表:解析 `[[wikilink]]`(支持 `[[T|alias]]`)与 `#tag`(先剥 ``` / `` 代码块),建前向/反向链接网络,按连接度(枢纽)排序、标签聚类、孤立项分组;`+` 按钮生成含 `[[ ]]` 占位与 `#记忆` 槽的原子 memo 模板,点击任意行复制 `[[标题]]` 供手动连网。**不自动改写文件、不引入 LLM**——贴合"人工高信噪策展 > 自动全量捕获"哲学。测试 `MemoryGraphTests` ×7 全绿;全量 529/0。memo 目录 `~/Library/Application Support/Archer/memory/claude/<branch>/`(原目录,内容为空时不显示)。
 - **项目规则发现(2026-07-09,借 orbiteditor `.cursor/rules` 思路)**:`Sidebar/ProjectRulesSection.swift` 只读扫描当前 workspace 根的 `.archer/rules/*.md`,在侧边栏 Tool 区列出,点击复制 `@<绝对路径>` 供手动引用到 prompt。**不自动注入 agent system prompt、不改 agent 启动环境**——守 STATE §4 隔离边界 + 人工策展哲学。测试 `ProjectRulesSectionTests` ×3 全绿;全量 535/0。
-- **本地发布产物**:`./scripts/build-app.sh` → `dist/Archer.app` v1.0.6(adhoc 签名),已覆盖 `/Applications/Archer.app`(quarantine 已清);`dist/Archer-v1.0.6.dmg`(10M)。
+- **本地发布产物**:`./scripts/build-app.sh` → `dist/Archer.app` v1.0.7(adhoc 签名),已覆盖 `/Applications/Archer.app`(quarantine 已清);`dist/Archer-v1.0.7.dmg`(10M)。
 - **Skills/Usage 假数据闭环修复(2026-07-10)**:Skills 面板原 `seedTriggerInfo`(用 `name.hashValue % 6` 伪造"45 天触发/活跃数")已删;改为真实信号——`endpointCount`(跨端副本数,group pass 填 `max(1, presence.count)`)、`lastModified`(SKILL.md 真实 mtime)、`isSymlink`(relay 检测);`calculateStats` 活跃数=近 45 天 mtime 修改;表头/排序/行内/状态色"触发"→"端点数/修改时间"。Usage 面板 Claude 栏原写死假值(`getUsagePercentages` 返回 68/41、`resetsAt==nil` 显示"重置 14:30 · 1h 12m"/"重置 周一 09:00 · 3 天后")已改:`usage==nil` 返回可选 nil → Claude 面板显示"未连接 Anthropic 用量"空态 + `viewModel.error` 真实原因;`resetsAt==nil` 显示"重置时间未知"。实测 `~/.claude/skills` 210 个、skills.sh API 200、ai-workflow tree 200(安装/relay/更新闭环本来就通);`~/.claude/usage.db` 不存在 → Claude 栏走未连接态(符合预期)。Hermes/Grok 栏数据源(state.db/unified.jsonl)本就真实,仅修"基于最近 of API 会话统计"→"基于本地 state.db 会话统计"措辞。参考 yibie/skills-manager(原生 macOS 竞品,其 `Skill` 模型无 trigger 概念,只有 `isInstalled`/`compatibleAgents`,印证方向)。全量 535/0。
 
 **已下线 / 不存在(别再引用旧 memory)**:
@@ -59,7 +60,7 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 
 - **分支未推送**:`refactor/usage-parsers` + `chore/usage-tokenscope-stage0` 合计 8 commit,待 merge/push。
 - **UsageParser 协议化已完成** (commit `805406f`): protocol + 4 parser 文件 + collect() 循环化,501 test 全绿。
-- ~~Gemini 降级 BACKLOG~~ **已推翻并实现**:`6a47419` 的结论("CLI 不落纯文本 token")误把 Antigravity CLI 的 protobuf DB 当成 Gemini CLI 的存储。**原版 gemini-cli 落纯 JSON**——`~/.gemini/tmp/<hash>/chats/session-*.json`,消息级 `tokens {input,output,cached,thoughts}`(依据: kenn-io/agentsview `internal/parser/gemini.go` + testdata fixture)。`GeminiParser.swift` 已实现并注册,thoughts 计入 output(按 output 计费)。本机无此数据仅因未装原版 gemini CLI(只有 Archer wrapper)。
+- ~~Gemini 实现~~ **2026-07-10 已回退**:`GeminiParser.swift`(含 `UsageRecordSource.nativeGemini`、`SessionLiveUsageSource.gemini`、UsageView 的 antigravity 分支)全部删除。原因:本机只有 Archer wrapper 与 Antigravity CLI,无原版 gemini-cli 真实数据;`~/.gemini/antigravity-cli/conversation_summaries.db` 探测保留为"发现存在但不收集"。`Tests/ArcherKitTests/GeminiParserTests.swift` 一并移除。Stage 2 heatmap 接入:`YearHeatmapView`(53×7 GitHub 式网格,读 `UsageStats.yearlyTokens` 轻量日聚合字典,窗口 365 天)。`UsageViewModel.collectYearlyTokens()` 走 Claude/Hermes SQLite GROUP BY day + Grok jsonl,仅存 day→sum。535 tests / 0 failures。
 
 **tokenscope 集成**:Stage 1 `PricingProvider` **已提交**(`9dc0bc9`,实现+测试)。Stage 2 `UsageParser` 协议化 **已完成**。余下:heatmap/donut 视图、MCP/Skill 成本归因(见 `docs/usage-tokenscope-plan.md`)。
 
@@ -79,6 +80,13 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 ---
 
 ## 5. Last session(stage 5 — resume,别 restart)
+
+**2026-07-11 · 旁线 handoff（云南美育 PPT，非 Archer 主线）**
+
+- 工作目录：`~/Documents/Notes/教学-云南美育培训0709/`；完整日志：`SESSION-LOG-2026-07-10.md`（重启先读此文件）。
+- 已改 `ppt/index.html`：①自习 03/12 脚注 →《认知觉醒》元认知/对模糊零容忍；②END 金句末条 → 恢复信条「审美的边界……承认渺小」；主课 L1638 信条未动。
+- 规则：信条句禁止「优化」成「语言的边界」；书抬维度、不替换血肉；五步=元认知闭环。
+- Archer 主线未推进；Next 仍见下方 Archer 条目。若下一会话做美育课 → 读 Notes 日志；若做 Archer → 忽略本条，接 07-10 Usage 切片。
 
 **2026-07-09** · HEAD `6c79bd0`,分支 `main`。P1a–P1c session live cost(未 commit)。
 
@@ -122,3 +130,10 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 - `scripts/git-pre-commit.sh` 有 agent-session 检测(非本次改动,未被提交)
 
 **Next**:① merge/push 本分支;② tokenscope 余下(heatmap/donut、成本归因);③ release 流程(DMG + Sparkle appcast 生成与签名);④ Gemini parser 等 protobuf schema 公开后解锁;⑤ 其余 8 agent(Aider/Cursor/Windsurf/Copilot/Cline/Augment/Qwen/Goose)调研。
+
+**2026-07-10 · 修复 `swift test` fall + 接入 heatmap**
+- 根因:`GeminiParser.swift` 被 staged 删除(enum 用例 `nativeGemini`、`SessionLiveUsageSource.gemini`、UsageView antigravity 分支同步清理),但 `Tests/ArcherKitTests/GeminiParserTests.swift` 与 `SessionLiveUsageTests.testToolLabelMapsSupportedAgents` 仍引用 → `swift build` 过、`swift test` 编译失败("always fall")。
+- 处置:删 `GeminiParserTests.swift`;`testToolLabelMapsSupportedAgents` 的 `.gemini` 断言改为 `XCTAssertNil`(Gemini usage 已 drop)。
+- Stage 2 heatmap 收口:`YearHeatmapView` 此前已建但未接入 → `UsageView.body` 加 `heatmapPanel`,数据来自 `UsageViewModel.collectYearlyTokens()`(365 天轻量日聚合,Claude/Hermes SQLite + Grok jsonl,仅 day→sum 驻内存)。
+- `swift test`:**531 tests / 0 failures**(绿)。
+- Next:提交本切片(Usage Gemini 回退 + heatmap 接入 + 测试修正);donut 视图与 MCP/Skill 归因(Stage 3)仍待做;release 流程待跑。

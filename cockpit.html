@@ -6,25 +6,14 @@
 <title>Archer · Cockpit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="cockpit-styles.css">
 <style>
-  :root{
-    color-scheme:dark;
-    --primary:#EFEFF1;
-    --muted:#9E9EA0;
-    --surface:#282C34;
-    --surface-2:#21242b;
-    --hairline:rgba(255,255,255,.08);
-    --hover:rgba(255,255,255,.06);
-    --active:rgba(255,255,255,.13);
-    --running:#69B0D6;
-    --attention:#E8B068;
-    --failure:#E86666;
-    --insert:#73C780;
-    --sans:"Onest",-apple-system,system-ui,sans-serif;
-    --mono:"JetBrains Mono",ui-monospace,monospace;
-  }
   *{box-sizing:border-box;}
+  /* global craft defaults */
+  :focus-visible{outline:2px solid var(--running);outline-offset:2px;}
+  .nav-item:focus-visible,.file:focus-visible,.ws:focus-visible,.tab:focus-visible,
+  .send:focus-visible,.model-pick:focus-visible,.tb-icobtn:focus-visible,.search:focus-within{
+    outline:2px solid var(--running);outline-offset:2px;}
   html,body{margin:0;height:100%;}
   body{
     width:1440px;height:900px;overflow:hidden;
@@ -70,7 +59,7 @@
   .body{flex:1;display:flex;min-height:0;}
   /* draggable column resizers */
   .resizer{width:7px;flex:none;cursor:col-resize;position:relative;margin:0 -3px;z-index:20;}
-  .resizer::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;transform:translateX(-50%);background:transparent;transition:background .1s;}
+  .resizer::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;transform:translateX(-50%);background:transparent;transition:background .12s var(--ease-out);}
   .resizer:hover::after,.resizer.active::after{background:var(--running);}
 
   /* ───────── left sidebar ───────── */
@@ -106,7 +95,7 @@
   .tabbar.droptarget{box-shadow:inset 0 -2px 0 var(--running);background:rgba(105,176,214,.08);}
   .tabs{display:flex;align-items:center;gap:2px;}
   .ws.dragging{opacity:.4;}
-  .droptip{font-family:var(--mono);font-size:10.5px;color:var(--running);margin-right:8px;opacity:0;transition:opacity .1s;}
+  .droptip{font-family:var(--mono);font-size:10.5px;color:var(--running);margin-right:8px;opacity:0;transition:opacity .12s var(--ease-out);}
   .tabbar.droptarget .droptip{opacity:1;}
   .tab{display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;cursor:default;
     font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid transparent;}
@@ -146,7 +135,7 @@
   .msg .gut{color:var(--running);flex:none;}
   .msg .txt{color:var(--primary);white-space:pre-wrap;}
   /* ── Hermes-style compose box (⌘L) ── */
-  .compose{flex:none;margin:0 20px 14px;border:1px solid var(--hairline);background:rgba(255,255,255,.04);}
+  .compose{flex:none;margin:0 20px 14px;border:1px solid var(--hairline);background:rgba(255,255,255,.04);transition:border-color 150ms var(--ease-out);}
   .compose:focus-within{border-color:var(--running);}
   .compose-row{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;}
   .compose .add{width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--muted);margin-top:1px;}
@@ -168,7 +157,7 @@
   .bb-head{display:flex;align-items:center;gap:8px;height:30px;padding:0 14px;color:var(--muted);cursor:pointer;}
   .bb-head .lbl{letter-spacing:.06em;text-transform:uppercase;font-size:10px;}
   .bb-head .last{color:var(--primary);margin-left:6px;}
-  .bb-head .chev{margin-left:auto;transition:transform .15s;}
+  .bb-head .chev{margin-left:auto;transition:transform .15s var(--ease-out);}
   .bridgebar.open .bb-head .chev{transform:rotate(180deg);}
   .bb-body{display:none;max-height:140px;overflow:auto;padding:4px 14px 12px;}
   .bridgebar.open .bb-body{display:block;}
@@ -318,7 +307,7 @@
           <div class="bb-body" id="bbBody"></div>
         </div>
         <div class="statusbar">
-          <span class="chip"><svg class="ic" style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>v22.22.3</span>
+          <span class="chip"><svg class="ic" style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>online</span>
           <span class="chip"><svg class="ic" style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>127.0.0.1:7890</span>
         </div>
       </div>
