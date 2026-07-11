@@ -572,7 +572,8 @@ struct SidebarView: View {
                     onCloseOthers: { store.closeOtherWorkspaces(keeping: worktree) },
                     onDuplicate: { store.duplicateWorkspace(worktree) },
                     onRename: { store.renameWorkspace(worktree, to: $0) },
-                    onGoToSource: { store.activateWorkspace(parent) }
+                    onGoToSource: { store.activateWorkspace(parent) },
+                    onHandoff: { store.activateWorkspace(worktree); store.addTab(in: worktree, template: $0) }
                 )
             }
         }
@@ -853,7 +854,8 @@ private struct SectionView: View {
                             onCloseOthers: { store.closeOtherWorkspaces(keeping: worktree) },
                             onDuplicate: { store.duplicateWorkspace(worktree) },
                             onRename: { store.renameWorkspace(worktree, to: $0) },
-                            onGoToSource: { onGoToSource(workspace) }
+                            onGoToSource: { onGoToSource(workspace) },
+                            onHandoff: { onActivate(worktree); store.addTab(in: worktree, template: $0) }
                         )
                     }
                 }
@@ -925,7 +927,8 @@ private struct DraggableWorkspaceRow: View {
             disclosure: disclosure,
             onCreateWorktree: onCreateWorktree,
             onParallelTask: onParallelTask,
-            onGoToSource: onGoToSource
+            onGoToSource: onGoToSource,
+            onHandoff: { store.activateWorkspace(workspace); store.addTab(in: workspace, template: $0) }
         )
         .dropIndicator(active: isTargeted && !isSelfDrag, on: edge)
         .onDrag {

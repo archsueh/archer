@@ -32,6 +32,20 @@ struct SidebarWorkspaceRow: View {
     /// shortcut when the user is deep in a worktree and wants the main
     /// repo's tab back.
     var onGoToSource: (() -> Void)? = nil
+    /// Non-nil on every workspace row — the right-click "Hand off to…"
+    /// section spawns a fresh agent tab in *this* workspace's cwd under a
+    /// different agent CLI. It's a new session, not a resume: no shared
+    /// conversation id exists across agents, so the target agent starts
+    /// clean in the same directory. Lets a multi-CLI user throw Grok/Codex
+    /// at a background workspace without leaving the one they're in.
+    var onHandoff: ((AgentTemplate) -> Void)? = nil
+
+    /// Coding agents offered as hand-off targets — the same visible set the
+    /// `+` tab menu shows, minus shells (handing a directory to a bare
+    /// terminal is what "Duplicate Workspace" already covers).
+    private var handoffTargets: [AgentTemplate] {
+        AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared).filter { !$0.isShell }
+    }
 
     @State private var isHovered = false
     @State private var isContextMenuOpen = false
@@ -95,6 +109,18 @@ struct SidebarWorkspaceRow: View {
                     ArcherMenuRow(title: "Go to Source Workspace") {
                         isContextMenuOpen = false
                         onGoToSource()
+                    }
+                }
+                if let onHandoff, !handoffTargets.isEmpty {
+                    ArcherMenuDivider()
+                    ArcherMenuRow(title: "Hand off to…", isDisabled: true) {}
+                    ForEach(handoffTargets) { template in
+                        ArcherMenuRow(title: template.title) {
+                            AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 14)
+                        } action: {
+                            isContextMenuOpen = false
+                            onHandoff(template)
+                        }
                     }
                 }
                 ArcherMenuDivider()

@@ -83,6 +83,15 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
 ## 5. Last session(stage 5 — resume,别 restart)
 
+**2026-07-12 · 右键"Hand off to…"跨-agent 交接（分支 `archer/worktree-one-click`，未 commit）**
+
+- **先纠正一个过时计划**:plan `~/reports/polished-growing-cupcake.md` 的 **A(worktree 一键隔离)整块早已完工并提交**(`5571e22 feat(sessions): one-click agent tab in fresh worktree`)——`openTabInNewWorktree(source:template:)` @ `WorkspaceStore.swift:368` + `+` 弹窗 hover 副按钮 @ `TabBarView.swift:138-163` + `OpenTabInNewWorktreeTests.swift` 三件套齐。别再照 plan A 重建。plan 的 C(Usage)也已作废(见全局 memory `ref-facet-competitors`:opentab 竞品占位 + 用户已在最新版剔除 Usage 整块)。
+- **本次实做(计划外的新功能,非 plan)**:侧栏工作区右键菜单加"Hand off to…"区——列所有非-shell 编程 agent,点选 = 在**该工作区同 cwd** 开一个新 agent tab(换 agent、**不续会话**:跨 agent 无共享 conversationId)。为多-CLI 用户提供"在工作区 Y 干活时从侧栏甩 Grok 到工作区 X"的路径。后端零缺口(复用 `addTab(in:template:)`),纯加菜单入口。
+  - 改动:`SidebarWorkspaceRow.swift` 加 `onHandoff:` 回调 + `handoffTargets`(=`visibleOrdered.filter{!$0.isShell}`)+ 菜单区(禁用行当小标题 + agent 行);`SidebarView.swift` 三处构造点(565/848/915)接 `{ activate; store.addTab(in:ws, template:$0) }`。
+  - 验证:`swift build` 干净;`swift test` **522/0**。未加单测(逻辑仅一个过滤器,底座 visibleOrdered/addTab 已有覆盖;剩为 view 接线)。
+  - **未 commit**(用户未要求提交)。工作区另有一块**无关 WIP**:`ParallelTaskSheet.swift` 的 Delegation Brief(Goal/Why/Criteria/Boundaries),非本次改动,勿卷入。
+  - 语义决策存档:用户在"同-CLI 换模型 vs 跨-agent 交接"里选了**跨-agent**。同-CLI 换模型(resume+`--model`,`role`.reviewer/.implementer 已是代码概念,是 Oracle 成本路由的 GUI 出口)留作**未来可做**,未实现。
+
 **2026-07-11 · 旁线 handoff（云南美育 PPT，非 Archer 主线）**
 
 - 工作目录：`~/Documents/Notes/教学-云南美育培训0709/`；完整日志：`SESSION-LOG-2026-07-10.md`（重启先读此文件）。
