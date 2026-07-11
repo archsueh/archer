@@ -195,11 +195,6 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     /// visibility; reordering this kind has no visible effect because
     /// rendering bypasses `visibleItems`.
     case toolCallActivity = "tool-call-activity"
-    case codexUsage = "codex-usage"
-    /// Cumulative session $ / tokens for the active Claude conversation.
-    /// Hardcoded left slot (with tool-call / codex usage); Settings toggle
-    /// under the Claude Code section. // [archer]
-    case sessionCost = "session-cost"
     /// Pending turn indicator — shows when agent is processing (activityState == .running).
     /// Not user-configurable; always visible when relevant.
     case pendingTurn = "pending-turn"
@@ -213,8 +208,6 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     var displayName: String {
         switch self {
         case .toolCallActivity: return "Tool calls"
-        case .codexUsage: return "Usage remaining"
-        case .sessionCost: return "Session cost"
         case .pendingTurn: return "Pending turn"
         case .pythonVenv: return "Python venv"
         case .nodeVersion: return "Node version"
@@ -232,8 +225,6 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     var symbol: String? {
         switch self {
         case .toolCallActivity: return nil
-        case .codexUsage: return nil
-        case .sessionCost: return nil
         case .pendingTurn: return "hourglass"
         case .pythonVenv: return "p.circle.fill"
         case .nodeVersion: return "n.circle.fill"
@@ -248,11 +239,11 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     /// touched Settings → Status Bar. Tool-call activity goes first so a
     /// fresh Settings → Status Bar list renders it at the top.
     var isHardcodedSlot: Bool {
-        self == .toolCallActivity || self == .codexUsage || self == .sessionCost
+        self == .toolCallActivity
     }
 
     static let defaultOrder: [StatusBarItemKind] = [
-        .toolCallActivity, .sessionCost, .codexUsage, .pendingTurn, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitBranch, .gitDiff,
+        .toolCallActivity, .pendingTurn, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitBranch, .gitDiff,
     ]
 }
 
@@ -272,8 +263,6 @@ func paneStatusBarHasData(session: Session) -> Bool {
         // gate already lives in the loop predicate.
         switch item {
         case .toolCallActivity: if sessionWantsToolCallActivity(session) { return true }
-        case .codexUsage: if sessionWantsCodexUsage(session) { return true }
-        case .sessionCost: if sessionWantsSessionCost(session) { return true }
         case .pendingTurn: if session.activityState == .running { return true }
         case .pythonVenv: if session.environment.pythonVenv != nil { return true }
         case .nodeVersion: if session.environment.nodeVersion != nil { return true }
@@ -299,36 +288,6 @@ func sessionWantsToolCallActivity(_ session: Session) -> Bool {
     guard session.agent.reportsToolCalls, session.activityState != .idle else { return false }
     let agentKey = session.agent.baseAgentId ?? session.agent.id
     return !ArcherSettingsModel.shared.hiddenToolCallAgents.contains(agentKey)
-}
-
-@MainActor
-func sessionWantsCodexUsage(_ session: Session) -> Bool {
-    guard let usage = session.codexUsage, usage.hasQuota else { return false }
-    let agentKey = session.displayAgent.baseAgentId ?? session.displayAgent.id
-    guard agentKey == AgentTemplate.codex.id else { return false }
-    return !ArcherSettingsModel.shared.hiddenUsageAgents.contains(agentKey)
-}
-
-/// Session-cost pill: agent has a Usage tool mapping, not hidden in Settings,
-/// and a session key is available (hook `conversationId`, or Codex cwd→rollout
-/// fallback). The pill itself stays blank until records exist for that id. // [archer]
-@MainActor
-func sessionWantsSessionCost(_ session: Session) -> Bool {
-    guard SessionLiveUsageSource.toolLabel(for: session.displayAgent) != nil else {
-        return false
-    }
-    guard !ArcherSettingsModel.shared.hiddenStatusBarItems.contains(.sessionCost) else {
-        return false
-    }
-    if let cid = session.conversationId?
-        .trimmingCharacters(in: .whitespacesAndNewlines),
-        !cid.isEmpty
-    {
-        return true
-    }
-    // Codex has no conversationId hook — pill resolves via rollout match.
-    let agentKey = session.displayAgent.baseAgentId ?? session.displayAgent.id
-    return agentKey == AgentTemplate.codex.id
 }
 
 /// A status-bar icon button: bracket-bordered pill with hover + engaged
@@ -412,12 +371,6 @@ private struct PaneStatusBar: View {
             if showToolCallActivityPill(for: session) {
                 ToolCallActivityPill(session: session)
             }
-            if sessionWantsCodexUsage(session), let usage = session.codexUsage {
-                CodexUsagePill(usage: usage)
-            }
-            if sessionWantsSessionCost(session) {
-                SessionCostPill(session: session)
-            }
             // Flow wraps overflowing segments to a new row instead of hiding
             // them — narrow panes still surface every status at the cost of
             // a taller chrome row. Each row is right-aligned so the visual
@@ -449,8 +402,6 @@ private struct PaneStatusBar: View {
     private func segment(for item: StatusBarItemKind) -> some View {
         switch item {
         case .toolCallActivity: EmptyView() // rendered separately on the left
-        case .codexUsage: EmptyView() // rendered separately on the left
-        case .sessionCost: EmptyView() // rendered separately on the left
         case .pendingTurn: pendingTurnSegment
         case .pythonVenv: pythonSegment
         case .nodeVersion: nodeSegment

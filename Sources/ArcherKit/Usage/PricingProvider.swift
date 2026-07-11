@@ -38,7 +38,7 @@ struct PricingTable {
 ///   4. nil → caller applies a flat total-token heuristic
 ///
 /// The snapshot reproduces the numbers that used to live inline in
-/// `UsageCollector.estimateCost` / `UsageView.calculateCost`, so offline
+/// `UsageCollector.estimateCost` / `SessionLiveUsageAggregator.estimateCost`, so offline
 /// behaviour is byte-for-byte unchanged; a live models.dev cache only
 /// *upgrades* precision. // [archer]
 enum PricingProvider {

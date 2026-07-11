@@ -84,12 +84,6 @@ final class ArcherSettingsModel {
     /// base id, so a Claude-based custom honours the `claude-code` entry.
     /// Persisted under `statusbar.toolCallHidden`.
     var hiddenToolCallAgents: Set<String> = []
-    /// Per-agent visibility of the usage gauge (Codex's account rate-limit
-    /// windows), keyed like `hiddenToolCallAgents`. Empty = every usage-
-    /// reporting agent shows its gauge (the default; currently only Codex).
-    /// Persisted under `statusbar.usageHidden`. An open `Set` (not a closed
-    /// enum) so a future usage-reporting agent's id round-trips untouched.
-    var hiddenUsageAgents: Set<String> = []
     /// When true, archer launches Claude tabs with `--resume <id>` using the
     /// conversation id persisted on each tab (captured via Claude's hook
     /// payload). When false, every Claude tab starts fresh — but the
@@ -256,7 +250,6 @@ final class ArcherSettingsModel {
         let rawHiddenStatus = (statusbar["hidden"] as? [String]) ?? []
         hiddenStatusBarItems = Set(rawHiddenStatus.compactMap(StatusBarItemKind.init(rawValue:)))
         hiddenToolCallAgents = Set((statusbar["toolCallHidden"] as? [String]) ?? [])
-        hiddenUsageAgents = Set((statusbar["usageHidden"] as? [String]) ?? [])
 
         let terminals = parsed["terminals"] as? [String: Any] ?? [:]
         hiddenPresets = Set((terminals["hidden"] as? [String]) ?? [])
@@ -416,14 +409,13 @@ final class ArcherSettingsModel {
         }
 
         let statusOrderIsDefault = statusBarItems == StatusBarItemKind.defaultOrder
-        if statusOrderIsDefault && hiddenStatusBarItems.isEmpty && hiddenToolCallAgents.isEmpty && hiddenUsageAgents.isEmpty {
+        if statusOrderIsDefault && hiddenStatusBarItems.isEmpty && hiddenToolCallAgents.isEmpty {
             parsed.removeValue(forKey: "statusbar")
         } else {
             var statusbar = parsed["statusbar"] as? [String: Any] ?? [:]
             statusbar["order"] = statusOrderIsDefault ? nil : statusBarItems.map(\.rawValue)
             statusbar["hidden"] = hiddenStatusBarItems.isEmpty ? nil : hiddenStatusBarItems.map(\.rawValue).sorted()
             statusbar["toolCallHidden"] = hiddenToolCallAgents.isEmpty ? nil : Array(hiddenToolCallAgents).sorted()
-            statusbar["usageHidden"] = hiddenUsageAgents.isEmpty ? nil : Array(hiddenUsageAgents).sorted()
             parsed["statusbar"] = statusbar
         }
 
@@ -559,7 +551,6 @@ final class ArcherSettingsModel {
         statusBarItems = StatusBarItemKind.defaultOrder
         hiddenStatusBarItems = []
         hiddenToolCallAgents = []
-        hiddenUsageAgents = []
         scheduleSave()
     }
 
@@ -653,7 +644,6 @@ struct ArcherSettingsView: View {
             .onChange(of: model.statusBarItems) { _, _ in model.scheduleSave() }
             .onChange(of: model.hiddenStatusBarItems) { _, _ in model.scheduleSave() }
             .onChange(of: model.hiddenToolCallAgents) { _, _ in model.scheduleSave() }
-            .onChange(of: model.hiddenUsageAgents) { _, _ in model.scheduleSave() }
 
         return core2
             .onChange(of: model.notificationsEnabled) { _, _ in model.scheduleSave() }
@@ -1779,20 +1769,9 @@ private struct StatusBarReorderList: View {
         model.statusBarItems.filter { !$0.isHardcodedSlot }
     }
 
-    /// Builtin agents that report account usage (Codex). Their section shows a
-    /// usage-gauge toggle.
-    private var usageAgentIds: Set<String> {
-        [AgentTemplate.codex.id]
-    }
-
-    /// Builtin agents with any status-bar feature (tool-call activity, session
-    /// cost, and/or a usage gauge), in builtin order. // [archer]
+    /// Builtin agents with a status-bar tool-call feature, in builtin order.
     private var statusAgents: [AgentTemplate] {
-        AgentTemplate.builtin.filter {
-            $0.reportsToolCalls
-                || usageAgentIds.contains($0.id)
-                || SessionLiveUsageSource.settingsAgentIDs.contains($0.id)
-        }
+        AgentTemplate.builtin.filter { $0.reportsToolCalls }
     }
 
     var body: some View {
@@ -1827,37 +1806,6 @@ private struct StatusBarReorderList: View {
                         isDragging: false,
                         reorderable: false,
                         onToggleVisible: { model.hiddenToolCallAgents.formSymmetricDifference([agent.id]) },
-                        onBeginDrag: nil,
-                        onDrop: nil
-                    )
-                }
-                // Session cost pill — Claude / Grok / Codex / Gemini. One
-                // global switch (`hiddenStatusBarItems`) covers all agents
-                // that report a session id (or Codex rollout match). // [archer]
-                if SessionLiveUsageSource.settingsAgentIDs.contains(agent.id) {
-                    StatusBarRow(
-                        item: .sessionCost,
-                        visible: !model.hiddenStatusBarItems.contains(.sessionCost),
-                        isDragging: false,
-                        reorderable: false,
-                        onToggleVisible: {
-                            if model.hiddenStatusBarItems.contains(.sessionCost) {
-                                model.hiddenStatusBarItems.remove(.sessionCost)
-                            } else {
-                                model.hiddenStatusBarItems.insert(.sessionCost)
-                            }
-                        },
-                        onBeginDrag: nil,
-                        onDrop: nil
-                    )
-                }
-                if usageAgentIds.contains(agent.id) {
-                    StatusBarRow(
-                        item: .codexUsage,
-                        visible: !model.hiddenUsageAgents.contains(agent.id),
-                        isDragging: false,
-                        reorderable: false,
-                        onToggleVisible: { model.hiddenUsageAgents.formSymmetricDifference([agent.id]) },
                         onBeginDrag: nil,
                         onDrop: nil
                     )
@@ -1913,7 +1861,6 @@ private struct StatusBarReorderList: View {
         model.statusBarItems != StatusBarItemKind.defaultOrder
             || !model.hiddenStatusBarItems.isEmpty
             || !model.hiddenToolCallAgents.isEmpty
-            || !model.hiddenUsageAgents.isEmpty
     }
 
     private func toggleVisible(_ item: StatusBarItemKind) {

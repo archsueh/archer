@@ -12,7 +12,6 @@ struct PersistedState: Codable, Equatable {
     var filePanelMode: SidebarMode?
     var diffPanelMode: SidebarMode? // [archer]
     var downloaderPanelMode: SidebarMode? // [archer]
-    var usageStripVisible: Bool?
     var panelWidths: PanelWidths?
 }
 

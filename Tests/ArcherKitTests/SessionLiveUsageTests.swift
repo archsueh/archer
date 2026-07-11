@@ -137,25 +137,6 @@ final class SessionLiveUsageTests: XCTestCase {
         XCTAssertNil(SessionLiveUsageSource.toolLabel(for: .pi))
     }
 
-    func testResolveSessionKeyPrefersConversationId() {
-        let key = SessionCostPill.resolveSessionKey(
-            tool: "Grok",
-            conversationId: "  grok-sess-1  ",
-            cwd: URL(fileURLWithPath: "/tmp")
-        )
-        XCTAssertEqual(key, "grok-sess-1")
-    }
-
-    func testResolveSessionKeyNilWithoutIdForNonCodex() {
-        XCTAssertNil(
-            SessionCostPill.resolveSessionKey(
-                tool: "Claude Code",
-                conversationId: nil,
-                cwd: URL(fileURLWithPath: "/tmp")
-            )
-        )
-    }
-
     func testCodexSessionMetaIdReadsPayloadId() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("archer-codex-meta-\(UUID().uuidString)", isDirectory: true)

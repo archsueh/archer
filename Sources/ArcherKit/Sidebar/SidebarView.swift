@@ -735,15 +735,6 @@ struct SidebarView: View {
                     ) {
                         SkillsPanelWindowController.show()
                     }
-
-                    HoverableIconButton(
-                        systemName: "gauge.medium",
-                        fontSize: 12,
-                        size: 28,
-                        help: L10n.string("Agent usage")
-                    ) {
-                        UsagePanelWindowController.show()
-                    }
                 }
             } else {
                 VStack(spacing: 4) {
@@ -753,14 +744,6 @@ struct SidebarView: View {
                         isActive: false
                     ) {
                         SkillsPanelWindowController.show()
-                    }
-
-                    HoverableNavButton(
-                        title: "USAGE",
-                        iconName: "gauge.medium",
-                        isActive: false
-                    ) {
-                        UsagePanelWindowController.show()
                     }
                 }
                 .padding(.horizontal, Theme.space2)

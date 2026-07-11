@@ -19,17 +19,10 @@ final class StatusBarItemKindTests: XCTestCase {
         // silently invalidates every user's saved configuration. Pin the
         // mapping so renames force an explicit test update.
         XCTAssertEqual(StatusBarItemKind.toolCallActivity.rawValue, "tool-call-activity")
-        XCTAssertEqual(StatusBarItemKind.codexUsage.rawValue, "codex-usage")
-        XCTAssertEqual(StatusBarItemKind.sessionCost.rawValue, "session-cost")
         XCTAssertEqual(StatusBarItemKind.pythonVenv.rawValue, "python-venv")
         XCTAssertEqual(StatusBarItemKind.nodeVersion.rawValue, "node-version")
         XCTAssertEqual(StatusBarItemKind.proxy.rawValue, "proxy")
         XCTAssertEqual(StatusBarItemKind.gitBranch.rawValue, "git-branch")
         XCTAssertEqual(StatusBarItemKind.gitDiff.rawValue, "git-diff")
-    }
-
-    func testSessionCostIsHardcodedSlot() {
-        XCTAssertTrue(StatusBarItemKind.sessionCost.isHardcodedSlot)
-        XCTAssertTrue(StatusBarItemKind.defaultOrder.contains(.sessionCost))
     }
 }

@@ -263,7 +263,7 @@ enum UsageCollector {
         )
     }
 
-    /// Grok records for `UsageView` today-stats queries.
+    /// Grok records for today-stats queries.
     static func grokRecords(
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         modifiedSince cutoffDate: Date? = nil
