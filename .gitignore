@@ -74,3 +74,8 @@ scripts/knowledge-loop/
 .opencode/
 .trellis/
 OMP_INTEGRATION_PLAN.md
+
+# Heartbeat runtime (scaffold under loop/ is tracked; pulse noise is not)
+loop/memory/pulse.log
+loop/work-orders/*
+!loop/work-orders/_TEMPLATE.md

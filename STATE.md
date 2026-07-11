@@ -56,6 +56,8 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 
 ## 3. Open failures / 进行中(stage 1→2)
 
+**Heartbeat L1 scaffold (2026-07-11)**: `loop/` 已入库骨架——`guardrails/verify.sh`（Gate: quick=`swift build` / full=`swift test --parallel`）、`loop.sh`（quiet/actionable tick）、seat prompts、`contract.md`、standing-goal 模板。已手跑验证: quiet exit 0；`--gate-only` PASS (build)。**无** cron / auto Installer / trust ledger（L2+）。用法见 `loop/README.md`；全局对照 skill `agentic-os-workflows`。
+
 当前(HEAD `6a47419`,分支 `refactor/usage-parsers`,领先 main 8 commit):
 
 - **分支未推送**:`refactor/usage-parsers` + `chore/usage-tokenscope-stage0` 合计 8 commit,待 merge/push。
