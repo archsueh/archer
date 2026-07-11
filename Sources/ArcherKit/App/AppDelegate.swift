@@ -162,6 +162,27 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         Task.detached(priority: .utility) {
             ArcherShellIntegration.prunePastesCache()
         }
+
+        // Follow the macOS system appearance. `AppleInterfaceThemeChangedNotification`
+        // (posted by the OS on dark/light toggle) updates the auto-theme source
+        // of truth; if the user picked "Auto（跟随系统）", re-saving re-resolves
+        // the concrete theme + reloads the libghostty surface live.
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: "com.apple.theme",
+            queue: .main
+        ) { [weak self] _ in
+            let isDark = (NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua) == .darkAqua
+            let model = ArcherSettingsModel.shared
+            guard model.terminalThemeSelection == ArcherSettingsModel.autoThemeSelection else {
+                // Still track the value so a later switch to Auto is correct.
+                model.systemIsDark = isDark
+                return
+            }
+            model.systemIsDark = isDark
+            model.flushSave()
+            self?.refreshThemeAppearances()
+        }
     }
 
     /// Rebuilds every window persisted in `state.json`, or opens one default

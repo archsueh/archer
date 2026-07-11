@@ -30,8 +30,18 @@ final class ArcherSettingsModel {
     /// alpha and archer's glass tint. `nil` = unset (libghostty default).
     var backgroundOpacity: Double?
     /// Picker selection for the terminal theme row. Values are one of:
-    /// `defaultThemeSelection`, `customThemeSelection`, or a theme choice id.
+    /// `defaultThemeSelection`, `customThemeSelection`, `autoThemeSelection`,
+    /// or a theme choice id.
     var terminalThemeSelection: String = ArcherSettingsModel.defaultThemeSelection
+    /// When `autoThemeSelection` is picked, archer follows the macOS system
+    /// appearance: dark → a dark terminal theme, light → a light one. Updated
+    /// by `AppDelegate` when the OS appearance changes so both the chrome
+    /// (`Theme.resolved`) and the libghostty surface re-render live.
+    @MainActor var systemIsDark: Bool = {
+        guard let appearance = NSApp?.effectiveAppearance else { return false }
+        return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }()
+
     var terminalThemeChoices: [ArcherTerminalTheme] = ArcherTerminalTheme.availableThemes()
     /// Unknown raw `terminal.theme` values from hand-edited settings.json.
     /// Kept so saving an unrelated Settings field doesn't delete a custom
@@ -449,9 +459,17 @@ final class ArcherSettingsModel {
 
     static let defaultThemeSelection = "__archer-default-theme"
     static let customThemeSelection = "__archer-custom-theme"
+    static let autoThemeSelection = "__archer-auto-theme"
 
     var selectedTerminalTheme: ArcherTerminalTheme? {
-        terminalThemeChoices.first { $0.id == terminalThemeSelection }
+        if terminalThemeSelection == Self.autoThemeSelection {
+            // Follow the macOS system appearance. Pair a dark + light theme
+            // from the same family so the two modes feel like one design.
+            let paired = systemIsDark ? "catppuccin-frappe" : "catppuccin-latte"
+            return terminalThemeChoices.first { $0.id == paired }
+                ?? (systemIsDark ? darkBundledThemes.first : lightBundledThemes.first)
+        }
+        return terminalThemeChoices.first { $0.id == terminalThemeSelection }
     }
 
     var customTerminalThemeLabel: String? {
@@ -495,10 +513,19 @@ final class ArcherSettingsModel {
     static func persistedThemeValue(
         selection: String,
         customRawValue: String?,
-        in themes: [ArcherTerminalTheme] = ArcherTerminalTheme.presets
+        in themes: [ArcherTerminalTheme] = ArcherTerminalTheme.presets,
+        systemIsDark: Bool = ArcherSettingsModel.shared.systemIsDark
     ) -> String? {
         if selection == defaultThemeSelection {
             return nil
+        }
+        if selection == autoThemeSelection {
+            // Expand "auto" to the concrete theme for the current OS
+            // appearance so libghostty receives a real theme id (ghostty has
+            // no built-in auto). The appearance listener re-saves when the OS
+            // switches, which reloads the surface.
+            let paired = systemIsDark ? "catppuccin-frappe" : "catppuccin-latte"
+            return themes.first { $0.id == paired }?.storedValue
         }
         if selection == customThemeSelection {
             let raw = customRawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -975,6 +1002,7 @@ struct ArcherSettingsView: View {
 
     private var themeControl: some View {
         Picker("", selection: $model.terminalThemeSelection) {
+            Text("Auto（跟随系统）").tag(ArcherSettingsModel.autoThemeSelection)
             Text("Default").tag(ArcherSettingsModel.defaultThemeSelection)
             if let customLabel = model.customTerminalThemeLabel {
                 Text(customLabel).tag(ArcherSettingsModel.customThemeSelection)
