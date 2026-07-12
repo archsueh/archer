@@ -4,7 +4,7 @@
 > **两条纪律**:①**走前必写**——每次会话结束更新本文件(试了什么/过了什么/败了什么/新规则);不写则下次从零。②**开局必读**——新会话先读本文件 + CLAUDE.md,再动手;别凭记忆重推已验证过的事实。
 > 与 `~/.claude` 全局 memory 的分工:本文件是**项目级、随仓库走**;全局 memory 是**跨项目习惯/偏好**。事实以本文件为准,过期即改。
 >
-> Verified date: 2026-07-10 · HEAD `535 green baseline`（本文件随下一提交入库）
+> Verified date: 2026-07-12 · 重启前日志已写 · 当前分支见 §5
 
 ---
 
@@ -56,17 +56,11 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 
 ## 3. Open failures / 进行中(stage 1→2)
 
-**Heartbeat L1 scaffold (2026-07-11)**: `loop/` 已入库骨架——`guardrails/verify.sh`（Gate: quick=`swift build` / full=`swift test --parallel`）、`loop.sh`（quiet/actionable tick）、seat prompts、`contract.md`、standing-goal 模板。已手跑验证: quiet exit 0；`--gate-only` PASS (build)。**无** cron / auto Installer / trust ledger（L2+）。用法见 `loop/README.md`；全局对照 skill `agentic-os-workflows`。
+**Heartbeat L1（已入库 `d531d31`）**: `loop/` 骨架齐——Gate / tick / seats / contract / standing-goal 模板。手跑: quiet=0、`--gate-only` PASS。**未做** L2+（cron / trust.tsv / goals 日验 / auto Installer）。
 
-当前(HEAD `6a47419`,分支 `refactor/usage-parsers`,领先 main 8 commit):
+**WIP 勿卷**:分支 `archer/worktree-one-click` 上 `ParallelTaskSheet.swift` 有无关 WIP（Delegation Brief），与 Heartbeat/handoff 无关。
 
-- **分支未推送**:`refactor/usage-parsers` + `chore/usage-tokenscope-stage0` 合计 8 commit,待 merge/push。
-- **UsageParser 协议化已完成** (commit `805406f`): protocol + 4 parser 文件 + collect() 循环化,501 test 全绿。
-- ~~Gemini 实现~~ **2026-07-10 已回退**:`GeminiParser.swift`(含 `UsageRecordSource.nativeGemini`、`SessionLiveUsageSource.gemini`、UsageView 的 antigravity 分支)全部删除。原因:本机只有 Archer wrapper 与 Antigravity CLI,无原版 gemini-cli 真实数据;`~/.gemini/antigravity-cli/conversation_summaries.db` 探测保留为"发现存在但不收集"。`Tests/ArcherKitTests/GeminiParserTests.swift` 一并移除。Stage 2 heatmap 接入:`YearHeatmapView`(53×7 GitHub 式网格,读 `UsageStats.yearlyTokens` 轻量日聚合字典,窗口 365 天)。`UsageViewModel.collectYearlyTokens()` 走 Claude/Hermes SQLite GROUP BY day + Grok jsonl,仅存 day→sum。535 tests / 0 failures。
-
-**tokenscope 集成**:Stage 1 `PricingProvider` **已提交**(`9dc0bc9`,实现+测试)。Stage 2 `UsageParser` 协议化 **已完成**。余下:heatmap/donut 视图、MCP/Skill 成本归因(见 `docs/usage-tokenscope-plan.md`)。
-
-**Session live cost (P1a+P1b+P1c, 未提交)**: 状态条 session $ pill — Claude/Grok/Codex/Gemini。P1c:`SessionLiveUsageMonitor` 文件 watch(DispatchSource)+200ms debounce, 日志未就绪时最多重试 30s；`SessionLiveUsagePaths` 解析 watch 路径；append 时只 parse 被监视文件。余下:Pi/omp usage parser；Gemini conversationId hook 镜像。
+**Usage 线**:面板/session cost pills 已在 `10d952b` 移除；tokenscope 余 heatmap/donut/成本归因若还要做，先确认产品是否还要 Usage 视图。
 
 _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
@@ -78,18 +72,39 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 - 窗口/面板类改动"编译通过 ≠ 行为正确";AppKit 生命周期约束不显式,必须走 §2 checklist。
 - **memory 会过期**:2026-06-29 的 memory 声称 ArrowRouter/2999/Chat 面板"已建/存在",到 2026-07-02 全已下线。→ 对任何"某路径/服务存在"的断言,动手前用 `ls`/`lsof` 现验,别信旧记录。这份 STATE.md 的存在意义就是收敛这种 drift。
 - **一个工作树只容一个 agent 会话**:2026-07-03 两个会话("已中断"实未死的 `agy --continue` + 新会话)在同一工作树竞争提交——pre-commit hook 的 `git add -u` 会把对方在途改动静默卷进自己的 commit(产物 `c85f514`,后被拆分重写)。→ ①"会话中断"要用 `ps`/`lsof` 现验,别信直觉;②开工前确认没有别的 agent 持有该工作树;③拆分提交时,hook 会 `git add -u`,必须先把无关改动 stash 走。
+- **Agentic OS 三原则**(2026-07-11 蒸馏):Laws not tips；Nothing grades its own homework（Planner/Worker/Verifier/Gate 分离，Gate=bash）；Goals graduate（完成→日验 invariant）。Fable 不当 24h Worker；Verifier 必须 fresh context。
+- **autoskills（midudev）不需要整包**(2026-07-11):你已有 Archer Skills + 大量本地 skill；其价值仅「策展 registry + hash lock」可借鉴。别往 Archer 根 `npx autoskills -y`。CC BY-NC。
+- **Meng 落地页 skill ≠ archviz 主干**:只嫁接核校层（字距/真图/伪影/readiness），不替换网格与三套视觉语言。
 
 ---
 
 ## 5. Last session(stage 5 — resume,别 restart)
 
-**2026-07-12 · 右键"Hand off to…"跨-agent 交接（分支 `archer/worktree-one-click`，未 commit）**
+**2026-07-12 · 会话收尾日志（Grok · 重启前写）**
+
+- **分支**:`archer/worktree-one-click`（相对 origin 视情况；本会话入库 commit 见下）。
+- **本会话做了什么**:
+  1. **调研** [MengToFrontend](https://github.com/Kappaemme-git/MengToFrontend)= Codex 落地页 anti-slop skill，不是完整前端 app。
+  2. **archviz-layout 优化**（仓 `~/Developer/archviz-layout`）:加 **Meng-style Board Polish** + Pre-Flight A/B；同步 `skills-master` / cc-switch；commit `765b221`。
+  3. **Agentic OS / Fable 5 九图**:源 [JOJO 清晰版 01–03](https://x.com/zouyanjian/status/2075444045036519836) + Avid 长文机制；全局 skill `~/.agents/skills/agentic-os-workflows/`（SKILL + HARNESS-GAP + assets 01–03）；笔记 `~/Documents/Notes/AI/Agentic-OS-Fable5-Workflows.md`。04–09 为文字重建（无公开高清）。
+  4. **Archer `loop/` L1**:commit **`d531d31`** — `verify.sh` / `loop.sh` / seats / contract；quiet+gate-only 已手跑 PASS。
+  5. **autoskills**:结论=你不特别需要（见 §4）。
+  6. 同分支上另有 **`ba24bc1`** hand off 菜单（他会话/已提交）；`ParallelTaskSheet` 仍可能有未提交 WIP。
+- **验证**:`./loop/loop.sh` exit 0；`./loop/loop.sh --gate-only` swift build PASS。未跑全量 `swift test`（gate full）。
+- **未推送**:loop 与 handoff 相关 commit 是否已 push 以 `git status` 为准；本文件 STATE 若未 commit 则下次先 `git status`。
+- **Next（重启后优先序）**:
+  1. 读本 §5 + `loop/README.md`；需要时 `./loop/loop.sh --status`。
+  2. L2 任选：真实 work-order 跑 actionable 路径 / goals 日验脚本 / trust.tsv——**别**一上来 cron auto。
+  3. 勿混 `ParallelTaskSheet` WIP。
+  4. archviz 成图任务强制 Board readiness 输出块。
+
+**2026-07-12 · 右键"Hand off to…"跨-agent 交接（分支 `archer/worktree-one-click`；后已 commit `ba24bc1`）**
 
 - **先纠正一个过时计划**:plan `~/reports/polished-growing-cupcake.md` 的 **A(worktree 一键隔离)整块早已完工并提交**(`5571e22 feat(sessions): one-click agent tab in fresh worktree`)——`openTabInNewWorktree(source:template:)` @ `WorkspaceStore.swift:368` + `+` 弹窗 hover 副按钮 @ `TabBarView.swift:138-163` + `OpenTabInNewWorktreeTests.swift` 三件套齐。别再照 plan A 重建。plan 的 C(Usage)也已作废(见全局 memory `ref-facet-competitors`:opentab 竞品占位 + 用户已在最新版剔除 Usage 整块)。
 - **本次实做(计划外的新功能,非 plan)**:侧栏工作区右键菜单加"Hand off to…"区——列所有非-shell 编程 agent,点选 = 在**该工作区同 cwd** 开一个新 agent tab(换 agent、**不续会话**:跨 agent 无共享 conversationId)。为多-CLI 用户提供"在工作区 Y 干活时从侧栏甩 Grok 到工作区 X"的路径。后端零缺口(复用 `addTab(in:template:)`),纯加菜单入口。
   - 改动:`SidebarWorkspaceRow.swift` 加 `onHandoff:` 回调 + `handoffTargets`(=`visibleOrdered.filter{!$0.isShell}`)+ 菜单区(禁用行当小标题 + agent 行);`SidebarView.swift` 三处构造点(565/848/915)接 `{ activate; store.addTab(in:ws, template:$0) }`。
   - 验证:`swift build` 干净;`swift test` **522/0**。未加单测(逻辑仅一个过滤器,底座 visibleOrdered/addTab 已有覆盖;剩为 view 接线)。
-  - **未 commit**(用户未要求提交)。工作区另有一块**无关 WIP**:`ParallelTaskSheet.swift` 的 Delegation Brief(Goal/Why/Criteria/Boundaries),非本次改动,勿卷入。
+  - **已 commit** `ba24bc1`。工作区或仍有**无关 WIP**:`ParallelTaskSheet.swift` 的 Delegation Brief——勿与 loop/handoff 混提。
   - 语义决策存档:用户在"同-CLI 换模型 vs 跨-agent 交接"里选了**跨-agent**。同-CLI 换模型(resume+`--model`,`role`.reviewer/.implementer 已是代码概念,是 Oracle 成本路由的 GUI 出口)留作**未来可做**,未实现。
 
 **2026-07-11 · 旁线 handoff（云南美育 PPT，非 Archer 主线）**
