@@ -1,118 +1,133 @@
 // [archer] SkillsInjector.swift
 //
-// Reverse-injection: takes the skills Archer already discovered on this
-// machine and copies them into the skill folders of *external* agent
-// harnesses (Claude Code, Codex, ...) — the inverse of what SkillsView
-// normally does (discover/install/manage).
+// Bulk **symlink relay** of skills Archer already discovered into each agent
+// harness's skills folder — the same mechanism as SkillsView.toggleAgent /
+// one-click relay, not a second copy pipeline.
 //
-// This is intentionally a **pure local file operation**: it only uses
-// `FileManager` to copy directories on disk. There are no network calls
-// and no new dependencies, so it can never reach out to a remote host.
+// Pure local FileManager. Never overwrites an existing owned install (real
+// directory or unrelated symlink). Only fills missing agent endpoints.
 
 import Foundation
 
-/// Copies Archer-discovered skill directories into each agent harness's
-/// `skills/` folder so other tools (Claude Code, Codex, ...) can use them.
+/// Relays skill directories into harness skill folders via symlink (补缺).
 struct SkillsInjector {
-    /// [archer] Source skill directories on disk. Each entry is the *parent
-    /// directory* of a `SKILL.md` (i.e. the skill's own folder), exactly as
-    /// surfaced by `SkillsView.SkillItem.canonicalDirPath`.
-    let sourceSkillDirs: [URL]
-
-    /// [archer] Target harness skill directories we inject into. All paths are
-    /// derived from `NSHomeDirectory()` — the username is never hardcoded.
-    ///
-    /// - Claude Code: ~/.claude/skills
-    ///     Long-standing, well-established path for Claude Code skills.
-    /// - Codex CLI:   ~/.codex/skills
-    ///     OpenAI Codex CLI keeps its config under ~/.codex. This repo's own
-    ///     `SkillsView.agentDefs` already scans ~/.codex/skills, so we align
-    ///     with that convention (rather than ~/.config/codex/skills) to avoid
-    ///     scattering duplicate copies across two different locations.
-    /// - Gemini CLI:  intentionally OMITTED.
-    ///     Gemini CLI's skills directory convention is not firmly established;
-    ///     writing to a guessed path could land in the wrong place, so we skip
-    ///     it for now. Add an entry here once the canonical path is confirmed.
-    static var candidateTargets: [URL] {
-        let home = NSHomeDirectory()
-        return [
-            URL(fileURLWithPath: (home as NSString).appendingPathComponent(".claude/skills")),
-            URL(fileURLWithPath: (home as NSString).appendingPathComponent(".codex/skills")),
-        ]
+    /// One discovered skill: directory name + absolute path of the SKILL.md parent.
+    struct SourceSkill: Equatable {
+        let dirName: String
+        let canonicalDir: URL
     }
 
-    /// Target directories that already exist on this machine. Informational —
-    /// the UI uses this to preview where skills will land before injecting.
+    let sources: [SourceSkill]
+
+    /// Convenience from raw directory URLs (last path component = skill name).
+    init(sourceSkillDirs: [URL]) {
+        sources = sourceSkillDirs.map {
+            SourceSkill(dirName: $0.lastPathComponent, canonicalDir: $0)
+        }
+    }
+
+    init(sources: [SourceSkill]) {
+        self.sources = sources
+    }
+
+    // [archer] Test seam — when set, `candidateTargets` returns this instead of
+    // the real home harness paths so unit tests never write under ~/.
+    // nonisolated(unsafe): test-only mutable override, never used from concurrent
+    // production paths.
+    nonisolated(unsafe) static var candidateTargetsOverride: [(key: String, skillsDir: URL)]?
+
+    /// [archer] Keep in sync with `SkillsView.agentDefs` subdirs. Duplicated here
+    /// so this type stays nonisolated (SkillsView is a SwiftUI View / MainActor).
+    private static let harnessSubdirs: [(key: String, subdir: String)] = [
+        ("claude", ".claude/skills"),
+        ("agents", ".agents/skills"),
+        ("codex", ".codex/skills"),
+        ("gemini", ".gemini/skills"),
+        ("hermes", ".hermes/skills"),
+    ]
+
+    /// [archer] Target harness skill roots. Derived from NSHomeDirectory();
+    /// username is never hardcoded.
+    static var candidateTargets: [(key: String, skillsDir: URL)] {
+        if let candidateTargetsOverride { return candidateTargetsOverride }
+        let home = NSHomeDirectory() as NSString
+        return harnessSubdirs.map { key, subdir in
+            (key: key, skillsDir: URL(fileURLWithPath: home.appendingPathComponent(subdir)))
+        }
+    }
+
+    /// Targets whose parent config root already exists (informational preview).
     var availableTargets: [URL] {
         let fm = FileManager.default
-        return Self.candidateTargets.filter { url in
+        return Self.candidateTargets.compactMap { _, skillsDir in
+            let parent = skillsDir.deletingLastPathComponent()
             var isDir: ObjCBool = false
-            return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+            guard fm.fileExists(atPath: parent.path, isDirectory: &isDir), isDir.boolValue else {
+                return nil
+            }
+            return skillsDir
         }
     }
 
-    /// Copies every source skill directory into every candidate harness
-    /// skills directory. The target directory is created if it does not
-    /// exist yet, and any previously injected copy is overwritten so the
-    /// harness always sees the latest version.
-    ///
-    /// Throws on the first unrecoverable file error (e.g. permission denied).
-    func installToAllHarnesses() throws {
-        let fm = FileManager.default
+    struct RelayResult: Equatable {
+        var linked: Int = 0
+        var skippedExisting: Int = 0
+        var skippedSelf: Int = 0
+    }
 
-        guard !sourceSkillDirs.isEmpty else {
-            throw InjectorError.noSkills
-        }
+    /// Symlink each source skill into every harness skills dir **when missing**.
+    /// Existing real installs and foreign symlinks are left alone.
+    @discardableResult
+    func installToAllHarnesses(fileManager fm: FileManager = .default) throws -> RelayResult {
+        guard !sources.isEmpty else { throw InjectorError.noSkills }
 
-        for target in Self.candidateTargets {
-            // Create the harness skills dir (and any parents) if missing.
-            try fm.createDirectory(at: target, withIntermediateDirectories: true, attributes: nil)
+        var result = RelayResult()
 
-            for source in sourceSkillDirs {
-                // Resolve a top-level symlink so we copy the *real* contents
-                // rather than a dangling link node.
-                let resolvedSource = resolveIfSymlink(source, fm: fm)
-                let skillName = resolvedSource.lastPathComponent
-                let dest = target.appendingPathComponent(skillName)
+        for (_, skillsDir) in Self.candidateTargets {
+            try fm.createDirectory(at: skillsDir, withIntermediateDirectories: true, attributes: nil)
 
-                // [archer] Never copy a skill onto itself. Archer *discovers*
-                // skills from these same harness dirs, so a source skill's
-                // path can equal its injection destination — removing it first
-                // would delete the original.
-                guard resolvedSource.resolvingSymlinksInPath().path != dest.resolvingSymlinksInPath().path else {
+            let skillsDirResolved = skillsDir.resolvingSymlinksInPath()
+
+            for source in sources {
+                let resolvedSource = resolveIfSymlink(source.canonicalDir, fm: fm)
+                    .resolvingSymlinksInPath()
+                let dest = skillsDir.appendingPathComponent(source.dirName)
+
+                // Source already lives inside this harness skills dir — skip.
+                if resolvedSource.deletingLastPathComponent().path == skillsDirResolved.path {
+                    result.skippedSelf += 1
                     continue
                 }
 
-                // Overwrite: drop an earlier injected copy before re-copying.
                 if fm.fileExists(atPath: dest.path) {
-                    try fm.removeItem(at: dest)
+                    // Already present (owned copy or prior symlink) — do not clobber.
+                    result.skippedExisting += 1
+                    continue
                 }
-                try fm.copyItem(at: resolvedSource, to: dest)
+
+                try fm.createSymbolicLink(at: dest, withDestinationURL: resolvedSource)
+                result.linked += 1
             }
         }
+        return result
     }
 
-    /// If `url` is a symlink, return the (resolved) real directory it points
-    /// to; otherwise return `url` unchanged.
     private func resolveIfSymlink(_ url: URL, fm: FileManager) -> URL {
         guard let linkDest = try? fm.destinationOfSymbolicLink(atPath: url.path) else {
             return url
         }
-        let realPath: String
         if (linkDest as NSString).isAbsolutePath {
-            realPath = linkDest
-        } else {
-            realPath = url.deletingLastPathComponent().appendingPathComponent(linkDest).path
+            return URL(fileURLWithPath: linkDest)
         }
-        return URL(fileURLWithPath: realPath)
+        return url.deletingLastPathComponent().appendingPathComponent(linkDest)
     }
 
-    enum InjectorError: LocalizedError {
+    enum InjectorError: LocalizedError, Equatable {
         case noSkills
         var errorDescription: String? {
             switch self {
             case .noSkills:
-                return "没有可导出的已安装技能。"
+                return "没有可中继的已安装技能。"
             }
         }
     }

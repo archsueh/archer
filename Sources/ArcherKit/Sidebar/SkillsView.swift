@@ -56,10 +56,8 @@ struct SkillsView: View {
     @State private var aiWorkflowIndex: [SkillsShResult]? = nil
     @State private var aiWorkflowLoadError: String? = nil
 
-    /// [archer] Reverse-injection state: copies Archer-discovered skills into
-    /// external agent harnesses (Claude Code, Codex, ...). `isInjecting` drives
-    /// the button's spinner; `injectSuccessMessage` shows a green confirmation
-    /// banner after a successful export.
+    /// [archer] Bulk symlink-relay state. `isInjecting` drives the button
+    /// spinner; `injectSuccessMessage` shows a green confirmation banner.
     @State private var isInjecting = false
     @State private var injectSuccessMessage: String? = nil
 
@@ -975,9 +973,8 @@ struct SkillsView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // [archer] Reverse-injection: export the skills Archer discovered
-            // on this machine into external harnesses (Claude Code / Codex).
-            // Mirrors the existing toolbar buttons' `.bracketBorder()` style.
+            // [archer] Bulk symlink relay — same mechanism as per-row toggle /
+            // one-click relay; fills missing harness endpoints only (no overwrite).
             Button {
                 Task { await injectSkillsToHarnesses() }
             } label: {
@@ -985,9 +982,9 @@ struct SkillsView: View {
                     if isInjecting {
                         ProgressView().scaleEffect(0.5).frame(width: 10, height: 10)
                     } else {
-                        Image(systemName: "square.and.arrow.up").font(.system(size: 9))
+                        Image(systemName: "link").font(.system(size: 9))
                     }
-                    Text("导出到 agent harness")
+                    Text("中继到各 harness")
                 }
                 .font(Theme.mono(11.5))
                 .foregroundStyle(Theme.chromeMuted)
@@ -997,7 +994,7 @@ struct SkillsView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .disabled(isInjecting)
-            .help("把本机已安装技能复制到 ~/.claude/skills 与 ~/.codex/skills")
+            .help("把本机已发现技能 symlink 到 Claude / Agents / Codex / Gemini / Hermes 的 skills 目录（仅补缺，不覆盖已有安装）")
         }
     }
 
@@ -1859,9 +1856,8 @@ struct SkillsView: View {
         }
     }
 
-    /// [archer] Reverse-injection: copy every skill Archer discovered on this
-    /// machine into the external harness skill folders (Claude Code, Codex).
-    /// Pure local FileManager copies — no network, no new dependencies.
+    /// [archer] Bulk symlink relay into every harness skills dir (补缺 only).
+    /// Same semantics as `toggleAgent` / one-click relay — never clobbers.
     private func injectSkillsToHarnesses() async {
         await MainActor.run {
             isInjecting = true
@@ -1869,22 +1865,20 @@ struct SkillsView: View {
             injectSuccessMessage = nil
         }
 
-        // The `skills` array already holds every installed skill with its
-        // `canonicalDirPath` (the SKILL.md parent dir) resolved from disk.
         let sourceDirs = skills.map { URL(fileURLWithPath: $0.canonicalDirPath) }
 
         do {
             let injector = SkillsInjector(sourceSkillDirs: sourceDirs)
-            let targetCount = SkillsInjector.candidateTargets.count
-            try injector.installToAllHarnesses()
-            let copied = sourceDirs.count * targetCount
+            let result = try injector.installToAllHarnesses()
             await MainActor.run {
-                injectSuccessMessage = "已导出 \(sourceDirs.count) 个技能到 \(targetCount) 个 harness（共 \(copied) 份副本）。"
+                injectSuccessMessage =
+                    "中继完成：新建 \(result.linked) 条 symlink；跳过已有 \(result.skippedExisting)；自路径 \(result.skippedSelf)。"
                 isInjecting = false
+                loadSkills(silent: true)
             }
         } catch {
             await MainActor.run {
-                installErrorMessage = "导出到 agent harness 失败：\(error.localizedDescription)"
+                installErrorMessage = "中继到 harness 失败：\(error.localizedDescription)"
                 isInjecting = false
             }
         }
