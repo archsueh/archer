@@ -9,6 +9,9 @@ Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 - **MainMenuBuilder** — Menu DSL + Open Recent delegate extracted from AppDelegate (modest God-Object shrink).
 - **Agent process sniffer (opt-in)** — Settings → `process-agent-sniffer` (default off). Basename-matched `ps` scan; multi-agent set shown in the right-side agents header. Not a whole-table substring.
 - **Skills bulk relay** — Skills panel “中继到各 harness” symlink-fills missing endpoints (same as per-row relay). Never overwrites existing installs; not a second copy pipeline.
+- **Hand off + Delegation Brief** — Sidebar workspace right-click hand-off to another agent; ParallelTaskSheet Delegation Brief contract.
+
+## v1.0.7 — 2026-07-06
 
 - **ai-workflow Skill Marketplace** — The Skills discover tab now has a source switch: alongside skills.sh, browse nicepkg/ai-workflow's 168 skills (6 workflow groups) listed via the GitHub Trees API with instant local filtering. Install pipeline handles both repos' directory layouts; update checks cover both.
 - **One-Click Worktree Tabs** — Agent rows in the `+` menu grow a branch side-button (git repos only): one click creates an auto-named worktree (`archer/<agent>-<rand>`) and opens the agent there as a child workspace, with the same sidebar grouping and close-time cleanup as sheet-created worktrees.
