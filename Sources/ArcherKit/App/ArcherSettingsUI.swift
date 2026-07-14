@@ -638,6 +638,9 @@ struct ArcherSettingsView: View {
     /// [archer] Session recording opt-in. Persisted to UserDefaults; read by
     /// WorkspaceStore when wiring each new session's engine.
     @AppStorage("archer.recordSessions") private var recordSessions = false
+    /// [archer] Local process sniffer opt-in (default off). Key matches
+    /// `AgentDetector.preferenceKey` so AgentMonitor can read it at launch.
+    @AppStorage("archer.agentProcessSniffer") private var agentProcessSniffer = false
 
     var body: some View {
         // The autosave `.onChange` observers are split across two statements
@@ -853,6 +856,19 @@ struct ArcherSettingsView: View {
                 Toggle("", isOn: $model.sshRemoteAgentDetection)
                     .labelsHidden()
                     .toggleStyle(.switch)
+            }
+            SettingsHairline()
+            // [archer] Local process sniffer (muxy-inspired). Off by default —
+            // when on, AgentMonitor polls `ps` every 5s and shows live agent
+            // binaries in the right-side agents header. Independent of SSH
+            // remote-agent-detection and of hook-derived session identity.
+            SettingsRow(label: "process-agent-sniffer") {
+                Toggle("", isOn: $agentProcessSniffer)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .onChange(of: agentProcessSniffer) { _, on in
+                        AgentMonitor.shared.setProcessSnifferEnabled(on)
+                    }
             }
             SettingsHairline()
             // [archer] Session recording — opt-in only. When on, new terminal
