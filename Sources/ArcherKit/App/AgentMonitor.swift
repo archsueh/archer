@@ -14,7 +14,20 @@ import SwiftUI
 final class AgentMonitor {
     static let shared = AgentMonitor()
     /// `internal` (not `private`) so tests can build an isolated instance.
-    init() {}
+    init() {
+        // [archer]
+        // Start the proactive sniffer; its callback lands on the main actor,
+        // so writing `detectedAgent` here is observation-safe.
+        agentDetector.start { [weak self] agent in
+            self?.detectedAgent = agent
+        }
+    }
+
+    // [archer]
+    // NOTE: no explicit `stop()` in deinit — `AgentMonitor` is `@MainActor`, so
+    // a nonisolated `deinit` can't touch the main-actor-isolated
+    // `agentDetector` property. `AgentDetector.deinit` already invalidates its
+    // own timer, so tearing down the monitor tears down the sniffer for free.
 
     /// Every live window's store. Injected by `AppDelegate` (it owns the set).
     var storesProvider: @MainActor () -> [WorkspaceStore] = { [] }
@@ -28,6 +41,18 @@ final class AgentMonitor {
     /// but a brand-new window's sessions aren't in the tracked set until we
     /// re-walk — this forces that walk.
     var windowGeneration = 0
+
+    /// [archer]
+    /// Proactive sniff of the machine's running coding agent, independent of
+    /// the hook-derived `entries`. Plain `var` under `@Observable` is tracked
+    /// by SwiftUI automatically — no `@Published` needed (`AgentMonitor` is a
+    /// modern `@Observable`, not an `ObservableObject`).
+    var detectedAgent: DetectedAgent = .unknown
+
+    /// [archer]
+    /// Per-instance sniffer. Each monitor owns its own detector so isolated
+    /// (test) instances don't share polling state.
+    private let agentDetector = AgentDetector()
 
     /// Sort priority — declaration order is "neediest first". `Comparable` is
     /// synthesized from that order, so no raw values / manual `<` are needed.
