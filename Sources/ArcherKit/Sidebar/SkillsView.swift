@@ -56,6 +56,13 @@ struct SkillsView: View {
     @State private var aiWorkflowIndex: [SkillsShResult]? = nil
     @State private var aiWorkflowLoadError: String? = nil
 
+    /// [archer] Reverse-injection state: copies Archer-discovered skills into
+    /// external agent harnesses (Claude Code, Codex, ...). `isInjecting` drives
+    /// the button's spinner; `injectSuccessMessage` shows a green confirmation
+    /// banner after a successful export.
+    @State private var isInjecting = false
+    @State private var injectSuccessMessage: String? = nil
+
     /// A skill Archer itself installed from a GitHub repo, persisted in
     /// `~/.archer/skills.json` so update checks work without any external app.
     struct InstalledSkill: Identifiable, Codable {
@@ -225,6 +232,31 @@ struct SkillsView: View {
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .background(Theme.activityFailure.opacity(0.12))
+                .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
+            }
+
+            // [archer] Success banner after reverse-injection (export to harness).
+            if let okMessage = injectSuccessMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.activityRunning)
+                    Text(okMessage)
+                        .font(Theme.mono(11))
+                        .foregroundStyle(Theme.chromeForeground)
+                        .lineLimit(2)
+                    Spacer()
+                    Button {
+                        injectSuccessMessage = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.chromeMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Theme.activityRunning.opacity(0.12))
                 .overlay(VStack { Spacer(); Rectangle().fill(Theme.chromeHairline).frame(height: 1) })
             }
 
@@ -942,6 +974,30 @@ struct SkillsView: View {
                 .bracketBorder()
             }
             .buttonStyle(PlainButtonStyle())
+
+            // [archer] Reverse-injection: export the skills Archer discovered
+            // on this machine into external harnesses (Claude Code / Codex).
+            // Mirrors the existing toolbar buttons' `.bracketBorder()` style.
+            Button {
+                Task { await injectSkillsToHarnesses() }
+            } label: {
+                HStack(spacing: 6) {
+                    if isInjecting {
+                        ProgressView().scaleEffect(0.5).frame(width: 10, height: 10)
+                    } else {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 9))
+                    }
+                    Text("导出到 agent harness")
+                }
+                .font(Theme.mono(11.5))
+                .foregroundStyle(Theme.chromeMuted)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .bracketBorder()
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(isInjecting)
+            .help("把本机已安装技能复制到 ~/.claude/skills 与 ~/.codex/skills")
         }
     }
 
@@ -1061,8 +1117,11 @@ struct SkillsView: View {
     /// transient outage instead of failing instantly at launch.
     private static let apiSession: URLSession = {
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 30
-        cfg.timeoutIntervalForResource = 60
+        // [archer] Raised from 30/60s — the unauthenticated raw.githubusercontent
+        // CDN is throttled on shared NAT and routinely exceeds 30s on large
+        // skill trees, producing the "请求超时" install failures.
+        cfg.timeoutIntervalForRequest = 60
+        cfg.timeoutIntervalForResource = 120
         cfg.waitsForConnectivity = true
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: cfg)
@@ -1071,7 +1130,7 @@ struct SkillsView: View {
     /// Build a GitHub API request (auth via resolved token) with a 30s timeout.
     private func makeAPIRequest(_ urlString: String, token: String?) -> URLRequest? {
         guard let url = URL(string: urlString) else { return nil }
-        var req = URLRequest(url: url, timeoutInterval: 30)
+        var req = URLRequest(url: url, timeoutInterval: 60)
         req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
@@ -1158,7 +1217,7 @@ struct SkillsView: View {
 
         for slug in repos {
             guard let url = URL(string: "https://api.github.com/repos/\(slug)/commits?per_page=1") else { continue }
-            var req = URLRequest(url: url, timeoutInterval: 30)
+            var req = URLRequest(url: url, timeoutInterval: 60)
             req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
             req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
             if let token {
@@ -1270,7 +1329,7 @@ struct SkillsView: View {
         }
         Task {
             defer { Task { @MainActor in isSearching = false } }
-            var req = URLRequest(url: url, timeoutInterval: 30)
+            var req = URLRequest(url: url, timeoutInterval: 60)
             req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
             guard let (data, _) = try? await SkillsView.apiSession.data(for: req),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1800,6 +1859,37 @@ struct SkillsView: View {
         }
     }
 
+    /// [archer] Reverse-injection: copy every skill Archer discovered on this
+    /// machine into the external harness skill folders (Claude Code, Codex).
+    /// Pure local FileManager copies — no network, no new dependencies.
+    private func injectSkillsToHarnesses() async {
+        await MainActor.run {
+            isInjecting = true
+            installErrorMessage = nil
+            injectSuccessMessage = nil
+        }
+
+        // The `skills` array already holds every installed skill with its
+        // `canonicalDirPath` (the SKILL.md parent dir) resolved from disk.
+        let sourceDirs = skills.map { URL(fileURLWithPath: $0.canonicalDirPath) }
+
+        do {
+            let injector = SkillsInjector(sourceSkillDirs: sourceDirs)
+            let targetCount = SkillsInjector.candidateTargets.count
+            try injector.installToAllHarnesses()
+            let copied = sourceDirs.count * targetCount
+            await MainActor.run {
+                injectSuccessMessage = "已导出 \(sourceDirs.count) 个技能到 \(targetCount) 个 harness（共 \(copied) 份副本）。"
+                isInjecting = false
+            }
+        } catch {
+            await MainActor.run {
+                installErrorMessage = "导出到 agent harness 失败：\(error.localizedDescription)"
+                isInjecting = false
+            }
+        }
+    }
+
     private func installSkillFromSh(_ result: SkillsShResult, targets: [String]) async {
         await MainActor.run { installErrorMessage = nil }
 
@@ -1818,7 +1908,7 @@ struct SkillsView: View {
             let urlString = "https://api.github.com/repos/\(repo)/contents/\(pathInRepo)"
             guard let url = URL(string: urlString) else { return }
 
-            var req = URLRequest(url: url, timeoutInterval: 30)
+            var req = URLRequest(url: url, timeoutInterval: 60)
             req.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
             req.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
 
@@ -1864,17 +1954,40 @@ struct SkillsView: View {
                 if file.type == "file", let dlUrlStr = file.download_url, let dlUrl = URL(string: dlUrlStr) {
                     // Stream the file so we can surface a real download progress
                     // (bytes received) instead of blocking on an all-or-nothing
-                    // `data(from:)`. Times out via apiSession's 30s request limit.
-                    var dlReq = URLRequest(url: dlUrl, timeoutInterval: 30)
-                    dlReq.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
-                    let (bytes, _) = try await SkillsView.apiSession.bytes(for: dlReq)
+                    // `data(from:)`. Retries transient timeouts (common on the
+                    // unauthenticated raw.githubusercontent CDN) and sends the
+                    // resolved GitHub token so we stay under the 60 req/hr limit.
                     var fileData = Data()
-                    for try await byte in bytes {
-                        fileData.append(byte)
-                        await MainActor.run {
-                            updateBytesDone += 1
+                    let maxAttempts = 3
+                    var lastErr: Error?
+                    for attempt in 1 ... maxAttempts {
+                        do {
+                            var dlReq = URLRequest(url: dlUrl, timeoutInterval: 120)
+                            dlReq.setValue("Archer-Terminal", forHTTPHeaderField: "User-Agent")
+                            if let githubToken {
+                                dlReq.setValue("Bearer \(githubToken)", forHTTPHeaderField: "Authorization")
+                            }
+                            let (bytes, _) = try await SkillsView.apiSession.bytes(for: dlReq)
+                            fileData = Data()
+                            for try await byte in bytes {
+                                fileData.append(byte)
+                                await MainActor.run { updateBytesDone += 1 }
+                            }
+                            lastErr = nil
+                            break
+                        } catch {
+                            lastErr = error
+                            // Roll back the progress we counted for the partial
+                            // stream so a retry starts from a clean counter.
+                            let rolledBack = fileData.count
+                            fileData = Data()
+                            await MainActor.run { updateBytesDone -= Int64(rolledBack) }
+                            if attempt < maxAttempts {
+                                try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+                            }
                         }
                     }
+                    if let lastErr { throw lastErr }
 
                     for destBase in destBasePaths {
                         let prefix = "\(result.resolvedRepoPath)/"
