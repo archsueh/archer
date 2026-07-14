@@ -635,6 +635,9 @@ struct ArcherSettingsView: View {
     @Bindable var model: ArcherSettingsModel
     let onOpenInTab: () -> Void
     @State private var selected: SettingsCategory = .general
+    /// [archer] Session recording opt-in. Persisted to UserDefaults; read by
+    /// WorkspaceStore when wiring each new session's engine.
+    @AppStorage("archer.recordSessions") private var recordSessions = false
 
     var body: some View {
         // The autosave `.onChange` observers are split across two statements
@@ -850,6 +853,23 @@ struct ArcherSettingsView: View {
                 Toggle("", isOn: $model.sshRemoteAgentDetection)
                     .labelsHidden()
                     .toggleStyle(.switch)
+            }
+            SettingsHairline()
+            // [archer] Session recording — opt-in only. When on, new terminal
+            // sessions write a `.termctrl` timeline (input + markers) to
+            // ~/.archer/recordings/. Never auto-records; off by default.
+            SettingsRow(label: "record-sessions") {
+                Toggle("", isOn: $recordSessions)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            SettingsHairline()
+            // [archer] Open the recordings folder in Finder from settings.
+            SettingsRow(label: "open-recordings") {
+                Button("打开目录") {
+                    NSWorkspace.shared.open(RecorderStore.defaultDirectory)
+                }
+                .buttonStyle(.bordered)
             }
         }
     }

@@ -165,6 +165,10 @@ final class WorkspaceStore {
     /// notification — only when the originating tab isn't currently visible.
     /// Tests default to a no-op.
     private let onSessionAlert: @MainActor (UUID, SessionAlertKind) -> Void
+    /// [archer] Reports a user-chosen project folder (workspace cwd) for
+    /// File → Open Recent / ⌘P. AppDelegate wires this to `RecentFolders`.
+    /// Tests default to a no-op. Ported from iAmCorey/kooky (v0.35, issue #28).
+    private let noteRecentFolder: @MainActor (URL) -> Void
     private let persistence: any Persistence
     private let gitStatusFetcher = GitStatusFetcher()
     /// One watcher per session — refreshes git status when `.git/HEAD` or
@@ -215,7 +219,13 @@ final class WorkspaceStore {
         resumeProvider: @escaping @MainActor () -> Bool = { ArcherSettingsModel.shared.resumeConversations },
         peerStores: @escaping @MainActor () -> [WorkspaceStore] = { [] },
         moveToNewWindow: @escaping @MainActor (UUID) -> Void = { _ in },
-        onSessionAlert: @escaping @MainActor (UUID, SessionAlertKind) -> Void = { _, _ in }
+        onSessionAlert: @escaping @MainActor (UUID, SessionAlertKind) -> Void = { _, _ in },
+        // [archer] Reports a user-chosen project folder for File → Open Recent / ⌘P.
+        // Defaults to a no-op like the other side-effecting callbacks
+        // (`onSessionAlert`, `moveToNewWindow`) — a write must never be the
+        // default a test construction silently inherits; `AppDelegate.addWindow`
+        // wires the real `RecentFolders` sink. Ported from iAmCorey/kooky (v0.35).
+        noteRecentFolder: @escaping @MainActor (URL) -> Void = { _ in }
     ) {
         self.persistence = persistence
         self.engineFactory = engineFactory
@@ -224,6 +234,7 @@ final class WorkspaceStore {
         self.peerStores = peerStores
         self.moveToNewWindow = moveToNewWindow
         self.onSessionAlert = onSessionAlert
+        self.noteRecentFolder = noteRecentFolder
         if let saved = persistence.load(), !saved.workspaces.isEmpty {
             restore(from: saved)
         } else {
@@ -279,6 +290,11 @@ final class WorkspaceStore {
         }
         activeWorkspaceId = workspace.id
         scheduleSave()
+        // [archer] Remember the project folder for File → Open Recent / ⌘P.
+        // `dir` is already resolved (home fallback, worktree path, or explicit
+        // cwd), so `RecentFolders.note` only needs to exclude HOME itself.
+        // Ported from iAmCorey/kooky (v0.35).
+        noteRecentFolder(dir)
         return workspace
     }
 
@@ -1535,6 +1551,17 @@ final class WorkspaceStore {
         refreshGitStatus(for: session)
         refreshEnvironment(for: session)
         installGitWatcher(for: session)
+
+        // [archer] Session recording — opt-in only. When the user enabled it
+        // in settings, attach a recorder to the surface so input + markers
+        // are written to a `.termctrl` timeline. Archer never auto-records.
+        if UserDefaults.standard.bool(forKey: "archer.recordSessions"),
+           let libghostty = engine as? LibghosttyEngine
+        {
+            libghostty.recorder = SessionRecorder(
+                sessionID: session.id, cols: 80, rows: 24, engine: libghostty
+            )
+        }
         engine.onPwdChange = { [weak self, weak session, weak workspace] pwd in
             guard let session else { return }
             let url = URL(fileURLWithPath: pwd)

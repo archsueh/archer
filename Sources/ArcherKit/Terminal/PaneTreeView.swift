@@ -367,9 +367,21 @@ private struct PaneStatusBar: View {
             // Tool-call activity pill — Claude-only, shows the latest
             // tool call + click-to-popover for history. Sits on the left
             // (after zoom) so the rotating-content piece doesn't compete
-            // with the trailing-aligned static signals (git / env / etc.).
+            // with the trailing-aligned static signals (git / env / etc).
             if showToolCallActivityPill(for: session) {
                 ToolCallActivityPill(session: session)
+            }
+            // [archer] Recording marker — only visible when this session is
+            // being recorded (user enabled recording in settings). Drops a
+            // named marker into the `.termctrl` timeline for later clip export.
+            if session.engine.recorder != nil {
+                StatusBarIconButton(
+                    systemName: "flag.fill",
+                    isActive: true,
+                    help: "标记此刻（录制片段锚点）"
+                ) {
+                    session.engine.recorder?.mark("marker-\(Int(Date().timeIntervalSince1970))")
+                }
             }
             // Flow wraps overflowing segments to a new row instead of hiding
             // them — narrow panes still surface every status at the cost of
