@@ -275,6 +275,13 @@ final class LibghosttyEngine: TerminalEngine {
         set { surfaceView.onNewOutputWhileScrolledUp = newValue }
     }
 
+    /// [archer] Session recorder passthrough — set by WorkspaceStore when the
+    /// user enabled recording, then the surface writes input + markers.
+    var recorder: SessionRecorder? {
+        get { surfaceView.recorder }
+        set { surfaceView.recorder = newValue }
+    }
+
     var onSearchStart: ((String) -> Void)? {
         get { surfaceView.onSearchStart }
         set { surfaceView.onSearchStart = newValue }
@@ -445,6 +452,10 @@ final class GhosttySurfaceView: NSView {
     var onSearchEnd: (() -> Void)?
     var onSearchTotal: ((Int) -> Void)?
     var onSearchSelected: ((Int) -> Void)?
+    /// [archer] Optional session recorder. When set (only if the user enabled
+    /// recording in settings), input + markers are written to a `.termctrl`
+    /// timeline. Nil by default — archer never auto-records.
+    var recorder: SessionRecorder?
     /// Read in `viewDidMoveToWindow` to gate the mount-time first-responder
     /// grab; set by `TerminalView` from the pane's active state. See
     /// `TerminalEngine.grabsFocusOnMount` for the why (issue #24).
@@ -576,6 +587,8 @@ final class GhosttySurfaceView: NSView {
         // state immediately; the local `dying` keeps the handle for free.
         surface = nil
         lastPushedSizePx = nil
+        recorder?.stop() // [archer] flush + close the .termctrl timeline
+        recorder = nil
         ghostty_surface_free(dying)
     }
 
@@ -1041,6 +1054,7 @@ final class GhosttySurfaceView: NSView {
         // Pill-injected commands (nvm use, git checkout, unset proxy) are the
         // next command too; sendInputBytes fires onUserInput to clear the dot.
         sendInputBytes(text, to: surface)
+        recorder?.recordClientInput(text) // [archer] session recording
     }
 
     func readScreen(lines: Int = 20) -> String? {
@@ -1258,6 +1272,7 @@ final class GhosttySurfaceView: NSView {
         // arrival, which a Return-key trigger would miss.
         onUserInput?()
         text.withCString { ghostty_surface_text(surface, $0, UInt(strlen($0))) }
+        recorder?.recordClientInput(text) // [archer] session recording
     }
 
     /// Drives the scroll indicator from libghostty's SCROLLBAR action. Skips

@@ -7,10 +7,38 @@ import SwiftUI
 /// Visual language mirrors `CreateWorktreeSheet`: `Theme.chrome*` tokens,
 /// mono kebab-case labels, hairlines, bracket buttons, 480pt wide.
 struct ParallelTaskSheet: View {
+    /// Adam Sandler's "Delegation Brief" discipline: a task handed to a
+    /// worker agent is a verifiable unit, not a vague ask. Goal is required;
+    /// the rest sharpen the result. `briefText()` flattens this into the
+    /// prompt we actually send, so workers get a structured contract.
     struct AgentSlot: Identifiable {
         let id = UUID()
         var branchName: String
         var prompt: String
+        var goal: String = ""
+        var why: String = ""
+        var criteria: String = ""
+        var boundaries: String = ""
+    }
+
+    /// Flattens a slot's Delegation Brief into the prompt text sent to the
+    /// agent. When the structured fields are empty we fall back to the raw
+    /// `prompt` (legacy / free-form path) so existing callers are unaffected.
+    static func briefText(_ slot: AgentSlot) -> String {
+        let goal = slot.goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        let why = slot.why.trimmingCharacters(in: .whitespacesAndNewlines)
+        let criteria = slot.criteria.trimmingCharacters(in: .whitespacesAndNewlines)
+        let boundaries = slot.boundaries.trimmingCharacters(in: .whitespacesAndNewlines)
+        if goal.isEmpty, why.isEmpty, criteria.isEmpty, boundaries.isEmpty {
+            return slot.prompt
+        }
+        var out = ""
+        out += "## Goal\n\(goal.isEmpty ? slot.prompt : goal)\n"
+        if !why.isEmpty { out += "\n## Why it matters\n\(why)\n" }
+        if !criteria.isEmpty { out += "\n## Completion Criteria (machine-checkable)\n\(criteria)\n" }
+        if !boundaries.isEmpty { out += "\n## Boundaries\n\(boundaries)\n" }
+        out += "\n## Honesty rule\nWorker never grades its own work. `Done` means green build + passing tests (exit code 0). Report without attached checks is incomplete.\n"
+        return out
     }
 
     struct Request {
@@ -48,6 +76,8 @@ struct ParallelTaskSheet: View {
                 .padding(.vertical, 22)
 
             form
+
+            honestyRule
 
             if let errorMessage {
                 Text(errorMessage)
@@ -156,16 +186,42 @@ struct ParallelTaskSheet: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .bracketBorder()
-                TextField("describe this agent's task…", text: $slots[index].prompt, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(Theme.mono(12))
-                    .foregroundStyle(Theme.chromeForeground)
-                    .lineLimit(3 ... 6)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .bracketBorder()
+                briefField(index: index, label: "goal *", binding: $slots[index].goal, placeholder: "one sentence: what to deliver", lines: 2 ... 4)
+                briefField(index: index, label: "why it matters", binding: $slots[index].why, placeholder: "why this matters now", lines: 2 ... 3)
+                briefField(index: index, label: "completion criteria", binding: $slots[index].criteria, placeholder: "machine-checkable: build green, tests pass, exit 0", lines: 2 ... 4)
+                briefField(index: index, label: "boundaries", binding: $slots[index].boundaries, placeholder: "what NOT to do (e.g. no force-push, no schema change)", lines: 2 ... 3)
             }
         }
+    }
+
+    /// One Delegation Brief text field, bound to a slot string field.
+    private func briefField(index _: Int, label: String, binding: Binding<String>, placeholder: String, lines: ClosedRange<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            fieldLabel(label)
+            TextField(placeholder, text: binding, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(Theme.mono(12))
+                .foregroundStyle(Theme.chromeForeground)
+                .lineLimit(lines)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .bracketBorder()
+        }
+    }
+
+    private var honestyRule: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.seal")
+                .font(.system(size: 11))
+            Text("Worker 不自评 · Done = 绿构建 + 通过测试（退出码 0）")
+                .font(Theme.mono(10.5))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Theme.chromeMuted)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .bracketBorder()
     }
 
     private func fieldLabel(_ text: String) -> some View {
@@ -179,6 +235,7 @@ struct ParallelTaskSheet: View {
 
     private var canSubmit: Bool {
         slots.allSatisfy { !$0.branchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            && slots.allSatisfy { !Self.briefText($0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     private func prefill() {
@@ -189,7 +246,6 @@ struct ParallelTaskSheet: View {
     }
 
     private func syncSlots(to count: Int) {
-        // Reuse existing slots where possible; append or trim as needed.
         while slots.count < count {
             let n = slots.count + 1
             let branch = "parallel-\(n)"
@@ -202,7 +258,15 @@ struct ParallelTaskSheet: View {
 
     private func submit() {
         let template = selectedTemplate ?? defaultLaunchTemplate
-        let request = Request(agents: slots, template: template)
+        // Promote each slot's Delegation Brief into the prompt the worker
+        // receives. `briefText` falls back to the raw `prompt` when no
+        // structured fields are filled, so free-form use still works.
+        let briefed = slots.map { slot in
+            var s = slot
+            s.prompt = Self.briefText(slot)
+            return s
+        }
+        let request = Request(agents: briefed, template: template)
         isWorking = true
         errorMessage = nil
         Task {

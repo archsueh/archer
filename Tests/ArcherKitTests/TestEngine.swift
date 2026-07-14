@@ -78,6 +78,13 @@ final class TestEngine: TerminalEngine {
         nextSelection
     }
 
+    var nextScreen: String?
+    func readScreen(lines _: Int) -> String? {
+        nextScreen
+    }
+
+    var recorder: SessionRecorder?
+
     func emitPwd(_ path: String) {
         onPwdChange?(path)
     }

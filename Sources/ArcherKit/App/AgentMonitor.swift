@@ -14,7 +14,20 @@ import SwiftUI
 final class AgentMonitor {
     static let shared = AgentMonitor()
     /// `internal` (not `private`) so tests can build an isolated instance.
-    init() {}
+    init() {
+        // [archer] Process sniffer is opt-in (Settings → process-agent-sniffer,
+        // default off). Tests that `AgentMonitor()` must not spin a 5s `ps` loop.
+        if UserDefaults.standard.bool(forKey: AgentDetector.preferenceKey) {
+            setProcessSnifferEnabled(true)
+        }
+    }
+
+    // [archer]
+    // NOTE: no explicit `stop()` in deinit — `AgentMonitor` is `@MainActor`, so
+    // a nonisolated `deinit` can't touch the main-actor-isolated
+    // `agentDetector` property. `AgentDetector.deinit` already invalidates its
+    // own timer; Settings can also call `setProcessSnifferEnabled(false)` on the
+    // main actor, which runs `stop()` while still isolated.
 
     /// Every live window's store. Injected by `AppDelegate` (it owns the set).
     var storesProvider: @MainActor () -> [WorkspaceStore] = { [] }
@@ -28,6 +41,40 @@ final class AgentMonitor {
     /// but a brand-new window's sessions aren't in the tracked set until we
     /// re-walk — this forces that walk.
     var windowGeneration = 0
+
+    /// [archer]
+    /// Process-sniffer hits (multi-agent). Empty when sniffer is off or nothing
+    /// matched. Plain `var` under `@Observable` is tracked by SwiftUI.
+    var detectedAgents: Set<DetectedAgent> = []
+
+    /// [archer] Whether the 5s process sniffer is currently running.
+    private(set) var processSnifferEnabled = false
+
+    /// [archer]
+    /// Per-instance sniffer. Each monitor owns its own detector so isolated
+    /// (test) instances don't share polling state.
+    private let agentDetector = AgentDetector()
+
+    /// [archer]
+    /// Start/stop the proactive process sniffer. Safe to call repeatedly from
+    /// Settings. When off, clears `detectedAgents` so the sidebar chrome drops.
+    func setProcessSnifferEnabled(_ enabled: Bool) {
+        guard enabled != processSnifferEnabled else {
+            // Still honor an explicit off when we never started (e.g. preference
+            // flipped before first start) by clearing state.
+            if !enabled { detectedAgents = [] }
+            return
+        }
+        processSnifferEnabled = enabled
+        if enabled {
+            agentDetector.start { [weak self] agents in
+                self?.detectedAgents = agents
+            }
+        } else {
+            agentDetector.stop()
+            detectedAgents = []
+        }
+    }
 
     /// Sort priority — declaration order is "neediest first". `Comparable` is
     /// synthesized from that order, so no raw values / manual `<` are needed.
@@ -137,6 +184,19 @@ struct AgentOverviewSidebar: View {
                         .foregroundStyle(Theme.chromeMuted)
                 }
                 Spacer(minLength: 0)
+                // [archer] Process-sniffer strip — only when opt-in sniffing
+                // found live agent binaries on this Mac (not tab sessions).
+                if !monitor.detectedAgents.isEmpty {
+                    let labels = DetectedAgent.allCases
+                        .filter { monitor.detectedAgents.contains($0) }
+                        .map(\.label)
+                        .joined(separator: " · ")
+                    Text(labels)
+                        .font(Theme.mono(9.5, weight: .medium))
+                        .foregroundStyle(Theme.activityRunning.opacity(0.9))
+                        .lineLimit(1)
+                        .help("本机进程嗅探：\(labels)（Settings → process-agent-sniffer）")
+                }
             }
             .padding(.horizontal, 14)
             .frame(height: 32) // matches the top strip so left/right align

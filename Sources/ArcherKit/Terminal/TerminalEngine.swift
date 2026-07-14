@@ -134,4 +134,11 @@ protocol TerminalEngine: AnyObject {
     /// selection is active. Powers the right-click "Ask agent" path and
     /// the menu-bar Copy item — same surface, two callers.
     func readSelection() -> String?
+    /// [archer] Returns the visible terminal screen as text (up to `lines`
+    /// rows from the bottom; default 20). Powers session recording snapshots.
+    func readScreen(lines: Int) -> String?
+    /// [archer] Optional session recorder. Set by WorkspaceStore when the user
+    /// enabled recording; the surface writes input + markers to a `.termctrl`
+    /// timeline. Nil when recording is off (archer never auto-records).
+    var recorder: SessionRecorder? { get set }
 }

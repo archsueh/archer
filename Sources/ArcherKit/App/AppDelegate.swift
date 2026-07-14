@@ -35,6 +35,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         didSet { AgentMonitor.shared.windowGeneration += 1 }
     }
 
+    /// [archer] File → Open Recent. Items are rebuilt from `RecentFolders`
+    /// on every open via the dedicated delegate — the menu itself is a
+    /// stable shell. Ported from iAmCorey/kooky (v0.35, issue #28).
+    private let openRecentMenu = NSMenu(title: "Open Recent")
+    private let openRecentMenuDelegate = OpenRecentMenuDelegate()
+
     private let appPersistence = AppPersistence()
     /// Set in `applicationShouldTerminate` so `windowWillClose` (fired for
     /// every window during ⌘Q) can tell "app quitting" from "user closed
@@ -139,6 +145,35 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         installMainMenu()
+        // [archer] Open Recent submenu rebuilds from RecentFolders on open.
+        openRecentMenu.delegate = openRecentMenuDelegate
+        openRecentMenuDelegate.rebuild = { [weak self] menu in
+            guard let self else { return }
+            menu.removeAllItems()
+            let folders = RecentFolders.shared.existing
+            if folders.isEmpty {
+                let empty = NSMenuItem(title: "No Recent Folders", action: nil, keyEquivalent: "")
+                empty.isEnabled = false
+                menu.addItem(empty)
+                return
+            }
+            for url in folders {
+                let item = NSMenuItem(
+                    title: (url.path as NSString).abbreviatingWithTildeInPath,
+                    action: #selector(self.handleOpenRecentFolder(_:)),
+                    keyEquivalent: ""
+                )
+                item.representedObject = url
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
+            let clear = NSMenuItem(
+                title: "Clear Recent Folders",
+                action: #selector(self.handleClearRecentFolders),
+                keyEquivalent: ""
+            )
+            menu.addItem(clear)
+        }
         showCLIDetectionIfNeeded()
         hookServer.start()
         bridgeServer.storeProvider = { [weak self] in self?.activeController?.store }
@@ -219,7 +254,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             persistence: WindowPersistence(windowId: windowId, app: appPersistence),
             peerStores: { [weak self] in self?.windowControllers.map(\.store) ?? [] },
             moveToNewWindow: { [weak self] id in self?.moveTabToNewWindow(sessionId: id) },
-            onSessionAlert: { [weak self] id, kind in self?.handleSessionAlert(id, kind) }
+            onSessionAlert: { [weak self] id, kind in self?.handleSessionAlert(id, kind) },
+            noteRecentFolder: { RecentFolders.shared.note($0) }
         )
         let controller = ArcherWindowController(windowId: windowId, store: store)
         controller.onWillClose = { [weak self] in self?.handleWindowWillClose($0) }
@@ -599,6 +635,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             selfRow("Quick Open…", #selector(handleQuickOpen), "p"),
             selfRow("Notifications", #selector(handleShowInbox), "i", modifiers: [.command, .shift]),
             selfRow("Open Folder…", #selector(handleOpenFolder), "o"),
+            // [archer] Open Recent — recent project folders (ported from
+            // iAmCorey/kooky v0.35, issue #28). Submenu rebuilt on open via
+            // OpenRecentMenuDelegate so it always reflects RecentFolders.shared.
+            .submenu(openRecentMenu),
             .separator,
             selfRow("Close Tab", #selector(handleCloseTab), "w"),
             selfRow("Reopen Closed Tab", #selector(handleReopenClosedTab), "t", modifiers: [.command, .shift]),
@@ -698,66 +738,30 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         NSApp.helpMenu = helpMenu
     }
 
-    // MARK: - Menu DSL
+    // MARK: - Menu DSL (forwarded to MainMenuBuilder)
 
-    private struct MenuRow {
-        let title: String
-        let selector: Selector
-        let key: String
-        let modifiers: NSEvent.ModifierFlags
-        let target: AnyObject?
-        let tag: Int
-    }
-
-    private enum MenuEntry {
-        case row(MenuRow)
-        case separator
-    }
-
-    /// Item routed to `self` — used for the AppDelegate's own `handle*`
-    /// methods that need a concrete target.
+    /// [archer] The MenuRow / MenuEntry / buildMenu / submenu definitions and
+    /// OpenRecentMenuDelegate now live in MainMenuBuilder.swift to shrink this
+    /// file's God-Object surface. These forwarders keep installMainMenu()
+    /// unchanged (its #selector references still resolve against AppDelegate).
     private func selfRow(_ title: String, _ selector: Selector, _ key: String = "",
                          modifiers: NSEvent.ModifierFlags = .command, tag: Int = 0) -> MenuEntry
     {
-        .row(MenuRow(title: title, selector: selector, key: key,
-                     modifiers: modifiers, target: self, tag: tag))
+        MainMenuBuilder.selfRow(title, selector, key, target: self, modifiers: modifiers, tag: tag)
     }
 
-    /// Item with `target: nil` — AppKit dispatches via the responder chain.
-    /// Used for system selectors like `NSWindow.performZoom(_:)` and
-    /// `NSText.cut(_:)`, which let libghostty / the active window handle them.
     private func responderRow(_ title: String, _ selector: Selector, _ key: String = "",
                               modifiers: NSEvent.ModifierFlags = .command) -> MenuEntry
     {
-        .row(MenuRow(title: title, selector: selector, key: key,
-                     modifiers: modifiers, target: nil, tag: 0))
+        MainMenuBuilder.responderRow(title, selector, key, modifiers: modifiers)
     }
 
     private func buildMenu(title: String, entries: [MenuEntry]) -> NSMenu {
-        let menu = NSMenu(title: title)
-        for entry in entries {
-            switch entry {
-            case let .row(row):
-                let item = NSMenuItem(title: L10n.string(row.title), action: row.selector, keyEquivalent: row.key) // [archer] localize
-                item.keyEquivalentModifierMask = row.modifiers
-                item.target = row.target
-                item.tag = row.tag
-                menu.addItem(item)
-            case .separator:
-                menu.addItem(.separator())
-            }
-        }
-        return menu
+        MainMenuBuilder.buildMenu(title: title, entries: entries)
     }
 
     private func submenu(_ menu: NSMenu) -> NSMenuItem {
-        // AppKit's menu bar renders the menu item's own title — submenu.title
-        // isn't used as a fallback. An empty title degrades to "NSMenuItem"
-        // in the bar, so copy the submenu's title across.
-        let item = NSMenuItem()
-        item.title = L10n.string(menu.title) // [archer] localize bar title
-        item.submenu = menu
-        return item
+        MainMenuBuilder.submenuItem(menu)
     }
 
     // MARK: - Menu actions
@@ -793,7 +797,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         CommandPaletteWindowController.shared.toggle(
             items: { [weak self] in
                 guard let self else { return [] }
-                return PaletteIndex.build(controllers: self.windowControllers, model: ArcherSettingsModel.shared)
+                return PaletteIndex.build(controllers: self.windowControllers, model: ArcherSettingsModel.shared, recentFolders: RecentFolders.shared.existing)
             },
             anchor: activeController?.window,
             onActivate: { [weak self] item in self?.activate(item) }
@@ -842,6 +846,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         case .showAgent:
             // [archer] ShowAgent surface — browse/convert local agent sessions.
             ShowAgentWindowController.shared.show()
+        case let .openRecentFolder(path):
+            // [archer] Open a recently used project folder as a new workspace in
+            // the active window. Ported from iAmCorey/kooky (v0.35, issue #28).
+            guard let store = activeStore else { return }
+            store.addWorkspace(workingDirectory: URL(fileURLWithPath: path))
         }
     }
 
@@ -871,6 +880,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         } else if panel.runModal() == .OK {
             openPicked()
         }
+    }
+
+    // MARK: - Open Recent handlers
+
+    /// [archer] File → Open Recent → <folder>: open the picked recent folder as
+    /// a new workspace in the active window. Ported from iAmCorey/kooky (v0.35).
+    @objc private func handleOpenRecentFolder(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL,
+              let store = activeStore else { return }
+        store.addWorkspace(workingDirectory: url)
+    }
+
+    /// [archer] File → Open Recent → Clear Recent Folders.
+    @objc private func handleClearRecentFolders() {
+        RecentFolders.shared.clear()
     }
 
     @objc private func handleCloseTab() {
@@ -1192,3 +1216,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         }
     #endif
 }
+
+// MARK: - Open Recent menu delegate
+
+// [archer] OpenRecentMenuDelegate is defined in MainMenuBuilder.swift (moved
+// out of this file to shrink the God-Object surface). Its `rebuild` closure is
+// still wired up in applicationDidFinishLaunching below, calling
+// handleOpenRecentFolder / handleClearRecentFolders — recent-folders behavior
+// is unchanged.
