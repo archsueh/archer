@@ -57,10 +57,49 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     /// Posts macOS notifications when a backgrounded agent needs attention or
     /// a command fails. Bundle-gated, so it no-ops under `swift run`.
     private let notificationManager = NotificationManager()
-    /// Agent hook events carry a global surface-UUID. Broadcast to every
-    /// window's store — `applyHookEvent` & friends no-op when the session
-    /// isn't theirs, so exactly the owning window reacts.
-    private lazy var bridgeServer: BridgeServer = .init()
+    /// cmux-style unified local listener: serves the bridge (archer-bridge CLI)
+    /// and hook (ArcherHook CLI) protocols on ONE unix socket, demuxing by
+    /// first-frame JSON keys. Replaces the old separate BridgeServer +
+    /// HookServer sockets (see UnifiedListener for the symlink-compat detail).
+    private lazy var unifiedListener: UnifiedListener = {
+        UnifiedListener(
+            hookHandler: { [weak self] message in
+                guard let self else { return }
+                switch message {
+                case let .agent(agent, event, _):
+                    BridgeEventLog.shared.append(category: .hook, summary: "\(agent.id) \(event.rawValue)")
+                case let .toolCall(agent, toolName, identifier, event, success, _, _):
+                    let result = success.map { $0 ? " ✓" : " ✗" } ?? ""
+                    BridgeEventLog.shared.append(category: .hook,
+                                                 summary: "\(agent.id) \(toolName)\(identifier.isEmpty ? "" : " \(identifier)")\(result) [\(event.rawValue)]")
+                default:
+                    break
+                }
+                for controller in self.windowControllers {
+                    let store = controller.store
+                    switch message {
+                    case let .agent(agent, event, sessionId):
+                        store.applyHookEvent(agent: agent, event: event, sessionId: sessionId)
+                    case let .shellEnvironment(env, sessionId):
+                        store.applyShellEnvironment(env, sessionId: sessionId)
+                    case let .conversationId(conversationId, sessionId):
+                        store.applyConversationId(conversationId: conversationId, sessionId: sessionId)
+                    case let .toolCall(agent, toolName, identifier, event, success, toolUseId, sessionId):
+                        store.applyToolCallEvent(
+                            agent: agent,
+                            toolName: toolName,
+                            identifier: identifier,
+                            event: event,
+                            success: success,
+                            toolUseId: toolUseId,
+                            sessionId: sessionId
+                        )
+                    }
+                }
+            },
+            storeProvider: { [weak self] in self?.activeController?.store }
+        )
+    }
 
     /// State shared between Sparkle's callbacks and Archer's glass-styled
     /// update window — see `ArcherUpdateUserDriver` and `UpdatePromptView`.
@@ -74,41 +113,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         userDriver: updateDriver,
         delegate: nil
     )
-
-    private lazy var hookServer = HookServer { [weak self] message in
-        guard let self else { return }
-        switch message {
-        case let .agent(agent, event, _):
-            BridgeEventLog.shared.append(category: .hook, summary: "\(agent.id) \(event.rawValue)")
-        case let .toolCall(agent, toolName, identifier, event, success, _, _):
-            let result = success.map { $0 ? " ✓" : " ✗" } ?? ""
-            BridgeEventLog.shared.append(category: .hook,
-                                         summary: "\(agent.id) \(toolName)\(identifier.isEmpty ? "" : " \(identifier)")\(result) [\(event.rawValue)]")
-        default:
-            break
-        }
-        for controller in self.windowControllers {
-            let store = controller.store
-            switch message {
-            case let .agent(agent, event, sessionId):
-                store.applyHookEvent(agent: agent, event: event, sessionId: sessionId)
-            case let .shellEnvironment(env, sessionId):
-                store.applyShellEnvironment(env, sessionId: sessionId)
-            case let .conversationId(conversationId, sessionId):
-                store.applyConversationId(conversationId: conversationId, sessionId: sessionId)
-            case let .toolCall(agent, toolName, identifier, event, success, toolUseId, sessionId):
-                store.applyToolCallEvent(
-                    agent: agent,
-                    toolName: toolName,
-                    identifier: identifier,
-                    event: event,
-                    success: success,
-                    toolUseId: toolUseId,
-                    sessionId: sessionId
-                )
-            }
-        }
-    }
 
     override public init() {
         super.init()
@@ -175,9 +179,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             menu.addItem(clear)
         }
         showCLIDetectionIfNeeded()
-        hookServer.start()
-        bridgeServer.storeProvider = { [weak self] in self?.activeController?.store }
-        bridgeServer.start()
+        unifiedListener.start()
         notificationManager.onActivate = { [weak self] sessionId in
             self?.activateFromNotification(sessionId)
         }
@@ -588,8 +590,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         for controller in windowControllers {
             controller.store.flushPersistence()
         }
-        hookServer.stop()
-        bridgeServer.stop()
+        unifiedListener.stop()
         ArcherShellIntegration.cleanup()
     }
 

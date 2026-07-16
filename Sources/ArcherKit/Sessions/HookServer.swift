@@ -1,13 +1,17 @@
-import Darwin
 import Foundation
 
-/// Listens on a per-user unix socket for one-shot JSON event lines from
-/// hooks (sent by the `ArcherHook` CLI): agent lifecycle events and prompt-time
-/// shell env snapshots. Wire format is one JSON object per line.
+/// Decodes one-shot JSON event lines from hooks (sent by the `ArcherHook`
+/// CLI): agent lifecycle events and prompt-time shell env snapshots. Wire
+/// format is one JSON object per line.
+///
+/// Socket ownership moved to `UnifiedListener` (cmux-style single-socket
+/// demux) — the hook path is a symlink to the bridge socket, and `route(_:)`
+/// dispatches hook frames here via `parseMessage`. This type is now a pure
+/// decoder + payload enum.
 ///
 /// The hooks themselves run as short-lived child processes of the agent (e.g.
 /// Claude Code spawns them per Stop / UserPromptSubmit / Notification). They
-/// connect, write one line, close — we accept and read in a single pass.
+/// connect, write one line, close — we parse and dispatch in a single pass.
 /// Lifecycle signal an agent's hook fired. Wire format is the raw String
 /// case names; the enum lets `WorkspaceStore` switch exhaustively.
 enum HookEvent: String {
@@ -59,22 +63,13 @@ enum HookMessage {
     )
 }
 
-@MainActor
-final class HookServer {
-    typealias Handler = (_ message: HookMessage) -> Void
-
-    private let handler: Handler
-    private var listenFd: Int32 = -1
-    private var source: DispatchSourceRead?
-
-    init(handler: @escaping Handler) {
-        self.handler = handler
-    }
-
-    /// Path agents and the CLI both target. Public so the CLI doesn't have to
-    /// hardcode the same string in two places — but agents run in their own
-    /// processes and read it via `ArcherHook` reaching into `Application
-    /// Support`, not via this property.
+/// Hook transport metadata. Socket ownership lives in `UnifiedListener`;
+/// `HookServer` is now a stateless decoder namespace. `parseMessage` stays
+/// a static so existing tests (and `ArcherHook` payloads) need no changes.
+enum HookServer {
+    /// Path the `ArcherHook` CLI targets. Kept here for parity, but the live
+    /// socket is `UnifiedListener`'s bridge socket, with this path symlinked
+    /// to it. Public so the CLI doesn't have to hardcode the string twice.
     static let socketPath: String = {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = support.appendingPathComponent("Archer", isDirectory: true)
@@ -82,86 +77,13 @@ final class HookServer {
         return dir.appendingPathComponent("socket").path
     }()
 
-    func start() {
-        let path = Self.socketPath
-        try? FileManager.default.removeItem(atPath: path)
-
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else {
-            NSLog("archer: HookServer socket() failed")
-            return
-        }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = Array(path.utf8)
-        guard pathBytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
-            close(fd)
-            NSLog("archer: HookServer socket path too long")
-            return
-        }
-        withUnsafeMutableBytes(of: &addr.sun_path) { dst in
-            pathBytes.withUnsafeBufferPointer { src in
-                dst.baseAddress?.copyMemory(from: src.baseAddress!, byteCount: src.count)
-            }
-        }
-
-        let len = socklen_t(MemoryLayout<sockaddr_un>.size)
-        let bound = withUnsafePointer(to: &addr) { addrPtr in
-            addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(fd, $0, len)
-            }
-        }
-        guard bound == 0 else {
-            NSLog("archer: HookServer bind() failed errno=\(errno)")
-            close(fd)
-            return
-        }
-        guard listen(fd, 8) == 0 else {
-            NSLog("archer: HookServer listen() failed errno=\(errno)")
-            close(fd)
-            return
-        }
-
-        listenFd = fd
-        let src = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
-        src.setEventHandler { [weak self] in self?.acceptOne() }
-        src.resume()
-        source = src
-    }
-
-    func stop() {
-        source?.cancel()
-        source = nil
-        if listenFd >= 0 {
-            close(listenFd)
-            listenFd = -1
-        }
-        try? FileManager.default.removeItem(atPath: Self.socketPath)
-    }
-
-    private func acceptOne() {
-        let clientFd = accept(listenFd, nil, nil)
-        guard clientFd >= 0 else { return }
-        defer { close(clientFd) }
-
-        // Single read up to 4 KiB. Hook payloads are < 200 B and unix
-        // SOCK_STREAM kernel-buffers small writes whole, so partial reads
-        // aren't a practical concern at our message size.
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        let n = buffer.withUnsafeMutableBufferPointer { read(clientFd, $0.baseAddress, $0.count) }
-        guard n > 0 else { return }
-        let data = Data(bytes: buffer, count: n)
-        guard let message = Self.parseMessage(data) else { return }
-        handler(message)
-    }
-
     private static let envKeys = [
         "VIRTUAL_ENV", "CONDA_DEFAULT_ENV",
         "NVM_BIN", "NVM_DIR", "ARCHER_NODE_VERSION",
         "https_proxy", "http_proxy", "all_proxy",
     ]
 
+    @MainActor
     static func parseMessage(_ data: Data) -> HookMessage? {
         guard
             let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

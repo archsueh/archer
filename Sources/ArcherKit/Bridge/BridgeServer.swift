@@ -1,9 +1,11 @@
 import Darwin
 import Foundation
 
-/// Unix-socket server for the `archer-bridge` CLI.
+/// Request/response handler for the `archer-bridge` CLI wire protocol.
 ///
-/// Wire format — one JSON object per line, request/response:
+/// Socket ownership moved to `UnifiedListener` (cmux-style single-socket
+/// demux). This class is now a pure handler: `handle(_:)` turns one JSON
+/// request line into one JSON response line. Wire format is unchanged:
 ///
 ///   → {"cmd":"list"}
 ///   ← {"ok":true,"labels":["claude","codex"]}
@@ -17,105 +19,16 @@ import Foundation
 ///   → {"cmd":"keys","label":"claude","keys":["Enter"]}
 ///   ← {"ok":true}
 ///
-///   → {"cmd":"sync"}   (re-syncs PaneRegistry from active workspace)
+///   → {"cmd":"sync"}
 ///   ← {"ok":true,"count":2}
 ///
-/// The server lives on the main queue and dispatches through PaneRegistry,
-/// so all surface access is main-actor-safe.
+/// Dispatches through PaneRegistry, so all surface access is main-actor-safe.
 @MainActor
 final class BridgeServer {
     /// Resolved at command time — avoids stale first-window pin and nil-after-close bugs.
     var storeProvider: (() -> WorkspaceStore?)?
 
-    private var listenFd: Int32 = -1
-    private var source: DispatchSourceRead?
-
-    /// Concurrent queue for blocking client I/O — keeps read()/write() off the main actor
-    private static let ioQueue = DispatchQueue(
-        label: "ai.archer.bridge.io",
-        attributes: .concurrent
-    )
-
-    static let socketPath: String = {
-        let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".archer")
-        try? FileManager.default.createDirectory(
-            atPath: dir, withIntermediateDirectories: true
-        )
-        return (dir as NSString).appendingPathComponent("bridge.sock")
-    }()
-
-    func start() {
-        let path = Self.socketPath
-        try? FileManager.default.removeItem(atPath: path)
-
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = Array(path.utf8)
-        guard pathBytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
-            close(fd); return
-        }
-        withUnsafeMutableBytes(of: &addr.sun_path) { dst in
-            pathBytes.withUnsafeBufferPointer { src in
-                dst.baseAddress?.copyMemory(from: src.baseAddress!, byteCount: src.count)
-            }
-        }
-        let len = socklen_t(MemoryLayout<sockaddr_un>.size)
-        let bound = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, len) }
-        }
-        guard bound == 0 else { close(fd); return }
-        fchmod(fd, S_IRUSR | S_IWUSR) // 0600 — owner-only; blocks same-UID injection via type/keys cmds
-        guard listen(fd, 8) == 0 else { close(fd); return }
-
-        listenFd = fd
-        let src = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
-        src.setEventHandler { [weak self] in self?.acceptOne() }
-        src.resume()
-        source = src
-        ArcherLogger.bridge.info("BridgeServer listening at \(path)")
-    }
-
-    func stop() {
-        source?.cancel(); source = nil
-        if listenFd >= 0 { close(listenFd); listenFd = -1 }
-        try? FileManager.default.removeItem(atPath: Self.socketPath)
-    }
-
-    // MARK: - Accept / dispatch
-
-    private func acceptOne() {
-        let clientFd = accept(listenFd, nil, nil)
-        guard clientFd >= 0 else { return }
-
-        // Blocking read/write moves off the main actor; handle() hops back via Task.
-        Self.ioQueue.async { [weak self] in
-            // 5-second receive timeout: hung client can't stall a queue thread indefinitely
-            var tv = timeval(tv_sec: 5, tv_usec: 0)
-            setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
-
-            var buf = [UInt8](repeating: 0, count: 65536)
-            let n = buf.withUnsafeMutableBufferPointer { read(clientFd, $0.baseAddress!, $0.count) }
-            guard n > 0 else { close(clientFd); return }
-
-            let data = Data(bytes: buf, count: n)
-
-            Task { @MainActor [weak self] in
-                guard let self else { close(clientFd); return }
-                let response = self.handle(data)
-                Self.ioQueue.async {
-                    response.withUnsafeBytes { ptr in
-                        _ = Darwin.write(clientFd, ptr.baseAddress!, ptr.count)
-                    }
-                    close(clientFd)
-                }
-            }
-        }
-    }
-
-    private func handle(_ data: Data) -> Data {
+    func handle(_ data: Data) -> Data {
         guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let cmd = dict["cmd"] as? String
         else { return error("invalid JSON or missing cmd") }

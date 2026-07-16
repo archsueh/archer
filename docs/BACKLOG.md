@@ -117,6 +117,26 @@
 - 不抄：Extensions WebView 运行时、移动伴侣、remote-server、市场后端——与 Archer 单机座舱定位冲突，且引入远端依赖违背「本地优先」。
 - 红线：不引入 muxy 的 Extensions 体系或任何远端依赖；仅借「agent 检测」「skills 反向注入」两个轻量思路，纯 Swift 原生实现。
 
+## cmux 参考（github.com/soheilhy/cmux · 2760★，Go · Apache-2.0）
+- 它是什么：Go 的**服务端连接多路复用器（transport demultiplexer）**——一个 `net.Listener` 收所有连接，按「首字节 payload」嗅探协议，分流到多个虚拟 `net.Listener`，从而在同一端口上同时跑 gRPC / SSH / HTTPS / HTTP / Go RPC 等。核心 API：`m := cmux.New(l)` → `grpcL := m.Match(cmux.HTTP2HeaderField("content-type","application/grpc"))` / `httpL := m.Match(cmux.HTTP1Fast())` / `anyL := m.Match(cmux.Any())` → 各 listener 喂给对应协议 server。性能开销可忽略（只匹配连接最初几个字节，长连接无感知）。已知限制：TLS 下 `http.Request.TLS` 不置位（包了一层 lookahead conn，net/http 类型断言失败）；单连接只能归一种协议（gRPC 或 REST，不能既是）；Java gRPC client 需 `MatchWithWriters` 先发 SETTINGS 帧。
+- 竞品判定：**非 Archer 竞品，纯模式参考**。错位在层级（cmux 是传输层库，Archer 是 macOS Swift 终端 app）+ 语言（Go ↔ Swift，零代码可移植）。但它解决的是「单监听器多协议分发」问题——Archer 当前已有 2 个独立本地 unix-socket 服务，正是该模式的雏形场景。
+- Archer 现状对照（已确认源码）：
+  - `Sources/ArcherKit/Bridge/BridgeServer.swift` — unix socket `bridge.sock`，JSON 单行 request/response（`{"cmd":"list"/"read"/"type"/"keys"/"sync"}`），给 `archer-bridge` CLI 用；用 `DispatchSourceRead` + fd 自管 accept。
+  - `Sources/ArcherKit/Sessions/HookServer.swift` — unix socket `Application Support/Archer/socket`，agent hook（`ArcherHook` CLI）单行 JSON 事件（lifecycle / toolCall / conversationId），fork-per-event 写完即关。
+  - Cockpit 是**应用内 SwiftUI 视图**（CockpitPanelController），非独立监听器——无 HTTP/WebSocket 端口。
+  - 两个 socket 协议不同（有 `cmd` 字段 vs 无 `cmd` 的事件行），但都是「读首行 JSON → 按形状分发」，天然可用 cmux 式首帧匹配合二为一。
+- **可借思路（仅模式 + matcher 分类，不抄代码）**：
+  - ① **单监听器统一分发（unified-local-listener）**：把 BridgeServer + HookServer 合并到一个 unix socket / 一个 accept 循环，首帧 matcher 按 JSON 形状路由——`has("cmd")` → bridge 路径，`has("event"|"toolCall"|"conversationId")` → hook 路径，等价于 cmux 的 `Match(HTTP1Fast())` / `Match(Any())` 分类思想。收益：少一组 socket 生命周期/权限/重启协调，单一端口收敛（与 muxy 的「平台化多入口」形成对照——Archer 走反向收敛）。纯 Swift `DispatchSource` 即可实现，零新依赖。
+  - ② **matcher 分类法作未来扩展蓝本**：若 Archer 后续要补 muxy 缺口（remote-server / 移动伴侣 / Web Cockpit API），cmux 的「首字节匹配 + fallback Any()」是「单端口多协议」的标准解法——届时一个 TCP listener 按 `HTTP1Fast()`(Web UI) / `HTTP2HeaderField`(未来 gRPC/streaming) / `Any()`(bridge 兼容) 分发，避免每加一种协议开一个端口。
+- **不抄**：Go 实现（`cmux.New`/`Match` 源码）、其 TLS lookahead 包装导致的 `Request.TLS` 失效细节、Java gRPC SETTINGS 帧特例处理——这些是 Go net/http 生态问题，Swift/NIO 或 `Network.framework` 路径不同。
+- 红线：纯 Swift 原生实现，不引入 Go 或任何第三方传输依赖；不改现有 `bridge.sock` / hook socket 的**对外线格式契约**（CLI 与 ArcherHook 已按此对接），合并只改 Archer 内部分发，外部二进制无感；若改契约须版本化（先读 `cmd` 字段再路由，旧 `{"event":...}` 行仍走 hook 路径，向后兼容）。
+- 最小 SDD（功能点 `unified-local-listener`，仅思路①，落点确定后实现）：
+  - 新增 `Sources/ArcherKit/Bridge/UnifiedListener.swift`：`start()` 建单 unix socket（路径沿用 `bridge.sock`，hook 路径软链/别名兼容），`acceptOne()` 读首行 → `route(_:)` 判定 JSON key 集合 → 分派 `bridgeHandler` / `hookHandler`（复用现有两个 handler 闭包）。
+  - 路由判定（纯字段嗅探，等价 cmux matcher）：`if json["cmd"] != nil { bridge } else { hook }`。无需解析完整 JSON，首字段即可。
+  - 权限/生命周期：沿用 BridgeServer 的 `0600` owner-only + `removeItem` 清理；HookServer 的 Application Support 路径改为连到同一 socket（或保留旧路径做符号链接兼容 `ArcherHook`）。
+  - 默认行为不变：外部 `archer-bridge` / `ArcherHook` 调用方式零改动。
+- 状态：仅记 SDD + 模式判定，未实现。与 muxy 参考 §「Mobile companion + remote-server」缺口互为补充（cmux 是该缺口落地时的传输层解法）。
+
 ## codeflow 架构体检（github.com/braedonsaunders/codeflow · 4417★，验证用）
 - 用法：codeflow 是纯前端静态架构分析器（单 index.html + CDN），支持「本地文件夹分析」。本环境 browser 工具不可用（agent-browser 二进制缺失），故提取其真实 analyzer 块（与官方 golden test 同 `CODEFLOW_ANALYZER_*` 标记）+ METRICS 块（calcHealth），用 Node 无头跑在 `archer/Sources`，产出与网页 UI 同口径的报告。
 - 结果（2026-07-14）：**HEALTH 66/100 · 评级 D**。
