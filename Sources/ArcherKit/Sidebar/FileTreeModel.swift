@@ -30,6 +30,11 @@ final class FileTreeModel: ObservableObject {
         GitPorcelain.status(for: url, in: gitStatusByURL)
     }
 
+    /// Inject a status map without spawning git (tests + any pre-fetched map).
+    func applyGitStatus(_ map: [URL: GitFileStatus]) {
+        gitStatusByURL = map
+    }
+
     /// Background `git status --porcelain -z`; drops stale results if called
     /// again before the previous fetch lands (same generation idea as
     /// `GitStatusFetcher`).

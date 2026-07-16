@@ -28,6 +28,27 @@ final class GitPorcelainTests: XCTestCase {
         XCTAssertEqual(files[0].url.lastPathComponent, "untracked.txt")
     }
 
+    /// `-z` rename: `R  <new>\0<old>\0` — old path must not become a phantom entry.
+    func testParseRenameConsumesOldPathToken() {
+        let raw = "R  app/New.swift\0app/Old.swift\0"
+        let files = GitPorcelain.parse(raw, cwd: "/repo")
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(files[0].status, .modified)
+        XCTAssertEqual(files[0].url.lastPathComponent, "New.swift")
+        // Without skip, bare `app/Old.swift` became `p/Old.swift` (dropFirst 3).
+        XCTAssertFalse(files.contains { $0.url.path.hasSuffix("/p/Old.swift") })
+        XCTAssertFalse(files.contains { $0.url.lastPathComponent == "Old.swift" })
+    }
+
+    func testParseCopyConsumesOldPathToken() {
+        let raw = "C  app/Copy.swift\0app/Orig.swift\0 M other.txt\0"
+        let files = GitPorcelain.parse(raw, cwd: "/repo")
+        let names = Set(files.map { $0.url.lastPathComponent })
+        XCTAssertEqual(names, ["Copy.swift", "other.txt"])
+        XCTAssertEqual(files.map(\.status), [.modified, .modified])
+        XCTAssertFalse(names.contains("Orig.swift"))
+    }
+
     func testParseEmptyAndGarbage() {
         XCTAssertTrue(GitPorcelain.parse("", cwd: "/repo").isEmpty)
         XCTAssertTrue(GitPorcelain.parse("\0\0", cwd: "/repo").isEmpty)

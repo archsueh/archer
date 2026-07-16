@@ -93,4 +93,33 @@ final class FileTreeModelTests: XCTestCase {
             FileManager.default.fileExists(atPath: moved.appendingPathComponent("y.txt").path)
         )
     }
+
+    // MARK: - Git badge surface (Claude review should-fix #2)
+
+    func testGitStatusExactFileAndDirectoryRollup() throws {
+        let model = FileTreeModel(rootURL: root)
+        let a = try makeFile("src/a.swift")
+        let b = try makeFile("src/b.swift")
+        let clean = try makeFile("clean.txt")
+        let src = root.appendingPathComponent("src")
+
+        model.applyGitStatus([
+            a.standardizedFileURL: .added,
+            b.standardizedFileURL: .deleted,
+        ])
+
+        XCTAssertEqual(model.gitStatus(for: a), .added)
+        XCTAssertEqual(model.gitStatus(for: b), .deleted)
+        // Mixed A+D under src → modified roll-up
+        XCTAssertEqual(model.gitStatus(for: src), .modified)
+        XCTAssertNil(model.gitStatus(for: clean))
+    }
+
+    func testGitStatusOnlyAddedRollsUpAsAdded() throws {
+        let model = FileTreeModel(rootURL: root)
+        let nested = try makeFile("pkg/new.swift")
+        let pkg = root.appendingPathComponent("pkg")
+        model.applyGitStatus([nested.standardizedFileURL: .added])
+        XCTAssertEqual(model.gitStatus(for: pkg), .added)
+    }
 }

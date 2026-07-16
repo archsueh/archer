@@ -94,7 +94,10 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
   - `GitPorcelain`：共享 porcelain `-z` 解析（Diff + 文件树）
   - 修 **`runGit` 整段 trim 吃掉 unstaged 路径首字母**（` M tracked` → `racked`）——Diff 面板同修
   - `FileTreeModel.gitStatusByURL` + 目录 roll-up；`FilePanelView` 树/网格 M/A/D 角标 + `GitWatcher`
-  - `GitPorcelainTests` ×8；全量 **`swift test` 557/0**（+ Swift Testing 7）
+  - `GitPorcelainTests` + FileTreeModel badge 测；全量 **`swift test` 绿**
+- **Claude 审查（approve-with-nits）后跟进**:
+  - 修 rename/copy `-z`：消费 `R/C` 后的 old-path token（防 phantom path）
+  - `FileTreeModel.applyGitStatus` + `gitStatus(for:)` 单测
 - **Next（用户起床确认后再动）**:
   1. 是否 push main（当前领先 origin 多 commit）
   2. A.3 workspace-template 是否开干（YAML 解析器：Yams vs 手写）
