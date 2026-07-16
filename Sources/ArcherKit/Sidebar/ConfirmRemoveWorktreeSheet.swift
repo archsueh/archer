@@ -3,31 +3,66 @@ import SwiftUI
 
 /// Brutalist confirm sheet for closing a worktree workspace. Same visual
 /// language as `CreateWorktreeSheet` / `UpdatePromptView`. Parent owns
-/// the actual close (+ optional `git worktree remove`) via the `confirm`
-/// closure; this view stays a pure form.
+/// the actual close (+ optional git ops) via the `confirm` closure; this
+/// view stays a pure form.
 ///
-/// Default close is non-destructive — just drops the sidebar entry,
-/// disk untouched. The checkbox opts into the v0.18.x behaviour of
-/// `git worktree remove --force` + `git branch -d` (merged only).
-/// Reasoning: v0.18.x's default-destructive close scared users into
-/// leaving unwanted entries in the sidebar instead of clicking close.
+/// Three dispositions (BACKLOG A.1①):
+/// - **keep**: drop the sidebar entry only — disk untouched
+/// - **merge**: merge worktree branch into the main tree HEAD, then
+///   `git worktree remove` + `branch -d`
+/// - **delete**: `git worktree remove --force` + `branch -d` (merged only)
+///
+/// Default is non-destructive (`keep`) so close stays safe by habit.
 struct ConfirmRemoveWorktreeSheet: View {
     enum Outcome: Equatable {
         case success
         case failure(String)
     }
 
+    /// Close disposition chosen in the sheet.
+    enum Mode: String, CaseIterable, Identifiable, Equatable {
+        case keep
+        case merge
+        case delete
+
+        var id: String {
+            rawValue
+        }
+
+        var label: String {
+            switch self {
+            case .keep: return "keep on disk (sidebar only)"
+            case .merge: return "merge into main tree, then delete"
+            case .delete: return "delete worktree directory and branch"
+            }
+        }
+
+        var workingLabel: String {
+            switch self {
+            case .keep: return "closing…"
+            case .merge: return "merging…"
+            case .delete: return "deleting…"
+            }
+        }
+
+        var buttonLabel: String {
+            switch self {
+            case .keep: return "close"
+            case .merge: return "merge & close"
+            case .delete: return "close & delete"
+            }
+        }
+    }
+
     let workspace: Workspace
-    /// `alsoDelete` is the checkbox state: false = sidebar removal only;
-    /// true = also `git worktree remove --force` + `git branch -d` (if
-    /// merged). Caller still owns the close + pending-request cleanup
-    /// before resolving.
-    let confirm: @MainActor (_ alsoDelete: Bool) async -> Outcome
+    /// Caller still owns the close + pending-request cleanup before
+    /// resolving `.success`.
+    let confirm: @MainActor (_ mode: Mode) async -> Outcome
     let dismiss: () -> Void
 
     @State private var isWorking: Bool = false
     @State private var errorMessage: String?
-    @State private var alsoDelete: Bool = false
+    @State private var mode: Mode = .keep
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -43,7 +78,7 @@ struct ConfirmRemoveWorktreeSheet: View {
                 .frame(width: 32, height: 1)
                 .padding(.vertical, 22)
 
-            alsoDeleteCheckbox
+            modePicker
 
             if let errorMessage {
                 Text(errorMessage)
@@ -58,7 +93,7 @@ struct ConfirmRemoveWorktreeSheet: View {
                 BracketButton("cancel") { dismiss() }
                     .disabled(isWorking)
                     .opacity(isWorking ? 0.4 : 1)
-                BracketButton(buttonLabel) { submit() }
+                BracketButton(primaryButtonLabel) { submit() }
                     .disabled(isWorking)
                     .opacity(isWorking ? 0.4 : 1)
             }
@@ -66,7 +101,7 @@ struct ConfirmRemoveWorktreeSheet: View {
         }
         .padding(.vertical, 22)
         .padding(.horizontal, 28)
-        .frame(width: 460, alignment: .topLeading)
+        .frame(width: 480, alignment: .topLeading)
         .background(Theme.chromeBackground)
         .preferredColorScheme(Theme.chromeColorScheme)
     }
@@ -90,22 +125,34 @@ struct ConfirmRemoveWorktreeSheet: View {
             .foregroundStyle(Theme.chromeMuted)
     }
 
-    /// Toggle exposing the destructive escape hatch — when on, close
-    /// also runs `git worktree remove --force` + `git branch -d`.
-    /// Native SwiftUI `Toggle` styled to fit brutalist chrome.
-    private var alsoDeleteCheckbox: some View {
-        Toggle(isOn: $alsoDelete) {
-            Text("also delete worktree directory and branch")
-                .font(Theme.mono(11.5))
-                .foregroundStyle(alsoDelete ? Theme.chromeForeground : Theme.chromeMuted)
+    /// Three exclusive dispositions — radio rows, not a destructive
+    /// checkbox hidden under default close.
+    private var modePicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Mode.allCases) { option in
+                Button {
+                    mode = option
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: mode == option ? "circle.inset.filled" : "circle")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(mode == option ? Theme.chromeForeground : Theme.chromeMuted)
+                        Text(option.label)
+                            .font(Theme.mono(11.5))
+                            .foregroundStyle(mode == option ? Theme.chromeForeground : Theme.chromeMuted)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isWorking)
+            }
         }
-        .toggleStyle(.checkbox)
-        .disabled(isWorking)
     }
 
-    private var buttonLabel: String {
-        if isWorking { return alsoDelete ? "deleting…" : "closing…" }
-        return alsoDelete ? "close & delete" : "close"
+    private var primaryButtonLabel: String {
+        isWorking ? mode.workingLabel : mode.buttonLabel
     }
 
     private var worktreePath: URL {
@@ -116,7 +163,7 @@ struct ConfirmRemoveWorktreeSheet: View {
         isWorking = true
         errorMessage = nil
         Task {
-            let outcome = await confirm(alsoDelete)
+            let outcome = await confirm(mode)
             switch outcome {
             case .success:
                 dismiss()

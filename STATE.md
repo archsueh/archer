@@ -57,7 +57,8 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 ## 3. Open failures / 进行中(stage 1→2)
 
 **真实产品 backlog（2026-07-16 核对，详 `docs/BACKLOG.md` 文首表）**:  
-A 未做= worktree 残余2 + EdgeGlow + workspace-template + parallelTaskGroup + agent-interop-layer + kooky(diff badges/ssh)。  
+A 未做= worktree 跨 diff 汇总 + EdgeGlow + workspace-template + parallelTaskGroup + agent-interop-layer + kooky(diff badges/ssh)。  
+A 本会话落地= worktree 关闭「合并回主树」（ConfirmRemoveWorktreeSheet keep/merge/delete）。  
 B 可选= yibie star / God Object 拆分。  
 C 已落地勿重做= session-recorder `4ba0020`、UnifiedListener `47043b6`、MemoryGraph `6f6e683`、sniffer `5d7b8bf/eca968a`、SkillsInjector `9210b60`。
 
@@ -85,13 +86,16 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
 ## 5. Last session(stage 5 — resume,别 restart)
 
-**2026-07-16 · BACKLOG 交叉核对 + 文档回填（Grok）**
+**2026-07-16 · BACKLOG 回填 + worktree 合并回主树（Grok）**
 
-- **分支**:`main`（会话起点 clean）。
-- **做了什么**:对照 git 把 `docs/BACKLOG.md` 与真实代码对齐——文首新增「真实待办」A/B/C 表；回填 C 类：session-recorder `4ba0020`、memory 面板 `6f6e683`、muxy sniffer+SkillsInjector（原审计漏标 skills 反向注入）；unified-local-listener 正文本已标已实现，并入 C 索引。
-- **未实现（别重做 C）**:A 表 6 行 + B 可选 2 行。
-- **建议 Next 产品序**:① worktree「合并回主树」（闭环高、触现有关闭链）；② EdgeGlow 最小 SDD+可关窄条；大项 SDD（template / parallel 聚合 / interop）另开排期。
-- **未 commit**：本会话仅改 `docs/BACKLOG.md` + `STATE.md`。
+- **分支**:`main`。
+- **文档**:`3b8eaeb` BACKLOG A/B/C 与 git 对齐。
+- **功能 A.1①**:关闭 worktree sheet 增加 **merge into main tree**：
+  - `WorktreeManager.merge` / `currentBranch`
+  - `WorkspaceStore.mergeWorktreeIntoParent`（merge 失败不删目录）
+  - `ConfirmRemoveWorktreeSheet` 三 disposition + `SidebarView` 接线
+- **验证**:`swift test --filter 'WorktreeManagerTests|WorkspaceStoreTests/testMerge|…'` **18 tests / 0 failures**。
+- **Next**:worktree diff 汇总 ② / EdgeGlow / 大项 SDD；勿混工作树上无关 `UnifiedListener`/`AppDelegate` 未提交改动（若仍在）。
 
 **2026-07-12 · 会话收尾日志（Grok · 重启前写）**
 

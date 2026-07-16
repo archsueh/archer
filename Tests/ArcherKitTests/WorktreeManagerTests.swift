@@ -194,4 +194,60 @@ final class WorktreeManagerTests: XCTestCase {
                        "stderr should carry git's message")
         XCTAssertNotEqual(err.exitCode, 0)
     }
+
+    func testCurrentBranchReportsMainAfterInit() throws {
+        let repo = tempDir()
+        try XCTSkipUnless(makeRepo(at: repo), "git unavailable")
+        XCTAssertEqual(WorktreeManager.currentBranch(repoPath: repo), "main")
+    }
+
+    func testMergeFeatureBranchIntoMainTree() throws {
+        let repo = tempDir()
+        try XCTSkipUnless(makeRepo(at: repo), "git unavailable")
+        let wt = repo.appendingPathExtension("feat-merge")
+        let addResult = WorktreeManager.add(
+            repoPath: repo,
+            path: wt,
+            mode: .newBranch(name: "feat-merge", base: nil)
+        )
+        if case let .failure(err) = addResult {
+            XCTFail("add failed: \(err.description)")
+            return
+        }
+        // Commit on the worktree branch so merge has content.
+        let file = wt.appendingPathComponent("feature.txt")
+        try "hello".write(to: file, atomically: true, encoding: .utf8)
+        guard GitStatusFetcher.runGit(["-C", wt.path, "add", "feature.txt"], timeout: 5) != nil,
+              GitStatusFetcher.runGit([
+                  "-C", wt.path,
+                  "-c", "user.email=test@example.com",
+                  "-c", "user.name=Test",
+                  "commit", "-m", "feat", "--no-gpg-sign",
+              ], timeout: 5) != nil
+        else {
+            XCTFail("commit on worktree failed")
+            return
+        }
+
+        let merge = WorktreeManager.merge(repoPath: repo, branch: "feat-merge")
+        if case let .failure(err) = merge {
+            XCTFail("merge failed: \(err.description)")
+            return
+        }
+        // File should now exist on main tree after merge.
+        let mergedFile = repo.appendingPathComponent("feature.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mergedFile.path))
+        XCTAssertEqual(try String(contentsOf: mergedFile, encoding: .utf8), "hello")
+    }
+
+    func testMergeUnknownBranchSurfacesStderr() throws {
+        let repo = tempDir()
+        try XCTSkipUnless(makeRepo(at: repo), "git unavailable")
+        let result = WorktreeManager.merge(repoPath: repo, branch: "no-such-branch-zzzz")
+        guard case let .failure(err) = result else {
+            XCTFail("expected merge of unknown branch to fail")
+            return
+        }
+        XCTAssertFalse(err.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 }

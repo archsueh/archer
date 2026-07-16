@@ -668,8 +668,19 @@ struct SidebarView: View {
         case let .confirmRemoveWorktree(workspace):
             ConfirmRemoveWorktreeSheet(
                 workspace: workspace,
-                confirm: { alsoDelete in
-                    if alsoDelete { if let msg = await store.removeWorktreeDirectory(workspace) { return .failure(msg) } }
+                confirm: { mode in
+                    switch mode {
+                    case .keep:
+                        break
+                    case .merge:
+                        if let msg = await store.mergeWorktreeIntoParent(workspace) {
+                            return .failure(msg)
+                        }
+                    case .delete:
+                        if let msg = await store.removeWorktreeDirectory(workspace) {
+                            return .failure(msg)
+                        }
+                    }
                     store.closeWorkspace(workspace)
                     store.pendingRemovalRequest = nil
                     return .success

@@ -9,7 +9,7 @@
 
 | # | 条目 | 节 | 状态 |
 |---|------|-----|------|
-| 1 | worktree：关闭时「合并回主树」；跨 worktree diff 汇总 | §worktree | 残余 2 项 |
+| 1 | worktree：跨 worktree diff 汇总（DiffPanel 总览） | §worktree | 残余 1 项（「合并回主树」已落地） |
 | 2 | 边缘活动辉光（EdgeGlow 借鉴） | §边缘活动辉光 | 待最小 SDD + 实现 |
 | 3 | workspace-template（`.archer-workspace.yml`） | §tmux-ide | 仅 SDD |
 | 4 | 并行任务结果聚合（`parallelTaskGroup`） | §orbiteditor 思路 A | 仅 SDD（思路 B 已落地 `770194b`） |
@@ -39,7 +39,8 @@
 - 来源：双竞品信号（stablyai/orca 与 jamesrochabrun/AgentHub 各自独立做了 worktree 管理，2026-07-06 调研）+ 自身事故（STATE.md §4，2026-07-03 两会话共用工作树导致 commit 污染）。
 - **已实现**（先于本条目存在，2026-07-06 侦察修正——旧记录误标"未实现"）：`WorktreeManager`（全部 git worktree 写操作）、sidebar 创建/adopt（`CreateWorktreeSheet`）、右键 Parallel Task（N worktree 各跑一个 agent + prompt）、关闭确认链（`isLastTabInWorktree` → `requestCloseWorkspace` → remove + `deleteBranchIfMerged`）。
 - **2026-07-06 新增**：`+` 菜单 agent 行尾 branch 副按钮，一键"在新 worktree 中打开该 agent"（`openTabInNewWorktree`，自动分支名 `archer/<agent>-<rand>`，非 git 仓库不显示按钮）。
-- **残余（真 backlog）**：① 关闭 worktree 时的"合并回主树"选项（现只有 删除/保留/取消）；② worktree diff 汇总视图（DiffPanel 已可指向单个 worktree，缺跨 worktree 总览）。
+- **已落地（2026-07-16）① 关闭 worktree「合并回主树」**：`ConfirmRemoveWorktreeSheet` 三 disposition（keep / merge / delete）；`WorktreeManager.merge` + `currentBranch`；`WorkspaceStore.mergeWorktreeIntoParent` 在主树 HEAD 上 `git merge --no-edit`，成功后再 `worktree remove --force` + `branch -d`；冲突/detached 则报错且不删目录。单测：WorktreeManager merge + WorkspaceStore merge 路径。
+- **残余（真 backlog）**：② worktree diff 汇总视图（DiffPanel 已可指向单个 worktree，缺跨 worktree 总览）。
 - 设计红线：默认行为不变；worktree 目录放 repo 同级（沿用现有约定）；不做 AgentHub 式 GitHub PR/issue 集成（超出座舱边界）。
 
 ## 边缘活动辉光（borrow from EdgeGlow）

@@ -580,6 +580,70 @@ final class WorkspaceStore {
         }
     }
 
+    /// Merge the worktree's branch into the **parent** (main tree) HEAD,
+    /// then `git worktree remove --force` + safe branch delete. On merge
+    /// failure the satellite worktree is left intact so the user can fix
+    /// conflicts manually. Returns nil on success, otherwise an error
+    /// string for the confirm sheet.
+    func mergeWorktreeIntoParent(_ workspace: Workspace) async -> String? {
+        guard workspace.worktreeParentId != nil else {
+            return "workspace is not a worktree"
+        }
+        let path = workspace.diskPath
+        let parent = workspace.worktreeParentId.flatMap { parentId in
+            workspaces.first(where: { $0.id == parentId })
+        }
+        let repoPath = parent
+            .flatMap { WorktreeManager.repoRoot(near: $0.workingDirectory) }
+            ?? WorktreeManager.repoRoot(near: path)
+        guard let repoPath else {
+            return "could not resolve main tree repository"
+        }
+        let normalizedPath = path.standardizedFileURL.path
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<Void, WorktreeManager.GitError> in
+            // Real branch from `worktree list` (user may have switched
+            // since archer recorded `worktreeBranch`).
+            let realBranch: String? = {
+                guard case let .success(infos) = WorktreeManager.list(repoPath: repoPath),
+                      let match = infos.first(where: {
+                          $0.path.standardizedFileURL.path == normalizedPath
+                      })
+                else { return nil }
+                return match.branch
+            }()
+            guard let realBranch, !realBranch.isEmpty else {
+                return .failure(WorktreeManager.GitError(
+                    stderr: "worktree is detached HEAD — check out a branch before merging",
+                    exitCode: -1
+                ))
+            }
+            guard let parentBranch = WorktreeManager.currentBranch(repoPath: repoPath) else {
+                return .failure(WorktreeManager.GitError(
+                    stderr: "main tree is detached HEAD — check out a branch before merging",
+                    exitCode: -1
+                ))
+            }
+            if realBranch == parentBranch {
+                return .failure(WorktreeManager.GitError(
+                    stderr: "worktree is already on '\(parentBranch)' — nothing to merge",
+                    exitCode: -1
+                ))
+            }
+            let merged = WorktreeManager.merge(repoPath: repoPath, branch: realBranch)
+            if case let .failure(err) = merged { return .failure(err) }
+            let removed = WorktreeManager.remove(repoPath: repoPath, path: path, force: true)
+            if case let .failure(err) = removed { return .failure(err) }
+            // Branch is now merged into parent — safe-delete should succeed.
+            _ = WorktreeManager.deleteBranchIfMerged(repoPath: repoPath, branch: realBranch)
+            return .success(())
+        }.value
+        if case let .failure(err) = result {
+            return err.description
+        }
+        pruneRecentlyClosed(under: workspace)
+        return nil
+    }
+
     /// Runs `git worktree remove --force <path>` on a detached task. The
     /// caller closes the workspace separately — this method only touches
     /// disk. `--force` because the close-confirm sheet already gathered

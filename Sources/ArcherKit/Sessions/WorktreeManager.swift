@@ -63,6 +63,37 @@ enum WorktreeManager {
         runGit(["-C", repoPath.path, "branch", "-d", branch], timeout: 5).map { _ in () }
     }
 
+    /// `git -C <repo> merge --no-edit <branch>` into whatever HEAD the
+    /// main tree currently has. Used by close-worktree "merge into main
+    /// tree" — runs in the **parent** worktree (repo root), never in the
+    /// satellite path. Conflicts / dirty-tree refusals surface as
+    /// `GitError` so the caller can leave the worktree intact.
+    static func merge(repoPath: URL, branch: String) -> Result<Void, GitError> {
+        let trimmed = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failure(GitError(stderr: "empty branch name", exitCode: -1))
+        }
+        return runGit(
+            ["-C", repoPath.path, "merge", "--no-edit", "--no-stat", trimmed],
+            timeout: 60
+        ).map { _ in () }
+    }
+
+    /// Branch currently checked out at `repoPath` (usually the main tree).
+    /// `nil` when detached HEAD or git fails — callers should refuse
+    /// merge-into-main rather than guessing `main`/`master`.
+    static func currentBranch(repoPath: URL) -> String? {
+        guard case let .success(output) = runGit(
+            ["-C", repoPath.path, "rev-parse", "--abbrev-ref", "HEAD"],
+            timeout: 2
+        ) else {
+            return nil
+        }
+        let name = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty || name == "HEAD" { return nil }
+        return name
+    }
+
     /// `git -C <repo> worktree list --porcelain` parsed into one `Info`
     /// per record. Used at restore time to drop persisted worktree
     /// workspaces whose dirs the user already removed externally.

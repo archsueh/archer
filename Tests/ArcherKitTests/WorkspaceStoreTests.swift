@@ -492,6 +492,110 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertTrue(store.workspaces.contains { $0.id == wt.id })
     }
 
+    // MARK: - merge into main tree (close-worktree disposition)
+
+    /// Real git repo + worktree under tmp, cleaned in defer.
+    private func makeGitRepoWithWorktree() throws -> (repo: URL, wt: URL, branch: String)? {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("archer-merge-\(UUID().uuidString)", isDirectory: true)
+        let repo = root.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        guard GitStatusFetcher.runGit(["-C", repo.path, "init", "--initial-branch=main"], timeout: 5) != nil,
+              GitStatusFetcher.runGit([
+                  "-C", repo.path,
+                  "-c", "user.email=test@example.com",
+                  "-c", "user.name=Test",
+                  "commit", "--allow-empty", "-m", "init", "--no-gpg-sign",
+              ], timeout: 5) != nil
+        else {
+            try? FileManager.default.removeItem(at: root)
+            return nil
+        }
+        let branch = "feat-merge-store"
+        let wt = root.appendingPathComponent("repo-feat", isDirectory: true)
+        let add = WorktreeManager.add(
+            repoPath: repo, path: wt, mode: .newBranch(name: branch, base: nil)
+        )
+        guard case .success = add else {
+            try? FileManager.default.removeItem(at: root)
+            return nil
+        }
+        let file = wt.appendingPathComponent("from-wt.txt")
+        try "payload".write(to: file, atomically: true, encoding: .utf8)
+        guard GitStatusFetcher.runGit(["-C", wt.path, "add", "from-wt.txt"], timeout: 5) != nil,
+              GitStatusFetcher.runGit([
+                  "-C", wt.path,
+                  "-c", "user.email=test@example.com",
+                  "-c", "user.name=Test",
+                  "commit", "-m", "feat", "--no-gpg-sign",
+              ], timeout: 5) != nil
+        else {
+            try? FileManager.default.removeItem(at: root)
+            return nil
+        }
+        return (repo, wt, branch)
+    }
+
+    func testMergeWorktreeIntoParentMergesThenRemovesDirectory() async throws {
+        guard let setup = try makeGitRepoWithWorktree() else {
+            throw XCTSkip("git unavailable")
+        }
+        defer { try? FileManager.default.removeItem(at: setup.repo.deletingLastPathComponent()) }
+
+        let store = makeStore()
+        let source = store.addWorkspace(workingDirectory: setup.repo)
+        let wt = store.addWorkspace(
+            workingDirectory: setup.wt,
+            worktreeParent: source,
+            worktreeBranch: setup.branch
+        )
+        let message = await store.mergeWorktreeIntoParent(wt)
+        XCTAssertNil(message, "merge+remove should succeed: \(message ?? "")")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: setup.wt.path),
+            "worktree directory must be gone after merge disposition"
+        )
+        let merged = setup.repo.appendingPathComponent("from-wt.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: merged.path))
+        XCTAssertEqual(try String(contentsOf: merged, encoding: .utf8), "payload")
+    }
+
+    func testMergeWorktreeIntoParentFailsWhenNotAWorktree() async {
+        let store = makeStore()
+        let plain = store.addWorkspace(workingDirectory: projectA)
+        let message = await store.mergeWorktreeIntoParent(plain)
+        XCTAssertEqual(message, "workspace is not a worktree")
+    }
+
+    func testMergeWorktreeIntoParentLeavesDiskOnMergeFailure() async throws {
+        // Detached-HEAD parent refuses merge; satellite dir must survive.
+        guard let setup = try makeGitRepoWithWorktree() else {
+            throw XCTSkip("git unavailable")
+        }
+        defer { try? FileManager.default.removeItem(at: setup.repo.deletingLastPathComponent()) }
+
+        // Detach main tree HEAD so merge is refused.
+        _ = GitStatusFetcher.runGit(
+            ["-C", setup.repo.path, "checkout", "--detach", "HEAD"],
+            timeout: 5
+        )
+
+        let store = makeStore()
+        let source = store.addWorkspace(workingDirectory: setup.repo)
+        let wt = store.addWorkspace(
+            workingDirectory: setup.wt,
+            worktreeParent: source,
+            worktreeBranch: setup.branch
+        )
+        let message = await store.mergeWorktreeIntoParent(wt)
+        XCTAssertNotNil(message)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: setup.wt.path),
+            "failed merge must not delete the worktree"
+        )
+        XCTAssertTrue(store.workspaces.contains { $0.id == wt.id })
+    }
+
     func testCloseOtherWorkspacesKeepsAllWorktreesUnderKeptSource() {
         // Symmetric case: closing others while keeping a source workspace
         // should also keep every worktree hanging off it — otherwise the
