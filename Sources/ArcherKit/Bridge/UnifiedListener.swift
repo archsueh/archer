@@ -20,7 +20,7 @@ import Darwin
 import Foundation
 
 @MainActor
-final class UnifiedListener {
+class UnifiedListener {
     /// Canonical listener socket (was BridgeServer.socketPath).
     static let bridgeSocketPath: String = {
         let dir = (NSHomeDirectory() as NSString).appendingPathComponent(".archer")
@@ -43,6 +43,17 @@ final class UnifiedListener {
     private let hookHandler: HookHandler
     private let bridgeHandler: BridgeServer
 
+    /// Overridable socket paths — production uses the canonical user paths;
+    /// tests subclass and override so they never touch `~/.archer` or the
+    /// global hook socket.
+    var bridgePath: String {
+        Self.bridgeSocketPath
+    }
+
+    var hookPath: String {
+        Self.hookSocketPath
+    }
+
     private var listenFd: Int32 = -1
     private var source: DispatchSourceRead?
 
@@ -59,7 +70,7 @@ final class UnifiedListener {
     }
 
     func start() {
-        let path = Self.bridgeSocketPath
+        let path = bridgePath
         try? FileManager.default.removeItem(atPath: path)
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -89,6 +100,10 @@ final class UnifiedListener {
         // Maintain the legacy hook socket as a symlink to the live listener.
         installHookSymlink()
 
+        // Accept stays on the main queue so `@MainActor` handlers are safe
+        // without isolation hops (off-main accept + weak self was SIGTRAPing
+        // under actor checks in tests). Blocking client I/O still runs on
+        // `ioQueue`.
         let src = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         src.setEventHandler { [weak self] in self?.acceptOne() }
         src.resume()
@@ -97,10 +112,11 @@ final class UnifiedListener {
     }
 
     private func installHookSymlink() {
-        let hookPath = Self.hookSocketPath
-        try? FileManager.default.removeItem(atPath: hookPath)
+        let target = bridgePath
+        let link = hookPath
+        try? FileManager.default.removeItem(atPath: link)
         // Symlink target is the absolute bridge socket path; connect() follows it.
-        guard symlink(Self.bridgeSocketPath, hookPath) == 0 else {
+        guard symlink(target, link) == 0 else {
             ArcherLogger.bridge.warning("UnifiedListener: hook symlink failed errno=\(errno)")
             return
         }
@@ -109,9 +125,9 @@ final class UnifiedListener {
     func stop() {
         source?.cancel(); source = nil
         if listenFd >= 0 { close(listenFd); listenFd = -1 }
-        try? FileManager.default.removeItem(atPath: Self.bridgeSocketPath)
+        try? FileManager.default.removeItem(atPath: bridgePath)
         // Drop the legacy hook symlink so stale links don't accumulate across restarts.
-        try? FileManager.default.removeItem(atPath: Self.hookSocketPath)
+        try? FileManager.default.removeItem(atPath: hookPath)
     }
 
     // MARK: - Accept / demux
@@ -140,11 +156,14 @@ final class UnifiedListener {
 
     /// cmux-style first-frame classifier. Peek the top-level JSON keys —
     /// `has("cmd")` is the bridge protocol (needs a reply); anything else is
-    /// a hook event (fire-and-forget).
-    private func route(_ data: Data, clientFd: Int32) {
-        let isBridge = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["cmd"] != nil
+    /// a hook event (fire-and-forget). Exposed for unit testing the demux
+    /// decision without a live socket.
+    static func isBridgeFrame(_ data: Data) -> Bool {
+        (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["cmd"] != nil
+    }
 
-        if isBridge {
+    private func route(_ data: Data, clientFd: Int32) {
+        if Self.isBridgeFrame(data) {
             let response = bridgeHandler.handle(data)
             Self.ioQueue.async {
                 response.withUnsafeBytes { ptr in
