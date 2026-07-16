@@ -1,5 +1,40 @@
 # Archer Backlog
 
+> **交叉核对（2026-07-16）**：git 已落地多项曾被标「未实现」的条目；文档曾漂移。  
+> 下列 **真实待办** 已剔除陈旧项。细节仍在各节；冲突时以 git + `STATE.md` 为准。
+
+## 真实待办（2026-07-16 核对）
+
+### A. 真正未做（仅 SDD / 残余 backlog）
+
+| # | 条目 | 节 | 状态 |
+|---|------|-----|------|
+| 1 | worktree：关闭时「合并回主树」；跨 worktree diff 汇总 | §worktree | 残余 2 项 |
+| 2 | 边缘活动辉光（EdgeGlow 借鉴） | §边缘活动辉光 | 待最小 SDD + 实现 |
+| 3 | workspace-template（`.archer-workspace.yml`） | §tmux-ide | 仅 SDD |
+| 4 | 并行任务结果聚合（`parallelTaskGroup`） | §orbiteditor 思路 A | 仅 SDD（思路 B 已落地 `770194b`） |
+| 5 | agent-interop-layer（`AgentSessionProvider`） | §lemma 思路 A | 仅 SDD（showagent 桥 `ebb8d97` 已落地） |
+| 6 | kooky：filetree git diff badges；ssh-workspace | §kooky | 仅 SDD（Recent folders `1790455` 已落地） |
+
+### B. 可选增强（未排期）
+
+| # | 条目 | 节 |
+|---|------|-----|
+| 8 | yibie star 筛选（`isStarred` + 筛选） | §yibie |
+| 9 | codeflow God Object 拆文件（6 个 >1300 行） | §codeflow |
+
+### C. 文档曾陈旧、git 已落地（本节仅作勘误索引）
+
+| 条目 | 提交 | 说明 |
+|------|------|------|
+| session-recorder（terminal-control） | `4ba0020` | opt-in `.termctrl` 录制 |
+| unified-local-listener（cmux） | `47043b6` | UnifiedListener 合并 Bridge+Hook |
+| memory 面板（claude-mem 思路） | `6f6e683` | A-mem 链接图面板 |
+| agent 自动检测 sniffer（muxy ①） | `5d7b8bf` / `eca968a` | opt-in basename 嗅探 |
+| skills 反向注入 harness（muxy ②） | `SkillsInjector` + `9210b60` | symlink relay 批量导出，不覆盖已有安装 |
+
+---
+
 ## worktree-per-agent 会话隔离（大部分已实现）
 - 来源：双竞品信号（stablyai/orca 与 jamesrochabrun/AgentHub 各自独立做了 worktree 管理，2026-07-06 调研）+ 自身事故（STATE.md §4，2026-07-03 两会话共用工作树导致 commit 污染）。
 - **已实现**（先于本条目存在，2026-07-06 侦察修正——旧记录误标"未实现"）：`WorktreeManager`（全部 git worktree 写操作）、sidebar 创建/adopt（`CreateWorktreeSheet`）、右键 Parallel Task（N worktree 各跑一个 agent + prompt）、关闭确认链（`isLastTabInWorktree` → `requestCloseWorkspace` → remove + `deleteBranchIfMerged`）。
@@ -12,12 +47,15 @@
 - 借鉴点：复用 archer 已有的 Claude Stop/Notification/turn hook 信号 + activity 三态色，做一圈克制的窗口/屏幕边缘辉光，作为提示音之外的余光视觉确认。
 - 技术：Swift/AppKit CAShapeLayer + CVDisplayLink 驱动 lineDashPhase，四层 neon；零依赖，可直接移植。
 - 设计红线：EdgeGlow 默认彩虹霓虹，与 archer brutalist-minimal（低对比/零阴影/克制）冲突。archer 版必须单色、窄、克制、可关，用 activity token 色（running #69B0D6 / attention #E8B068 / failure #E86666），绝不彩虹。
-- 状态：待写最小 spec（SDD），未实现。
+- 状态：**未实现**（2026-07-16 核对仍属真实待办 A.2）。待写最小 SDD 后落地：复用 Claude Stop/Notification hook + activity 三态色；`CAShapeLayer` 边缘辉光；单色窄条可关。
 
 ## claude-mem 参考（github.com/thedotmack/claude-mem）
 - 它是什么：Claude Code 跨会话自动记忆（5 hook 捕获→AI 压缩→下次注入，SQLite+Chroma+:37777 web viewer）。
-- ① archer memory 面板（archer 范围）：其 worker+SQLite+web viewer 架构可作 archer "agent 记忆/上下文面板"的蓝本，archer 已读 agent DB 做 Usage 仪表盘，加 memory 视图顺路。
-- ② 个人工作流可控试用（非 archer）：与 hsueh 现有手动 MEMORY.md/memory 文件/claude-handoff 重叠且哲学冲突（自动全量捕获 vs 人工高信噪策展）。如试，read-only 评估捕获质量，勿直接替换手动流程，勿两套记忆并行打架。
+- ① archer memory 面板（archer 范围）：其 worker+SQLite+web viewer 架构曾作蓝本。
+  - **已落地（2026-07-09，`6f6e683`）**：`Sidebar/MemoryGraph.swift` + `SidebarView.MemoryBankSection`——本地 `[[wikilink]]` / `#tag` 链接图（前向/反向、枢纽排序、标签聚类、孤立分组），`+` 生成原子 memo 模板；**不自动改写文件、不引入 LLM**（人工高信噪策展）。测试 `MemoryGraphTests` ×7。详见 `STATE.md` §1。
+  - **不抄 / 不做**：claude-mem 的 worker + SQLite + Chroma + :37777 web viewer 自动全量捕获（与策展哲学冲突）。
+- ② 个人工作流可控试用（非 archer）：与 hsueh 现有手动 MEMORY.md / claude-handoff 重叠且哲学冲突。如试，read-only 评估捕获质量，勿直接替换手动流程，勿两套记忆并行打架。
+- 状态（①）：**已落地** `6f6e683`（2026-07-16 文档回填）。
 
 ## tmux-ide 参考（github.com/wavyrai/tmux-ide · v2.7.0，525★）
 - 它是什么：用 `ide.yml` 把任意项目变成 tmux 驱动的"终端 IDE"——声明式布局编排（orchestrator）+ 持久化 daemon + task 系统 + web dashboard。跨平台 CLI（bun/Node 栈），无原生 GUI。
@@ -81,7 +119,7 @@
   - 录制：ghostty 增加字节旁路（tee PTY 输出 + 转发输入），按 `.termctrl` schema 写 `header/output/input/resize`；Cockpit 加「⚑ 标记」按钮写 `marker` 帧。
   - 导出：短期 shell 调 `termctrl video <file> --edit <clip.json>`（已装 `cargo install terminal-control` 即可用）；长期加 `RecordedSessionExporter` Swift 原生渲染（读 `.termctrl` → Core Text 绘帧 → AVFoundation 编码 MP4）。
   - 红线：不引入 termctrl 的 PTY 驱动；录制文件 `0o600`；不自动录（须用户显式开，防敏感终端内容落盘）。
-- 状态：仅记 SDD，未实现。READY 部分（调查 + 判定 + 集成路径）已完成。
+- 状态：**已落地（2026-07-16 文档回填；实现提交 `4ba0020`）**。`SessionRecorder` / `TermctrlRecorder` / `RecorderStore`：设置开关（默认关）；`WorkspaceStore` 仅在启用时挂录制；Libghostty 旁路写 input + 标记；状态栏 marker；单测保证 schema-clean 导出。长期「Swift 原生按 Theme 渲染 MP4」仍属可选增强，未做。
 
 ## kooky 参考（github.com/iAmCorey/kooky · 544★，Swift monorepo）
 - 它是什么：原生 macOS SwiftUI + libghostty 的「AI coding 终端」。README 描述与 Archer 一字不差（sidebar 工作区 / 分屏 / 一键 agent / per-agent 活动点 / live workspace state / libghostty 渲染 / 本地优先 / MIT）——是 Archer 的**同源直接 fork**（同栈同架构，v0.35 与 Archer v1.0.7 分头演进）。作者 iAmCorey 基于 archer 早期版本派生后各自发展。
@@ -112,10 +150,11 @@
   - **Mobile companion + remote-server（MuxyAPI）**：跨设备/远程驱动。Archer 是单机桌面。
   - **Skills 反向注入**：`muxy install-skills` 把 muxy-cli / muxy-extension 注入各 AI harness。Archer 的 SkillsView 是自建发现/安装，未做「反向注入到 agent harness」这种 CLI 集成。
 - 可借（仅思路，不抄代码/不引入其扩展体系）：
-  - ① **agent 自动检测**：借 AIAgentDetector 的「前台进程嗅探」思路，给 Archer 加一层被动 agent 识别（现状靠 hook，补嗅探更稳）。落点：`AgentTemplate` 加 detector，不引入 muxy 的扩展运行时。
-  - ② **skills 反向注入 CLI**：借 `muxy install-skills` 思路，给 Archer 的 SkillsView 加「导出/注入到各 harness」命令（写文件到 `~/.claude/skills` 等），纯文件操作，不引入其市场后端。
+  - ① **agent 自动检测**：**已落地** `5d7b8bf` / `eca968a`——opt-in 前台进程 sniffer（basename 匹配 + 侧边栏使用），不引入 muxy 扩展运行时。
+  - ② **skills 反向注入 harness**：**已落地**——`Sources/ArcherKit/Sidebar/SkillsInjector.swift` + SkillsView「导出/注入」；`9210b60` 批量导出改为 **symlink relay（fill-missing）**，不覆盖已有安装、不 destructive copy。纯本地文件操作。
 - 不抄：Extensions WebView 运行时、移动伴侣、remote-server、市场后端——与 Archer 单机座舱定位冲突，且引入远端依赖违背「本地优先」。
-- 红线：不引入 muxy 的 Extensions 体系或任何远端依赖；仅借「agent 检测」「skills 反向注入」两个轻量思路，纯 Swift 原生实现。
+- 红线：不引入 muxy 的 Extensions 体系或任何远端依赖。
+- 状态（①②）：**已落地**（2026-07-16 文档回填）。
 
 ## cmux 参考（github.com/soheilhy/cmux · 2760★，Go · Apache-2.0）
 - 它是什么：Go 的**服务端连接多路复用器（transport demultiplexer）**——一个 `net.Listener` 收所有连接，按「首字节 payload」嗅探协议，分流到多个虚拟 `net.Listener`，从而在同一端口上同时跑 gRPC / SSH / HTTPS / HTTP / Go RPC 等。核心 API：`m := cmux.New(l)` → `grpcL := m.Match(cmux.HTTP2HeaderField("content-type","application/grpc"))` / `httpL := m.Match(cmux.HTTP1Fast())` / `anyL := m.Match(cmux.Any())` → 各 listener 喂给对应协议 server。性能开销可忽略（只匹配连接最初几个字节，长连接无感知）。已知限制：TLS 下 `http.Request.TLS` 不置位（包了一层 lookahead conn，net/http 类型断言失败）；单连接只能归一种协议（gRPC 或 REST，不能既是）；Java gRPC client 需 `MatchWithWriters` 先发 SETTINGS 帧。
@@ -135,7 +174,7 @@
   - 路由判定（纯字段嗅探，等价 cmux matcher）：`if json["cmd"] != nil { bridge } else { hook }`。无需解析完整 JSON，首字段即可。
   - 权限/生命周期：沿用 BridgeServer 的 `0600` owner-only + `removeItem` 清理；HookServer 的 Application Support 路径改为连到同一 socket（或保留旧路径做符号链接兼容 `ArcherHook`）。
   - 默认行为不变：外部 `archer-bridge` / `ArcherHook` 调用方式零改动。
-- 状态：仅记 SDD + 模式判定，未实现。与 muxy 参考 §「Mobile companion + remote-server」缺口互为补充（cmux 是该缺口落地时的传输层解法）。
+- 状态：**已实现（2026-07-16）**。新增 `Sources/ArcherKit/Bridge/UnifiedListener.swift`（单 unix socket + `DispatchSourceRead` accept + 首帧 `isBridgeFrame` 分类 → bridge/hook 双路）；`BridgeServer` 降级为纯 `handle(_:)` 请求处理器（去掉 socket 代码）；`HookServer` 降级为纯 `parseMessage` 解码命名空间（去掉 socket/start/stop，`@MainActor parseMessage` 保留）；`AppDelegate` 两个 server 合并为一个 `unifiedListener.start()/stop()`。外部契约零改动：`bridge.sock` 仍是主监听器，旧 hook 路径 `Application Support/Archer/socket` 改由 UnifiedListener 建**符号链接**指向 bridge socket（`ArcherHook` CLI 无需改）。新增 `Tests/ArcherKitTests/UnifiedListenerTests.swift`（`isBridgeFrame` 分类 + 真实 socket 往返：bridge 收 JSON 回包、hook 派发到 handler、symlink 校验）。编译通过 + 单测通过。与 muxy 参考 §「Mobile companion + remote-server」缺口互为补充（cmux 是该缺口落地时的传输层解法）。
 
 ## codeflow 架构体检（github.com/braedonsaunders/codeflow · 4417★，验证用）
 - 用法：codeflow 是纯前端静态架构分析器（单 index.html + CDN），支持「本地文件夹分析」。本环境 browser 工具不可用（agent-browser 二进制缺失），故提取其真实 analyzer 块（与官方 golden test 同 `CODEFLOW_ANALYZER_*` 标记）+ METRICS 块（calcHealth），用 Node 无头跑在 `archer/Sources`，产出与网页 UI 同口径的报告。

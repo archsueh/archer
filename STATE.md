@@ -4,7 +4,7 @@
 > **两条纪律**:①**走前必写**——每次会话结束更新本文件(试了什么/过了什么/败了什么/新规则);不写则下次从零。②**开局必读**——新会话先读本文件 + CLAUDE.md,再动手;别凭记忆重推已验证过的事实。
 > 与 `~/.claude` 全局 memory 的分工:本文件是**项目级、随仓库走**;全局 memory 是**跨项目习惯/偏好**。事实以本文件为准,过期即改。
 >
-> Verified date: 2026-07-12 · 重启前日志已写 · 当前分支见 §5
+> Verified date: 2026-07-16 · BACKLOG 已与 git 交叉核对 · 当前分支见 §5
 
 ---
 
@@ -56,6 +56,11 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 
 ## 3. Open failures / 进行中(stage 1→2)
 
+**真实产品 backlog（2026-07-16 核对，详 `docs/BACKLOG.md` 文首表）**:  
+A 未做= worktree 残余2 + EdgeGlow + workspace-template + parallelTaskGroup + agent-interop-layer + kooky(diff badges/ssh)。  
+B 可选= yibie star / God Object 拆分。  
+C 已落地勿重做= session-recorder `4ba0020`、UnifiedListener `47043b6`、MemoryGraph `6f6e683`、sniffer `5d7b8bf/eca968a`、SkillsInjector `9210b60`。
+
 **Heartbeat L1（已入库 `d531d31`）**: `loop/` 骨架齐——Gate / tick / seats / contract / standing-goal 模板。手跑: quiet=0、`--gate-only` PASS。**未做** L2+（cron / trust.tsv / goals 日验 / auto Installer）。
 
 **WIP 勿卷**:分支 `archer/worktree-one-click` 上 `ParallelTaskSheet.swift` 有无关 WIP（Delegation Brief），与 Heartbeat/handoff 无关。
@@ -79,6 +84,14 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 ---
 
 ## 5. Last session(stage 5 — resume,别 restart)
+
+**2026-07-16 · BACKLOG 交叉核对 + 文档回填（Grok）**
+
+- **分支**:`main`（会话起点 clean）。
+- **做了什么**:对照 git 把 `docs/BACKLOG.md` 与真实代码对齐——文首新增「真实待办」A/B/C 表；回填 C 类：session-recorder `4ba0020`、memory 面板 `6f6e683`、muxy sniffer+SkillsInjector（原审计漏标 skills 反向注入）；unified-local-listener 正文本已标已实现，并入 C 索引。
+- **未实现（别重做 C）**:A 表 6 行 + B 可选 2 行。
+- **建议 Next 产品序**:① worktree「合并回主树」（闭环高、触现有关闭链）；② EdgeGlow 最小 SDD+可关窄条；大项 SDD（template / parallel 聚合 / interop）另开排期。
+- **未 commit**：本会话仅改 `docs/BACKLOG.md` + `STATE.md`。
 
 **2026-07-12 · 会话收尾日志（Grok · 重启前写）**
 
