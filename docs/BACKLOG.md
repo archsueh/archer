@@ -3,18 +3,18 @@
 > **交叉核对（2026-07-16）**：git 已落地多项曾被标「未实现」的条目；文档曾漂移。  
 > 下列 **真实待办** 已剔除陈旧项。细节仍在各节；冲突时以 git + `STATE.md` 为准。
 
-## 真实待办（2026-07-16 核对）
+## 真实待办（2026-07-16 核对 · 晚间会话再核）
 
 ### A. 真正未做（仅 SDD / 残余 backlog）
 
 | # | 条目 | 节 | 状态 |
 |---|------|-----|------|
 | 1 | ~~worktree 残余~~ | §worktree | **①② 均已落地**（合并回主树 + 跨 worktree diff 汇总） |
-| 2 | 边缘活动辉光（EdgeGlow 借鉴） | §边缘活动辉光 | 待最小 SDD + 实现 |
+| 2 | ~~边缘活动辉光（EdgeGlow）~~ | §边缘活动辉光 | **P1/P2 已落地**（代码 + Settings + 单测）；P3 marquee 仍待「running 持续态」 |
 | 3 | workspace-template（`.archer-workspace.yml`） | §tmux-ide | 仅 SDD |
 | 4 | 并行任务结果聚合（`parallelTaskGroup`） | §orbiteditor 思路 A | 仅 SDD（思路 B 已落地 `770194b`） |
 | 5 | agent-interop-layer（`AgentSessionProvider`） | §lemma 思路 A | 仅 SDD（showagent 桥 `ebb8d97` 已落地） |
-| 6 | kooky：filetree git diff badges；ssh-workspace | §kooky | 仅 SDD（Recent folders `1790455` 已落地） |
+| 6 | kooky：~~filetree git diff badges~~；ssh-workspace | §kooky | **badges 已落地**；ssh-workspace 仍仅 SDD（Recent folders `1790455`） |
 
 ### B. 可选增强（未排期）
 
@@ -49,7 +49,7 @@
 - 借鉴点：复用 archer 已有的 Claude Stop/Notification/turn hook 信号 + activity 三态色，做一圈克制的窗口/屏幕边缘辉光，作为提示音之外的余光视觉确认。
 - 技术：Swift/AppKit CAShapeLayer + CVDisplayLink 驱动 lineDashPhase，四层 neon；零依赖，可直接移植。
 - 设计红线：EdgeGlow 默认彩虹霓虹，与 archer brutalist-minimal（低对比/零阴影/克制）冲突。archer 版必须单色、窄、克制、可关，用 activity token 色（running #69B0D6 / attention #E8B068 / failure #E86666），绝不彩虹。
-- 状态：**未实现**（2026-07-16 核对仍属真实待办 A.2）。待写最小 SDD 后落地：复用 Claude Stop/Notification hook + activity 三态色；`CAShapeLayer` 边缘辉光；单色窄条可关。
+- 状态：**P1/P2 已落地**（`Sources/ArcherKit/EdgeGlow/` + Settings + AppDelegate 接线 + `EdgeGlowStateTests`；CHANGELOG「Screen-Edge Activity Glow」）。**P3 marquee（running 持续态）未做**——依赖 agent running 持续信号源，见 `docs/edge-glow-spec.md` P3。
 
 ## claude-mem 参考（github.com/thedotmack/claude-mem）
 - 它是什么：Claude Code 跨会话自动记忆（5 hook 捕获→AI 压缩→下次注入，SQLite+Chroma+:37777 web viewer）。
@@ -137,11 +137,14 @@
   - `CommandPalette`：`PaletteItemKind.openRecentFolder(path:)` + `PaletteIndex.build` 接 `recentFolders` 参数（过滤已开 workspace）+ `.match` 已支持；`AppDelegate.activate` 路由到 `activeStore.addWorkspace(workingDirectory:)`。
   - `AppDelegate`：`File` 菜单下加 `Open Recent` 子菜单（`OpenRecentMenuDelegate` 每开重建），`addWindow` 接线 `noteRecentFolder: { RecentFolders.shared.note($0) }`。
   - 测试：`Tests/ArcherKitTests/RecentFoldersTests.swift`（LRU/去重/cap/HOME 排除/持久化），移植 kooky 同款断言形状。
+- **已落地（2026-07-16）· filetree git diff badges**：
+  - `GitPorcelain` 共享 `git status --porcelain -z` 解析（Diff 面板 + 文件树同一路径规则）；修 `runGit` 首空格 trim 导致 unstaged 路径吃字 bug。
+  - `FileTreeModel.gitStatusByURL` + 目录 roll-up；`FilePanelView` 树/网格行尾 M/A/D 角标；`GitWatcher` 刷新。
+  - 单测：`GitPorcelainTests` ×8。
 - **潜在可抄（仅 SDD，未实现）**：
-  - `filetree-diff-badges`：在 `SidebarFileTree` 每行角标接 `GitStatusFetcher` 的 per-file status（M/A/D/U），复用 Archer 已有 `GitWatcher` 文件系统层刷新；不引入 kooky 的 kqueue fd 实现（Archer 已有等价）。
   - `ssh-workspace`：加 `Workspace.sshRemoteHost` + `addWorkspace(sshRemoteHost:)`，spawn 走 `ssh user@host` 而非本地 PTY cwd；状态位沿用 `RemoteLoginMarker`。红线：不引入 kooky 的 SSH 库依赖，纯 `ssh` CLI 封装。
 - 红线：不改 kooky 架构哲学；仅移植 Archer 当前真空白的子集；不引入其新依赖（SSH 库、额外 watcher 框架）。
-- 状态：Recent project folders 已落地 + 单测 + 编译验证；diff badges / ssh workspace 仅 SDD。
+- 状态：Recent + filetree badges 已落地；ssh workspace 仍仅 SDD。
 
 ## muxy 参考（github.com/muxy-app/muxy · 1974★，SwiftPM monorepo）
 - 它是什么：原生 macOS SwiftUI + libghostty 的「轻量、省内存终端」，2026-03 起步、2026-07-14 当天仍在更新。已上架 App Store + iOS/Android 伴侣应用 + 扩展市场；README 自述「轻量终端，带富扩展 API」。话题标签：amp/claude/codex/gemini/ghostty/macos/multiplexer/opencode/tmux/terminal。

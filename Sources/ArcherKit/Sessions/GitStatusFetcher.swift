@@ -84,8 +84,10 @@ final class GitStatusFetcher {
         }
         guard task.terminationStatus == 0 else { return nil }
         let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        // Trim only newlines — porcelain `-z` entries start with a space status
+        // code (` M path`); stripping leading whitespace eats the first path char.
         return String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: .newlines)
     }
 
     /// Parses `git diff --shortstat` lines like
@@ -136,5 +138,110 @@ enum GitBranchInventory {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .filter { seen.insert($0).inserted }
+    }
+}
+
+// MARK: - Porcelain file status (shared by Diff panel + file-tree badges)
+
+/// Parses `git status --porcelain -z` into absolute file URLs + M/A/D status.
+/// Shared so DiffModel and FileTreeModel never drift on path/status rules.
+enum GitPorcelain {
+    /// Live fetch for a working tree root. Returns empty when not a repo.
+    nonisolated static func modifiedFiles(cwd: String) -> [ModifiedFile] {
+        guard let output = GitStatusFetcher.runGit([
+            "-C", cwd,
+            "--no-optional-locks",
+            "status",
+            "--porcelain",
+            "-z",
+        ]) else {
+            return []
+        }
+        return parse(output, cwd: cwd)
+    }
+
+    /// URL → status map for O(1) row badge lookup.
+    nonisolated static func statusByURL(cwd: String) -> [URL: GitFileStatus] {
+        var map: [URL: GitFileStatus] = [:]
+        for file in modifiedFiles(cwd: cwd) {
+            map[file.url] = file.status
+        }
+        return map
+    }
+
+    /// Pure parse of porcelain `-z` output. Testable without spawning git.
+    ///
+    /// Each entry is `XY path` (path may include spaces). Rename/copy old paths
+    /// appear as a separate null-terminated token without the `XY ` prefix and
+    /// are skipped (same as DiffModel historically).
+    nonisolated static func parse(_ output: String, cwd: String) -> [ModifiedFile] {
+        var files: [ModifiedFile] = []
+        let root = URL(fileURLWithPath: cwd)
+        for part in output.components(separatedBy: "\0") {
+            // Do NOT trim leading whitespace — X/Y status codes are often spaces
+            // (` M path` = unstaged modify). Trimming would shift the path and
+            // turn `tracked.txt` into `racked.txt`.
+            let line = part
+            guard line.count > 3 else { continue }
+
+            let xCode = line[line.startIndex]
+            let yCode = line[line.index(after: line.startIndex)]
+
+            // Path starts at offset 3 (`XY `).
+            let relativePath = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            guard !relativePath.isEmpty else { continue }
+
+            // Rename entries can look like `R  new -> old` in non-z form; with
+            // -z the second path is a separate token. Still strip ` -> ` if present.
+            let pathOnly: String
+            if let arrow = relativePath.range(of: " -> ") {
+                pathOnly = String(relativePath[..<arrow.lowerBound])
+            } else {
+                pathOnly = relativePath
+            }
+
+            let url = URL(fileURLWithPath: pathOnly, relativeTo: root).standardizedFileURL
+            let status: GitFileStatus
+            if xCode == "A" || xCode == "?" || yCode == "?" || yCode == "A" {
+                status = .added
+            } else if xCode == "D" || yCode == "D" {
+                status = .deleted
+            } else {
+                status = .modified
+            }
+            files.append(ModifiedFile(url: url, status: status))
+        }
+        return files.sorted { a, b in
+            a.url.path.localizedStandardCompare(b.url.path) == .orderedAscending
+        }
+    }
+
+    /// Badge for a path: exact file hit, or for a directory the roll-up of any
+    /// dirty descendant (mixed → `.modified`).
+    nonisolated static func status(
+        for url: URL,
+        in map: [URL: GitFileStatus]
+    ) -> GitFileStatus? {
+        let key = url.standardizedFileURL
+        if let exact = map[key] { return exact }
+
+        let prefix = key.path.hasSuffix("/") ? key.path : key.path + "/"
+        var hasM = false
+        var hasA = false
+        var hasD = false
+        for (pathURL, status) in map {
+            let p = pathURL.path
+            guard p.hasPrefix(prefix) else { continue }
+            switch status {
+            case .modified: hasM = true
+            case .added: hasA = true
+            case .deleted: hasD = true
+            }
+        }
+        if hasM { return .modified }
+        if hasA, hasD { return .modified }
+        if hasA { return .added }
+        if hasD { return .deleted }
+        return nil
     }
 }

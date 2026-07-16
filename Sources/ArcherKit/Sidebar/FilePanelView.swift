@@ -12,6 +12,8 @@ struct FilePanelView: View {
     @AppStorage("filePanelLayout") private var layout: FilePanelLayout = .tree
     @State private var currentDir: URL
     @State private var watcher: DirectoryWatcher?
+    /// [archer] kqueue on .git/HEAD+index so badges refresh after agent commits/stages.
+    @State private var gitWatcher: GitWatcher?
     let rootURL: URL
     var width: Double
 
@@ -34,12 +36,30 @@ struct FilePanelView: View {
         .frame(width: CGFloat(width))
         .background(Theme.chromeBackground)
         .onAppear {
-            let w = DirectoryWatcher { dir in model.refresh(dir) }
+            let w = DirectoryWatcher { dir in
+                model.refresh(dir)
+                model.refreshGitStatus()
+            }
             watcher = w
+            let gw = GitWatcher { model.refreshGitStatus() }
+            gw.watch(cwd: rootURL)
+            gitWatcher = gw
             enter(rootURL)
+            model.refreshGitStatus()
         }
-        .onDisappear { watcher?.cancel() }
+        .onDisappear {
+            watcher?.cancel()
+            gitWatcher?.cancel()
+        }
         .onChange(of: currentDir) { _, dir in enter(dir) }
+        .onChange(of: rootURL) { _, newRoot in
+            // Workspace switched: re-home watchers + status map.
+            gitWatcher?.cancel()
+            let gw = GitWatcher { model.refreshGitStatus() }
+            gw.watch(cwd: newRoot)
+            gitWatcher = gw
+            model.refreshGitStatus()
+        }
     }
 
     /// Track + watch a directory so both views stay aligned with disk.
@@ -55,6 +75,7 @@ struct FilePanelView: View {
             _ = try? model.move(url, into: dest)
         }
         model.clearSelection()
+        model.refreshGitStatus()
     }
 
     // MARK: Header
@@ -137,6 +158,7 @@ struct FilePanelView: View {
                     FileGridCell(
                         item: item,
                         isSelected: model.selection.contains(item.url),
+                        gitStatus: model.gitStatus(for: item.url),
                         onOpen: {
                             if item.isDirectory { currentDir = item.url }
                             else { pasteFilePath(item.url.path) }
@@ -146,11 +168,53 @@ struct FilePanelView: View {
                             if extend { model.toggleSelect(item.url) }
                             else { model.setSelection(item.url) }
                         },
-                        onDuplicate: { _ = try? model.duplicate(item.url) }
+                        onDuplicate: {
+                            _ = try? model.duplicate(item.url)
+                            model.refreshGitStatus()
+                        }
                     )
                 }
             }
             .padding(10)
+        }
+    }
+}
+
+// MARK: - Git status badge (file-tree / grid)
+
+/// Compact M/A/D letter badge — reuses Diff panel token colors, no new hues.
+struct FileGitStatusBadge: View {
+    let status: GitFileStatus
+    var compact: Bool = true
+
+    var body: some View {
+        Text(label)
+            .font(Theme.mono(compact ? 9 : 10, weight: .bold))
+            .foregroundStyle(color)
+            .help(help)
+    }
+
+    private var label: String {
+        switch status {
+        case .modified: return "M"
+        case .added: return "A"
+        case .deleted: return "D"
+        }
+    }
+
+    private var color: Color {
+        switch status {
+        case .modified: return Theme.activityAttention
+        case .added: return Theme.gitInsertion
+        case .deleted: return Theme.gitDeletion
+        }
+    }
+
+    private var help: String {
+        switch status {
+        case .modified: return "Modified"
+        case .added: return "Added / untracked"
+        case .deleted: return "Deleted"
         }
     }
 }
@@ -199,6 +263,9 @@ private struct FileTreeNodeView: View {
                 .foregroundStyle(Theme.chromeForeground.opacity(item.isDirectory ? 0.9 : 0.72))
                 .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
+            if let status = model.gitStatus(for: item.url) {
+                FileGitStatusBadge(status: status, compact: true)
+            }
             if isSelected && model.selection.count > 1 {
                 Text("\(model.selection.count)")
                     .font(Theme.mono(9))
@@ -251,6 +318,8 @@ private struct FileTreeNodeView: View {
 private struct FileGridCell: View {
     let item: FileTreeItem
     let isSelected: Bool
+    /// Optional git badge for the cell (passed from parent so grid stays pure).
+    var gitStatus: GitFileStatus? = nil
     let onOpen: () -> Void
     let onMove: (URL, URL) -> Void
     let onSelect: (_ extend: Bool) -> Void
@@ -259,10 +328,16 @@ private struct FileGridCell: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Image(systemName: item.isDirectory ? "folder.fill" : iconName(item.url))
-                .font(.system(size: 26, weight: .light))
-                .foregroundStyle(item.isDirectory ? Theme.chromeForeground.opacity(0.8) : Theme.chromeMuted)
-                .frame(height: 30)
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: item.isDirectory ? "folder.fill" : iconName(item.url))
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundStyle(item.isDirectory ? Theme.chromeForeground.opacity(0.8) : Theme.chromeMuted)
+                    .frame(height: 30)
+                if let gitStatus {
+                    FileGitStatusBadge(status: gitStatus, compact: true)
+                        .offset(x: 6, y: -2)
+                }
+            }
             Text(item.url.lastPathComponent)
                 .font(Theme.mono(10))
                 .foregroundStyle(Theme.chromeForeground.opacity(0.8))

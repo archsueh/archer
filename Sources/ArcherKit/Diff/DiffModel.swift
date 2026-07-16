@@ -320,38 +320,8 @@ public final class DiffModel: ObservableObject {
     }
 
     private nonisolated static func fetchModifiedFiles(cwd: String) -> [ModifiedFile] {
-        guard let output = GitStatusFetcher.runGit(["-C", cwd, "--no-optional-locks", "status", "--porcelain", "-z"]) else {
-            return []
-        }
-        var files: [ModifiedFile] = []
-        // Split by null characters
-        let parts = output.components(separatedBy: "\0")
-        for part in parts {
-            let line = part.trimmingCharacters(in: .whitespaces)
-            guard line.count > 3 else { continue }
-
-            let xCode = line[line.startIndex]
-            let yCode = line[line.index(after: line.startIndex)]
-
-            // Extract the path (index offset 3 onwards)
-            let relativePath = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-            guard !relativePath.isEmpty else { continue }
-
-            let url = URL(fileURLWithPath: relativePath, relativeTo: URL(fileURLWithPath: cwd)).standardizedFileURL
-
-            let status: GitFileStatus
-            if xCode == "A" || xCode == "?" || yCode == "?" || yCode == "A" {
-                status = .added
-            } else if xCode == "D" || yCode == "D" {
-                status = .deleted
-            } else {
-                status = .modified
-            }
-            files.append(ModifiedFile(url: url, status: status))
-        }
-        return files.sorted { a, b in
-            a.url.path.localizedStandardCompare(b.url.path) == .orderedAscending
-        }
+        // [archer] Shared with FileTree badges — see GitPorcelain.
+        GitPorcelain.modifiedFiles(cwd: cwd)
     }
 
     private nonisolated static func fetchDiff(cwd: String, fileRelPath: String) -> String {

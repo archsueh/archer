@@ -6,6 +6,7 @@ import Foundation
 /// destination directory at once, and lets the external-change watcher push
 /// refreshes — neither is possible when each row caches its own children in
 /// isolation (the old WIP went stale the moment anything changed on disk).
+@MainActor
 final class FileTreeModel: ObservableObject {
     let rootURL: URL
 
@@ -15,9 +16,35 @@ final class FileTreeModel: ObservableObject {
     @Published var expanded: Set<URL> = []
     /// Currently selected items (cmd-click to multi-select).
     @Published var selection: Set<URL> = []
+    /// Per-file git status for row badges (M/A/D). Refreshed via `refreshGitStatus`.
+    @Published private(set) var gitStatusByURL: [URL: GitFileStatus] = [:]
+
+    private var gitStatusGeneration = 0
 
     init(rootURL: URL) {
         self.rootURL = rootURL
+    }
+
+    /// Lookup for a row: exact file hit, or directory roll-up of dirty children.
+    func gitStatus(for url: URL) -> GitFileStatus? {
+        GitPorcelain.status(for: url, in: gitStatusByURL)
+    }
+
+    /// Background `git status --porcelain -z`; drops stale results if called
+    /// again before the previous fetch lands (same generation idea as
+    /// `GitStatusFetcher`).
+    func refreshGitStatus() {
+        let token = gitStatusGeneration + 1
+        gitStatusGeneration = token
+        let cwd = rootURL.path
+        // Fetch off-main; capture self only on the main hop (Sendable-safe).
+        DispatchQueue.global(qos: .utility).async {
+            let map = GitPorcelain.statusByURL(cwd: cwd)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.gitStatusGeneration == token else { return }
+                self.gitStatusByURL = map
+            }
+        }
     }
 
     func setSelection(_ url: URL) {

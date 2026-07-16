@@ -1,6 +1,6 @@
 # Spec · 边缘活动辉光（Edge Activity Glow）
 
-> 状态：Specify（最小规格）· 借鉴 EdgeGlow · 未实现
+> 状态：P1/P2 **已实现**（`EdgeGlow/` + Settings + 单测）；P3 marquee 仍待
 > 上游 backlog：`docs/BACKLOG.md`
 
 ## 1. 目标（一句话）

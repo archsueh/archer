@@ -56,11 +56,11 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 
 ## 3. Open failures / 进行中(stage 1→2)
 
-**真实产品 backlog（2026-07-16 核对，详 `docs/BACKLOG.md` 文首表）**:  
-A 未做= EdgeGlow + workspace-template + parallelTaskGroup + agent-interop-layer + kooky(diff badges/ssh)。  
-A 本会话落地= worktree ①合并回主树 + ②跨 worktree Diff 汇总；UnifiedListener 单测硬化。  
+**真实产品 backlog（2026-07-16 晚间核对，详 `docs/BACKLOG.md` 文首表）**:  
+A 未做= workspace-template + parallelTaskGroup + agent-interop-layer + kooky(ssh-workspace) + EdgeGlow P3 marquee。  
+A 本会话/近期落地= worktree ①②、EdgeGlow P1/P2（早已在仓，文档回填）、filetree M/A/D badges + porcelain 路径修。  
 B 可选= yibie star / God Object 拆分。  
-C 已落地勿重做= session-recorder `4ba0020`、UnifiedListener `47043b6`、MemoryGraph `6f6e683`、sniffer `5d7b8bf/eca968a`、SkillsInjector `9210b60`。
+C 已落地勿重做= session-recorder `4ba0020`、UnifiedListener `47043b6`、MemoryGraph `6f6e683`、sniffer `5d7b8bf/eca968a`、SkillsInjector `9210b60`、EdgeGlow P1/P2、filetree badges。
 
 **Heartbeat L1（已入库 `d531d31`）**: `loop/` 骨架齐——Gate / tick / seats / contract / standing-goal 模板。手跑: quiet=0、`--gate-only` PASS。**未做** L2+（cron / trust.tsv / goals 日验 / auto Installer）。
 
@@ -85,6 +85,22 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 ---
 
 ## 5. Last session(stage 5 — resume,别 restart)
+
+**2026-07-16 · 夜航：doc drift 修 + filetree badges（Grok · 用户睡觉）**
+
+- **分支**:`main`（领先 origin 视 `git status`；本切片提交后更远）。
+- **发现**:EdgeGlow **代码早已落地**（`EdgeGlow/` + Settings + AppDelegate + 单测 + CHANGELOG），BACKLOG/STATE/`edge-glow-spec` 仍标「未实现」→ 文档回填。
+- **实现 · filetree git diff badges（A.6 一半）**:
+  - `GitPorcelain`：共享 porcelain `-z` 解析（Diff + 文件树）
+  - 修 **`runGit` 整段 trim 吃掉 unstaged 路径首字母**（` M tracked` → `racked`）——Diff 面板同修
+  - `FileTreeModel.gitStatusByURL` + 目录 roll-up；`FilePanelView` 树/网格 M/A/D 角标 + `GitWatcher`
+  - `GitPorcelainTests` ×8；全量 **`swift test` 557/0**（+ Swift Testing 7）
+- **Next（用户起床确认后再动）**:
+  1. 是否 push main（当前领先 origin 多 commit）
+  2. A.3 workspace-template 是否开干（YAML 解析器：Yams vs 手写）
+  3. A.4 parallelTaskGroup 聚合 UX
+  4. EdgeGlow P3 marquee / ssh-workspace / agent-interop——均需产品拍板
+  5. Heartbeat L2（cron/goals）— 别 auto 上 cron
 
 **2026-07-16 · worktree A.1 闭环 + UnifiedListener 单测（Grok）**
 

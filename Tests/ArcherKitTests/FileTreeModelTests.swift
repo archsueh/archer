@@ -1,6 +1,7 @@
 @testable import ArcherKit
 import XCTest
 
+@MainActor
 final class FileTreeModelTests: XCTestCase {
     private var root: URL!
 
