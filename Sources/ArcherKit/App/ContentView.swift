@@ -63,11 +63,14 @@ struct ContentView: View {
                         panelSide: .trailing
                     )
                     .transition(.move(edge: .trailing))
-                    DiffPanelView(rootURL: store.active?.workingDirectory
-                        ?? FileManager.default.homeDirectoryForCurrentUser,
-                        width: store.panelWidths.rightPanel)
-                        .id("\(store.active?.id.uuidString ?? "")-\(store.active?.workingDirectory.path ?? "")")
-                        .transition(.move(edge: .trailing))
+                    DiffPanelView(
+                        rootURL: store.active?.diskPath
+                            ?? FileManager.default.homeDirectoryForCurrentUser,
+                        family: store.worktreeFamilyMembers(for: store.active),
+                        width: store.panelWidths.rightPanel
+                    )
+                    .id("\(store.active?.id.uuidString ?? "")-\(store.active?.diskPath.path ?? "")")
+                    .transition(.move(edge: .trailing))
                 }
             }
         }

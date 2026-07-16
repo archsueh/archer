@@ -57,8 +57,8 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 ## 3. Open failures / 进行中(stage 1→2)
 
 **真实产品 backlog（2026-07-16 核对，详 `docs/BACKLOG.md` 文首表）**:  
-A 未做= worktree 跨 diff 汇总 + EdgeGlow + workspace-template + parallelTaskGroup + agent-interop-layer + kooky(diff badges/ssh)。  
-A 本会话落地= worktree 关闭「合并回主树」（ConfirmRemoveWorktreeSheet keep/merge/delete）。  
+A 未做= EdgeGlow + workspace-template + parallelTaskGroup + agent-interop-layer + kooky(diff badges/ssh)。  
+A 本会话落地= worktree ①合并回主树 + ②跨 worktree Diff 汇总；UnifiedListener 单测硬化。  
 B 可选= yibie star / God Object 拆分。  
 C 已落地勿重做= session-recorder `4ba0020`、UnifiedListener `47043b6`、MemoryGraph `6f6e683`、sniffer `5d7b8bf/eca968a`、SkillsInjector `9210b60`。
 
@@ -86,16 +86,18 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
 ## 5. Last session(stage 5 — resume,别 restart)
 
-**2026-07-16 · BACKLOG 回填 + worktree 合并回主树（Grok）**
+**2026-07-16 · worktree A.1 闭环 + UnifiedListener 单测（Grok）**
 
-- **分支**:`main`。
-- **文档**:`3b8eaeb` BACKLOG A/B/C 与 git 对齐。
-- **功能 A.1①**:关闭 worktree sheet 增加 **merge into main tree**：
-  - `WorktreeManager.merge` / `currentBranch`
-  - `WorkspaceStore.mergeWorktreeIntoParent`（merge 失败不删目录）
-  - `ConfirmRemoveWorktreeSheet` 三 disposition + `SidebarView` 接线
-- **验证**:`swift test --filter 'WorktreeManagerTests|WorkspaceStoreTests/testMerge|…'` **18 tests / 0 failures**。
-- **Next**:worktree diff 汇总 ② / EdgeGlow / 大项 SDD；勿混工作树上无关 `UnifiedListener`/`AppDelegate` 未提交改动（若仍在）。
+- **分支**:`main`（领先 origin 视 `git status`）。
+- **文档**:`3b8eaeb` BACKLOG 回填。
+- **A.1①** `42660ab` merge into main tree on close。
+- **UnifiedListener** `851bbc3` 可测化 + 4 测绿。
+- **A.1② 跨 worktree Diff 汇总**（本切片）:
+  - `DiffModel` multi-root `summaries` + `focus`
+  - `DiffPanelView` WORKTREES 概览
+  - `WorkspaceStore.worktreeFamilyMembers` + ContentView 注入
+  - `DiffModelTests` 5 绿（含 family overview）
+- **Next**:A.2 EdgeGlow / A.3 template / A.4 parallel 聚合；worktree 线可停。
 
 **2026-07-12 · 会话收尾日志（Grok · 重启前写）**
 

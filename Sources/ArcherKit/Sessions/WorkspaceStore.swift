@@ -448,6 +448,24 @@ final class WorkspaceStore {
     /// workspaces (no worktrees) close inline and never park here.
     var pendingCloseSourceRequest: CloseSourceRequest?
 
+    /// Source + satellite worktrees for Diff panel family overview
+    /// (BACKLOG A.1②). Empty when `workspace` is nil; single-member when
+    /// the workspace has no worktree siblings.
+    func worktreeFamilyMembers(for workspace: Workspace?) -> [WorktreeDiffMember] {
+        guard let workspace else { return [] }
+        let rootId = workspace.worktreeParentId ?? workspace.id
+        return workspaces
+            .filter { $0.id == rootId || $0.worktreeParentId == rootId }
+            .map { member in
+                WorktreeDiffMember(
+                    rootURL: member.diskPath,
+                    title: member.title,
+                    branch: member.worktreeBranch,
+                    isActive: member.id == workspace.id
+                )
+            }
+    }
+
     /// UI-level close request. Callers from the sidebar (× button, right-
     /// click menu) and the ⌘⇧W menu item both funnel here so the
     /// confirm prompt only lives in one place.

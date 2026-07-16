@@ -45,6 +45,70 @@ public struct ModifiedFile: Identifiable, Sendable, Hashable {
     }
 }
 
+/// One workspace in a source↔worktree family, fed into the Diff panel
+/// overview (BACKLOG A.1②). Paths are disk roots (`Workspace.diskPath`).
+public struct WorktreeDiffMember: Identifiable, Sendable, Hashable {
+    public var id: URL {
+        rootURL
+    }
+
+    public let rootURL: URL
+    public let title: String
+    public let branch: String?
+    /// True when this member is the currently active workspace in the store.
+    public let isActive: Bool
+
+    public init(rootURL: URL, title: String, branch: String?, isActive: Bool = false) {
+        self.rootURL = rootURL.standardizedFileURL
+        self.title = title
+        self.branch = branch
+        self.isActive = isActive
+    }
+}
+
+/// Aggregated dirty-file snapshot for one family member.
+public struct WorktreeDiffSummary: Identifiable, Sendable, Hashable {
+    public var id: URL {
+        rootURL
+    }
+
+    public let rootURL: URL
+    public let title: String
+    public let branch: String?
+    public let isActive: Bool
+    public let files: [ModifiedFile]
+
+    public var fileCount: Int {
+        files.count
+    }
+
+    public var modifiedCount: Int {
+        files.filter { $0.status == .modified }.count
+    }
+
+    public var addedCount: Int {
+        files.filter { $0.status == .added }.count
+    }
+
+    public var deletedCount: Int {
+        files.filter { $0.status == .deleted }.count
+    }
+
+    public init(
+        rootURL: URL,
+        title: String,
+        branch: String?,
+        isActive: Bool,
+        files: [ModifiedFile]
+    ) {
+        self.rootURL = rootURL.standardizedFileURL
+        self.title = title
+        self.branch = branch
+        self.isActive = isActive
+        self.files = files
+    }
+}
+
 /// Stateful parser for unified git diff output.
 public enum DiffParser {
     public static func parse(_ raw: String) -> [DiffLine] {
@@ -101,9 +165,20 @@ public enum DiffParser {
 }
 
 /// SSOT model for the Diff panel.
+///
+/// Single-root mode (default): same as historically — one `rootURL`.
+/// Family mode (BACKLOG A.1②): `family` lists every source + satellite
+/// worktree; `summaries` holds per-tree dirty counts; `focusedRootURL`
+/// drives the file list + detail views.
 @MainActor
 public final class DiffModel: ObservableObject {
+    /// Initial / default root (active workspace). May differ from
+    /// `focusedRootURL` after the user picks another tree in the overview.
     public let rootURL: URL
+    public let family: [WorktreeDiffMember]
+
+    @Published public private(set) var summaries: [WorktreeDiffSummary] = []
+    @Published public private(set) var focusedRootURL: URL
     @Published public private(set) var modifiedFiles: [ModifiedFile] = []
     @Published public var selectedFile: ModifiedFile?
     @Published public private(set) var activeDiffLines: [DiffLine] = []
@@ -111,12 +186,44 @@ public final class DiffModel: ObservableObject {
 
     private var gitWatcher: GitWatcher?
 
-    public init(rootURL: URL) {
-        self.rootURL = rootURL
-        gitWatcher = GitWatcher { [weak self] in
-            self?.refresh()
+    /// True when the panel has more than one family member to overview.
+    public var showsFamilyOverview: Bool {
+        family.count > 1
+    }
+
+    public var totalDirtyFileCount: Int {
+        summaries.reduce(0) { $0 + $1.fileCount }
+    }
+
+    public init(rootURL: URL, family: [WorktreeDiffMember] = []) {
+        let standardized = rootURL.standardizedFileURL
+        self.rootURL = standardized
+        if family.isEmpty {
+            self.family = [
+                WorktreeDiffMember(
+                    rootURL: standardized,
+                    title: standardized.lastPathComponent,
+                    branch: nil,
+                    isActive: true
+                ),
+            ]
+        } else {
+            self.family = family.map {
+                WorktreeDiffMember(
+                    rootURL: $0.rootURL.standardizedFileURL,
+                    title: $0.title,
+                    branch: $0.branch,
+                    isActive: $0.isActive
+                )
+            }
         }
-        gitWatcher?.watch(cwd: rootURL)
+        // Prefer the active member as the initial focus; fall back to rootURL.
+        if let active = self.family.first(where: \.isActive) {
+            focusedRootURL = active.rootURL
+        } else {
+            focusedRootURL = standardized
+        }
+        installWatcher(for: focusedRootURL)
         refresh()
     }
 
@@ -125,33 +232,50 @@ public final class DiffModel: ObservableObject {
         gitWatcher = nil
     }
 
+    /// Switch the file list to another family member without leaving the panel.
+    public func focus(rootURL: URL) {
+        let next = rootURL.standardizedFileURL
+        guard next != focusedRootURL else { return }
+        focusedRootURL = next
+        selectedFile = nil
+        activeDiffLines = []
+        installWatcher(for: next)
+        applyFocusedFiles()
+    }
+
     public func refresh() {
         isLoading = true
-        let path = rootURL.path
+        let members = family
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let files = Self.fetchModifiedFiles(cwd: path)
+            let built: [WorktreeDiffSummary] = members.map { member in
+                let files = Self.fetchModifiedFiles(cwd: member.rootURL.path)
+                return WorktreeDiffSummary(
+                    rootURL: member.rootURL,
+                    title: member.title,
+                    branch: member.branch,
+                    isActive: member.isActive,
+                    files: files
+                )
+            }
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.modifiedFiles = files
+                self.summaries = built
                 self.isLoading = false
-
-                // Keep selected file if it's still modified, or select first available
-                if let selected = self.selectedFile, !files.contains(where: { $0.url == selected.url }) {
-                    self.selectedFile = nil
-                    self.activeDiffLines = []
-                } else if self.selectedFile == nil, let first = files.first {
-                    self.select(first)
-                } else if let selected = self.selectedFile {
-                    self.select(selected)
-                }
+                self.applyFocusedFiles()
             }
         }
     }
 
     public func select(_ file: ModifiedFile) {
         selectedFile = file
-        let rootPath = rootURL.path
-        let fileRelPath = file.url.path.replacingOccurrences(of: rootURL.path + "/", with: "")
+        let rootPath = focusedRootURL.path
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        let fileRelPath: String
+        if file.url.path.hasPrefix(prefix) {
+            fileRelPath = String(file.url.path.dropFirst(prefix.count))
+        } else {
+            fileRelPath = file.url.lastPathComponent
+        }
 
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -164,6 +288,34 @@ public final class DiffModel: ObservableObject {
                 }
                 self.isLoading = false
             }
+        }
+    }
+
+    private func installWatcher(for cwd: URL) {
+        gitWatcher?.cancel()
+        gitWatcher = GitWatcher { [weak self] in
+            self?.refresh()
+        }
+        gitWatcher?.watch(cwd: cwd)
+    }
+
+    private func applyFocusedFiles() {
+        // Focused path vanished (worktree closed mid-session) — snap to first.
+        if !summaries.contains(where: { $0.rootURL == focusedRootURL }),
+           let first = summaries.first
+        {
+            focusedRootURL = first.rootURL
+        }
+        let resolved = summaries.first(where: { $0.rootURL == focusedRootURL })?.files ?? []
+        modifiedFiles = resolved
+
+        if let selected = selectedFile, !resolved.contains(where: { $0.url == selected.url }) {
+            selectedFile = nil
+            activeDiffLines = []
+        } else if selectedFile == nil, let first = resolved.first {
+            select(first)
+        } else if let selected = selectedFile {
+            select(selected)
         }
     }
 

@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Right-side Git Diff panel: visualizes uncommitted changes in the active workspace.
+/// Right-side Git Diff panel: visualizes uncommitted changes in the active
+/// workspace. When `family` has multiple source/worktree members, shows a
+/// cross-worktree overview above the file list (BACKLOG A.1②).
 /// Fits a 280px-wide sidebar using a stacked List -> Detail navigation pattern.
 public struct DiffPanelView: View {
     @StateObject private var model: DiffModel
@@ -18,10 +20,10 @@ public struct DiffPanelView: View {
     let rootURL: URL
     var width: Double
 
-    public init(rootURL: URL, width: Double = 280) {
+    public init(rootURL: URL, family: [WorktreeDiffMember] = [], width: Double = 280) {
         self.rootURL = rootURL
         self.width = width
-        _model = StateObject(wrappedValue: DiffModel(rootURL: rootURL))
+        _model = StateObject(wrappedValue: DiffModel(rootURL: rootURL, family: family))
     }
 
     public var body: some View {
@@ -30,15 +32,21 @@ public struct DiffPanelView: View {
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
 
             Group {
-                if model.isLoading && model.modifiedFiles.isEmpty {
+                if model.isLoading && model.modifiedFiles.isEmpty && model.summaries.isEmpty {
                     loadingView
-                } else if model.modifiedFiles.isEmpty {
-                    emptyView
                 } else if showingDetail, let selected = model.selectedFile {
                     diffDetailView(for: selected)
                 } else {
-                    fileListView
-                    relatedSection
+                    if model.showsFamilyOverview {
+                        familyOverview
+                        Rectangle().fill(Theme.chromeHairline).frame(height: 1)
+                    }
+                    if model.modifiedFiles.isEmpty {
+                        emptyView
+                    } else {
+                        fileListView
+                        relatedSection
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,7 +76,7 @@ public struct DiffPanelView: View {
         commitPlan = nil
         defer { commitBusy = false }
         do {
-            let plan = try await GitAgentClient.shared.commit(cwd: rootURL, dryRun: true)
+            let plan = try await GitAgentClient.shared.commit(cwd: model.focusedRootURL, dryRun: true)
             commitPlan = plan
             showCommitSheet = true
         } catch {
@@ -83,7 +91,7 @@ public struct DiffPanelView: View {
         commitError = nil
         defer { commitBusy = false }
         do {
-            let result = try await GitAgentClient.shared.commit(cwd: rootURL, dryRun: false)
+            let result = try await GitAgentClient.shared.commit(cwd: model.focusedRootURL, dryRun: false)
             commitPlan = result
             // Refresh the diff panel so committed files drop out of CHANGES.
             model.refresh()
@@ -100,7 +108,7 @@ public struct DiffPanelView: View {
         related = nil
         defer { relatedBusy = false }
         do {
-            related = try await GitAgentClient.shared.related(cwd: rootURL)
+            related = try await GitAgentClient.shared.related(cwd: model.focusedRootURL)
         } catch {
             relatedError = error.localizedDescription
         }
@@ -125,7 +133,7 @@ public struct DiffPanelView: View {
             Spacer()
 
             if !showingDetail {
-                Text("\(model.modifiedFiles.count) files")
+                Text(headerFileCountLabel)
                     .font(Theme.mono(10))
                     .foregroundStyle(Theme.chromeMuted)
             }
@@ -141,6 +149,13 @@ public struct DiffPanelView: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 32)
+    }
+
+    private var headerFileCountLabel: String {
+        if model.showsFamilyOverview {
+            return "\(model.totalDirtyFileCount) · \(model.summaries.count) trees"
+        }
+        return "\(model.modifiedFiles.count) files"
     }
 
     private var loadingView: some View {
@@ -161,9 +176,40 @@ public struct DiffPanelView: View {
             Text("No uncommitted changes")
                 .font(Theme.display(11))
                 .foregroundStyle(Theme.chromeMuted)
+            if model.showsFamilyOverview {
+                Text("in focused tree")
+                    .font(Theme.mono(9))
+                    .foregroundStyle(Theme.chromeMuted.opacity(0.8))
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Per-worktree dirty counts. Tap a row to focus the file list on that tree.
+    private var familyOverview: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("WORKTREES")
+                .font(Theme.mono(9, weight: .medium))
+                .tracking(1.2)
+                .foregroundStyle(Theme.chromeMuted.opacity(0.85))
+                .padding(.horizontal, Theme.space3)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+            ForEach(model.summaries) { summary in
+                FamilySummaryRow(
+                    summary: summary,
+                    isFocused: summary.rootURL == model.focusedRootURL
+                ) {
+                    withAnimation(Theme.chromeTransition) {
+                        showingDetail = false
+                        model.focus(rootURL: summary.rootURL)
+                    }
+                }
+            }
+        }
+        .padding(.bottom, 4)
     }
 
     private var fileListView: some View {
@@ -412,6 +458,71 @@ public struct DiffPanelView: View {
 }
 
 // MARK: - Row Components
+
+private struct FamilySummaryRow: View {
+    let summary: WorktreeDiffSummary
+    let isFocused: Bool
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: isFocused ? "circle.inset.filled" : "circle")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(isFocused ? Theme.chromeForeground : Theme.chromeMuted)
+                .frame(width: 12)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(summary.title)
+                    .font(Theme.mono(11, weight: .medium))
+                    .foregroundStyle(Theme.chromeForeground)
+                    .lineLimit(1)
+                if let branch = summary.branch, !branch.isEmpty {
+                    Text("⎇ \(branch)")
+                        .font(Theme.mono(9))
+                        .foregroundStyle(Theme.chromeMuted)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            if summary.fileCount == 0 {
+                Text("clean")
+                    .font(Theme.mono(9))
+                    .foregroundStyle(Theme.chromeMuted)
+            } else {
+                HStack(spacing: 4) {
+                    if summary.modifiedCount > 0 {
+                        countChip(summary.modifiedCount, color: Theme.activityAttention)
+                    }
+                    if summary.addedCount > 0 {
+                        countChip(summary.addedCount, color: Theme.gitInsertion)
+                    }
+                    if summary.deletedCount > 0 {
+                        countChip(summary.deletedCount, color: Theme.gitDeletion)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Theme.space3)
+        .padding(.vertical, 5)
+        .background(isFocused ? Theme.chromeActive : (hovered ? Theme.chromeHover : Color.clear))
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .onTapGesture { action() }
+    }
+
+    private func countChip(_ n: Int, color: Color) -> some View {
+        Text("\(n)")
+            .font(Theme.mono(9, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.12))
+            .bracketBorder()
+    }
+}
 
 private struct FileListRow: View {
     let file: ModifiedFile
