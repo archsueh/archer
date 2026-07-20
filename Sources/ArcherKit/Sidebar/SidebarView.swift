@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Sidebar Sheet (from original)
 
 private enum SidebarSheet: Identifiable {
+    case createSSHWorkspace
     case createWorktree(Workspace)
     case parallelTask(Workspace)
     case confirmRemoveWorktree(Workspace)
@@ -11,6 +12,7 @@ private enum SidebarSheet: Identifiable {
 
     var id: String {
         switch self {
+        case .createSSHWorkspace: return "create-ssh-workspace"
         case let .createWorktree(ws): return "create-\(ws.id.uuidString)"
         case let .parallelTask(ws): return "parallel-\(ws.id.uuidString)"
         case let .confirmRemoveWorktree(ws): return "remove-\(ws.id.uuidString)"
@@ -476,8 +478,16 @@ struct SidebarView: View {
         .onChange(of: store.pendingParallelTaskRequest?.id) { _, _ in
             if let ws = store.pendingParallelTaskRequest { sheet = .parallelTask(ws) }
         }
+        // SSH-workspace create request (File menu / command palette). Same
+        // parked-while-hidden contract as worktree-create above.
+        .onChange(of: store.pendingCreateSSHWorkspaceRequest) { _, pending in
+            if pending { sheet = .createSSHWorkspace }
+        }
         .onAppear {
             if let ws = store.pendingCreateWorktreeRequest { sheet = .createWorktree(ws) }
+            if store.pendingCreateSSHWorkspaceRequest {
+                sheet = .createSSHWorkspace
+            }
         }
         .onChange(of: store.pendingCloseOthersRequest?.keeping.id) { _, _ in
             if let req = store.pendingCloseOthersRequest { sheet = .confirmCloseOthers(req) }
@@ -648,6 +658,18 @@ struct SidebarView: View {
     @ViewBuilder
     private func sheetContent(for current: SidebarSheet) -> some View {
         switch current {
+        case .createSSHWorkspace:
+            CreateSSHWorkspaceSheet(
+                create: { host in
+                    store.addWorkspace(sshRemoteHost: host)
+                    store.pendingCreateSSHWorkspaceRequest = false
+                    sheet = nil
+                },
+                dismiss: {
+                    store.pendingCreateSSHWorkspaceRequest = false
+                    sheet = nil
+                }
+            )
         case let .createWorktree(source):
             CreateWorktreeSheet(
                 source: source,

@@ -167,7 +167,16 @@ final class ShellIntegrationTests: XCTestCase {
         XCTAssertTrue(script.contains("! -t 0 || ! -t 1"), "must skip non-interactive ssh transport")
         XCTAssertTrue(script.contains("remote_command="), "must append exactly one remote shell command")
         XCTAssertTrue(script.contains("sh -lc"), "remote command should run through POSIX sh")
-        XCTAssertTrue(script.contains("exec \"$real\" -t \"$@\" \"$remote_command\""))
+        // No `exec`: the wrapper must outlive ssh to emit the logout marker
+        // (kooky v0.36 / Archer SSH workspaces). Still forces a TTY with -t.
+        XCTAssertTrue(
+            script.contains("\"$real\" -t"),
+            "interactive login must force a TTY for the remote bootstrap"
+        )
+        XCTAssertTrue(
+            script.contains(RemoteLoginMarker.logoutTitle),
+            "must emit logout title so remoteHost clears only when ssh exits"
+        )
     }
 
     func testSshWrapperPassesThroughRemoteCommandsAndTransportModes() {

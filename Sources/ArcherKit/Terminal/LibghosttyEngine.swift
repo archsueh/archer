@@ -302,6 +302,11 @@ final class LibghosttyEngine: TerminalEngine {
         set { surfaceView.onSearchSelected = newValue }
     }
 
+    var pasteUploadHostProvider: (() -> String?)? {
+        get { surfaceView.pasteUploadHostProvider }
+        set { surfaceView.pasteUploadHostProvider = newValue }
+    }
+
     var foregroundPid: pid_t? {
         guard let surface = surfaceView.surface else { return nil }
         let pid = pid_t(ghostty_surface_foreground_pid(surface))
@@ -452,6 +457,7 @@ final class GhosttySurfaceView: NSView {
     var onSearchEnd: (() -> Void)?
     var onSearchTotal: ((Int) -> Void)?
     var onSearchSelected: ((Int) -> Void)?
+    var pasteUploadHostProvider: (() -> String?)?
     /// [archer] Optional session recorder. When set (only if the user enabled
     /// recording in settings), input + markers are written to a `.termctrl`
     /// timeline. Nil by default — archer never auto-records.
@@ -880,13 +886,23 @@ final class GhosttySurfaceView: NSView {
         // `readTerminalPasteText` covers fileURLs (Finder Copy → full
         // path, not bare filename) and raw image data (screenshots →
         // spilled to a cache PNG so agents can open it as a path).
-        if cmdOnly,
-           event.charactersIgnoringModifiers?.lowercased() == "v",
-           let pasted = ArcherShellIntegration.readTerminalPasteText(from: .general),
-           !pasted.isEmpty
-        {
-            paste(pasted)
-            return
+        if cmdOnly, event.charactersIgnoringModifiers?.lowercased() == "v" {
+            // SSH workspace tab pasting a file/image: upload to the remote
+            // and paste the REMOTE path when it lands (a local path is
+            // unreadable there). Local pastes fall through.
+            if ArcherShellIntegration.pasteViaRemoteUpload(
+                from: .general,
+                host: pasteUploadHostProvider?(),
+                deliver: { [weak self] in self?.paste($0) }
+            ) {
+                return
+            }
+            if let pasted = ArcherShellIntegration.readTerminalPasteText(from: .general),
+               !pasted.isEmpty
+            {
+                paste(pasted)
+                return
+            }
         }
 
         // Cmd+C with a live selection — without this branch libghostty's

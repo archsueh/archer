@@ -191,6 +191,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             self?.activateFromNotification(sessionId)
         }
 
+        // [archer] ported from iAmCorey/kooky (v0.36): keep-awake watches
+        // the same cross-window agent set; start after stores are wired.
+        SleepGuard.shared.start()
+
         // Sweep paste-image cache off the launch hot path. macOS's
         // own Caches eviction is unreliable; without this a heavy
         // Cmd+V-screenshots workflow accumulates GBs over months.
@@ -590,6 +594,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         }
         unifiedListener.stop()
         ArcherShellIntegration.cleanup()
+        // [archer] ported from iAmCorey/kooky (v0.36): re-enable lid
+        // sleep before dying — a system-wide pmset flag outlives the process,
+        // unlike IOKit assertions.
+        SleepGuard.shared.shutdownCleanup()
     }
 
     /// Returning to the foreground counts as seeing the active tab — clear its
@@ -629,6 +637,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         mainMenu.addItem(submenu(buildMenu(title: "File", entries: [
             selfRow("New Tab", #selector(handleNewTab), "t"),
             selfRow("New Workspace", #selector(handleNewWorkspace), "n"),
+            selfRow("New SSH Workspace…", #selector(handleNewSSHWorkspace)),
             selfRow("New Window", #selector(handleNewWindow), "n", modifiers: [.command, .shift]),
             .separator,
             selfRow("Quick Open…", #selector(handleQuickOpen), "p"),
@@ -786,6 +795,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         activeStore?.addWorkspace()
     }
 
+    /// File menu / command palette: the store parks the request and reveals
+    /// a hidden sidebar; the animation wrap keeps the reveal from snapping
+    /// (matches the palette's worktree-create routing).
+    @objc private func handleNewSSHWorkspace() {
+        guard let store = activeStore else { return }
+        withAnimation(Theme.chromeTransition) {
+            store.requestCreateSSHWorkspace()
+        }
+    }
+
     /// Internal (not `private`) so `#selector` in `ContentView` can typecheck.
     /// The runtime dispatch goes through Obj-C selectors either way.
     @objc func handleQuickOpen() {
@@ -842,6 +861,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             let template = AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared)
                 .first(where: { $0.id == templateId }) ?? .terminal
             store.addTab(in: ws, template: template)
+        case .createSSHWorkspace:
+            handleNewSSHWorkspace()
         case .showAgent:
             // [archer] ShowAgent surface — browse/convert local agent sessions.
             ShowAgentWindowController.shared.show()

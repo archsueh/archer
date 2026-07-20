@@ -63,6 +63,14 @@ final class Workspace: Identifiable {
     /// target the wrong path.
     var worktreePath: URL?
 
+    /// SSH destination this workspace connects to (`user@host` or bare
+    /// `host`). Non-nil marks an SSH workspace: every new plain-terminal tab
+    /// auto-connects there, and agent tabs launch their agent on the remote
+    /// through the archer-ssh wrapper. Set at creation, persisted, and never
+    /// mutated afterwards — a remote project stays one cohesive workspace
+    /// instead of each new tab dropping back to the local machine.
+    var sshRemoteHost: String?
+
     /// Single source of truth for "where the worktree actually lives on
     /// disk." For worktree workspaces `worktreePath` wins (pinned at
     /// create time); upgraded state.json files written before the field
@@ -78,6 +86,10 @@ final class Workspace: Identifiable {
         // Mirror the active tab's OSC title so an `ssh` session shows the
         // remote host in the sidebar, not the stale local directory.
         if let reported = activeSession?.terminalTitle, !reported.isEmpty { return reported }
+        // SSH workspaces are "about" their remote, not the local cwd the
+        // connection happened to spawn from. (`normalizedSSHHost` gates every
+        // write, so non-nil implies non-blank.)
+        if let host = sshRemoteHost { return host }
         if workingDirectory.path == NSHomeDirectory() { return "Home" }
         let last = workingDirectory.lastPathComponent
         return last.isEmpty ? workingDirectory.path : last

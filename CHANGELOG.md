@@ -2,6 +2,18 @@
 
 Notable changes per release. Tagged commits use `vX.Y.Z` shortform.
 
+## v1.0.9 — 2026-07-20
+
+Ported from iAmCorey/kooky (v0.31.6–v0.37.2) + CI hardening:
+
+- **SSH workspaces** (kooky v0.34) — File → New SSH Workspace… / ⌘P creates a workspace pinned to a remote host. New tabs, splits, and restores open via private `archer-ssh` (multiplexed ControlPath); agent tabs launch on the remote; paste uploads files/images to the host before injecting the remote path. Sidebar network badge + “on SSH” tab menu label. Logout title marker so remote shell OSC 133;D no longer clears Remote Login mid-session.
+- **Keep-awake** (kooky v0.36) — Top-strip breathing dial Off → Auto → Always (also Settings → General). Auto holds an idle-sleep assertion while an agent or SSH session is active; Always never sleeps. Closed-lid tier uses a one-time admin-authorized privileged helper (`archer-sleepctl` + sudoers), with external `pmset` reconciliation.
+- **Crash black box** (kooky v0.31.6) — Discarded stderr (Dock/launchd) is rerouted to `~/Library/Logs/archer/stderr.log` with exit/uncaught-exception backtraces (2MB rotate).
+- **Git repo status pill** (kooky v0.37.0) — Status bar shows the repo basename; popover opens forge page / copies URL / Reveal in Finder. `GitStatus.repoRoot` + `GitRemoteWebInfo`.
+- **Status-bar switcher load fix** (kooky v0.37.2) — Node/git branch menus load inventory inside the popover’s own `@State` on appear (fixes empty “No nvm versions found” menus).
+- **Privacy usage descriptions** (kooky v0.37.1) — Info.plist declares TCC usage strings so child processes can prompt for calendar, contacts, camera, etc.
+- **CI** — `testTerminalTemplateUsesUserDefaultShell` accepts bash launcher path when `$SHELL` is bash (GitHub Actions).
+
 ## v1.0.8 — 2026-07-14
 
 - **Recent project folders** — Remembers workspace folders: `File → Open Recent` (Clear action) and `⌘P`. Ported from iAmCorey/kooky v0.35 (#28). LRU cap 20, home excluded, persisted under Application Support `recent-folders.json`.

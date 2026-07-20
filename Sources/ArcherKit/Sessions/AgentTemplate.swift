@@ -144,60 +144,87 @@ struct AgentTemplate: Identifiable, Hashable {
     /// with `resumeId` — asking a fresh question shouldn't graft onto a
     /// stale conversation, so `initialPrompt` wins and `resumeId` is
     /// silently dropped when both are supplied.
+    ///
+    /// `sshHost`, when set, makes the local shell's one-shot launch an
+    /// `archer-ssh` connection; the template's own launch command rides
+    /// behind `--` and starts on the REMOTE via the ssh wrapper + bootstrap.
     func makeSessionConfig(
         extraOptions: String? = nil,
         resumeId: String? = nil,
-        initialPrompt: String? = nil
+        initialPrompt: String? = nil,
+        sshHost: String? = nil
     ) -> TerminalSessionConfig {
         // Pick a shell that has a archer integration wrapper. Plain terminal
         // sessions respect $SHELL where we have a wrapper (zsh/bash/fish); other
         // shells (nu/...) get $SHELL too, just without cwd tracking.
-        // Agent sessions force a wrapped shell so ARCHER_AGENT auto-launch
-        // works — `.other` users get zsh as a working fallback.
+        // Any session that carries an ARCHER_AGENT launch command — an agent
+        // template, or ANY template connecting to an `sshHost` — forces a
+        // wrapped shell so the auto-launch eval actually runs; `.other`
+        // users get zsh as a working fallback.
+        let needsLaunch = initialCommand != nil || sshHost != nil
         var config: TerminalSessionConfig
-        switch (ArcherShellIntegration.detectedUserShell, initialCommand) {
+        switch (ArcherShellIntegration.detectedUserShell, needsLaunch) {
         case (.bash, _):
             config = .bashShell(launcher: ArcherShellIntegration.bashLauncherPath)
         case (.zsh, _):
             config = .zshShell()
         case (.fish, _):
             config = .fishShell()
-        case (.other, .none):
+        case (.other, false):
             config = .defaultShell()
-        case (.other, .some):
+        case (.other, true):
             config = .zshShell()
         }
-        if let initialCommand {
-            let trimmedExtras = extraOptions?.trimmingCharacters(in: .whitespaces) ?? ""
-            let trimmedPrompt = initialPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            // Resume flag goes between binary name and options
-            // (`claude --resume <id> --model opus`) — each CLI takes it as
-            // a positional argument to its top-level command; appending
-            // after extras would still work but reads worse in `ps`.
-            // Suppressed when `initialPrompt` is present — "Ask <agent>"
-            // is a fresh question, not a continuation.
-            var resumeFragment = ""
-            if trimmedPrompt.isEmpty, let flag = resumeFlag, let id = resumeId, !id.isEmpty {
-                resumeFragment = " \(flag) \(id)"
-            }
-            var promptFragment = ""
-            if !trimmedPrompt.isEmpty {
-                let quoted = ArcherShellIntegration.quote(trimmedPrompt)
-                if let flag = promptLaunchFlag {
-                    promptFragment = " \(flag) \(quoted)"
-                } else {
-                    // POSIX `--` separator stops the CLI's argparse from
-                    // treating a prompt that starts with `-` as a flag.
-                    // Right-clicking `ls -la` output and asking Codex /
-                    // Claude would otherwise hit "unexpected argument
-                    // '-rw-r--r--@...'" on the first dashed line.
-                    promptFragment = " -- \(quoted)"
-                }
-            }
-            let extrasFragment = trimmedExtras.isEmpty ? "" : " \(trimmedExtras)"
-            config.environment["ARCHER_AGENT"] = "\(initialCommand)\(resumeFragment)\(promptFragment)\(extrasFragment)"
+        if let sshHost {
+            // SSH workspace tab: the local shell's one-shot launch is the
+            // archer-ssh connection; the template's own launch command rides
+            // behind `--` and starts on the REMOTE via the ssh wrapper +
+            // bootstrap. Built WITHOUT the resume id — conversation state
+            // lives on this machine, so `--resume <local-id>` on the remote
+            // could only fail at launch.
+            let agentSuffix = launchCommand(extraOptions: extraOptions, resumeId: nil, initialPrompt: initialPrompt)
+                .map { " -- \($0)" } ?? ""
+            config.environment["ARCHER_AGENT"] = "archer-ssh \(ArcherShellIntegration.quote(sshHost))\(agentSuffix)"
+        } else if let launch = launchCommand(extraOptions: extraOptions, resumeId: resumeId, initialPrompt: initialPrompt) {
+            config.environment["ARCHER_AGENT"] = launch
         }
         return config
+    }
+
+    /// The ARCHER_AGENT launch string for this template — binary + resume /
+    /// prompt / extra-options fragments — or nil for plain shells. Single
+    /// source for both the local launch and the remote (`archer-ssh … -- <cmd>`)
+    /// composition above.
+    private func launchCommand(extraOptions: String?, resumeId: String?, initialPrompt: String?) -> String? {
+        guard let initialCommand else { return nil }
+        let trimmedExtras = extraOptions?.trimmingCharacters(in: .whitespaces) ?? ""
+        let trimmedPrompt = initialPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Resume flag goes between binary name and options
+        // (`claude --resume <id> --model opus`) — each CLI takes it as
+        // a positional argument to its top-level command; appending
+        // after extras would still work but reads worse in `ps`.
+        // Suppressed when `initialPrompt` is present — "Ask <agent>"
+        // is a fresh question, not a continuation.
+        var resumeFragment = ""
+        if trimmedPrompt.isEmpty, let flag = resumeFlag, let id = resumeId, !id.isEmpty {
+            resumeFragment = " \(flag) \(id)"
+        }
+        var promptFragment = ""
+        if !trimmedPrompt.isEmpty {
+            let quoted = ArcherShellIntegration.quote(trimmedPrompt)
+            if let flag = promptLaunchFlag {
+                promptFragment = " \(flag) \(quoted)"
+            } else {
+                // POSIX `--` separator stops the CLI's argparse from
+                // treating a prompt that starts with `-` as a flag.
+                // Right-clicking `ls -la` output and asking Codex /
+                // Claude would otherwise hit "unexpected argument
+                // '-rw-r--r--@...'" on the first dashed line.
+                promptFragment = " -- \(quoted)"
+            }
+        }
+        let extrasFragment = trimmedExtras.isEmpty ? "" : " \(trimmedExtras)"
+        return "\(initialCommand)\(resumeFragment)\(promptFragment)\(extrasFragment)"
     }
 
     var supportsResume: Bool {

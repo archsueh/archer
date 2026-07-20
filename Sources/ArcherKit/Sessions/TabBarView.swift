@@ -124,9 +124,12 @@ private struct AddTabButton: View {
         .dropIndicator(active: isTargeted, on: .leading, offset: -3)
         .popover(isPresented: $isMenuOpen, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
+                // In an SSH workspace every choice opens on the remote — the
+                // suffix keeps that from surprising anyone mid-click.
+                let sshSuffix = workspace.sshRemoteHost == nil ? "" : " on SSH"
                 ForEach(AgentTemplate.visibleOrdered(model: ArcherSettingsModel.shared)) { template in
                     HStack(spacing: 0) {
-                        ArcherMenuRow(title: template.title) {
+                        ArcherMenuRow(title: template.title + sshSuffix) {
                             AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 16)
                         } action: {
                             store.addTab(in: workspace, pane: pane, template: template)

@@ -202,6 +202,9 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     case nodeVersion = "node-version"
     case proxy
     case remoteLogin = "remote-login"
+    /// Repo basename pill — open forge / copy URL / Reveal in Finder.
+    /// [archer] ported from iAmCorey/kooky (v0.37.0).
+    case gitRepo = "git-repo"
     case gitBranch = "git-branch"
     case gitDiff = "git-diff"
 
@@ -213,6 +216,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
         case .nodeVersion: return "Node version"
         case .proxy: return "Proxy"
         case .remoteLogin: return "Remote Login"
+        case .gitRepo: return "Git repo"
         case .gitBranch: return "Git branch"
         case .gitDiff: return "Git diff"
         }
@@ -230,6 +234,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
         case .nodeVersion: return "n.circle.fill"
         case .proxy: return "network"
         case .remoteLogin: return "server.rack"
+        case .gitRepo: return "folder"
         case .gitBranch: return "chevron.left.forwardslash.chevron.right"
         case .gitDiff: return "arrow.up.arrow.down"
         }
@@ -243,7 +248,7 @@ enum StatusBarItemKind: String, CaseIterable, Codable, Hashable {
     }
 
     static let defaultOrder: [StatusBarItemKind] = [
-        .toolCallActivity, .pendingTurn, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitBranch, .gitDiff,
+        .toolCallActivity, .pendingTurn, .remoteLogin, .pythonVenv, .nodeVersion, .proxy, .gitRepo, .gitBranch, .gitDiff,
     ]
 }
 
@@ -268,6 +273,7 @@ func paneStatusBarHasData(session: Session) -> Bool {
         case .nodeVersion: if session.environment.nodeVersion != nil { return true }
         case .proxy: if session.environment.proxy != nil { return true }
         case .remoteLogin: if session.remoteHost != nil { return true }
+        case .gitRepo: if session.gitStatus.repoRoot != nil { return true }
         case .gitBranch: if session.gitStatus.branch != nil { return true }
         case .gitDiff: if session.gitStatus.branch != nil && session.gitStatus.filesChanged > 0 { return true }
         }
@@ -419,6 +425,7 @@ private struct PaneStatusBar: View {
         case .nodeVersion: nodeSegment
         case .proxy: proxySegment
         case .remoteLogin: remoteLoginSegment
+        case .gitRepo: repoSegment
         case .gitBranch: branchSegment
         case .gitDiff: diffSegment
         }
@@ -498,6 +505,13 @@ private struct PaneStatusBar: View {
                     .truncationMode(.middle)
                     .foregroundStyle(Theme.chromeForeground)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var repoSegment: some View {
+        if let root = session.gitStatus.repoRoot {
+            GitRepoStatusSegment(repoRoot: root)
         }
     }
 
@@ -653,13 +667,11 @@ private struct SignedNumber: View {
 
 /// A `StatusSegment` you can click — opens a popover listing alternatives,
 /// click one to inject a shell command. Shared shell for both the Node
-/// version switcher and the git branch switcher; new switchers (Python
-/// versions, mise tools, …) just instantiate with their own loader +
-/// formatter.
+/// version switcher and the git branch switcher.
 ///
-/// `loadItems` is called only on click, not on `onAppear` — popover content
-/// is what triggers the inventory work, so a tab the user never opens the
-/// switcher on does zero filesystem / subprocess.
+/// Inventory loads inside a child view's `.onAppear` (once per presentation),
+/// not into the caller's `@State` from the click action — that was the
+/// "No nvm versions found" bug (kooky v0.37.2). [archer] ported fix.
 private struct SwitchableStatusSegment<Item: Hashable>: View {
     let systemImage: String
     let label: String
@@ -675,11 +687,9 @@ private struct SwitchableStatusSegment<Item: Hashable>: View {
 
     @State private var isSwitcherOpen = false
     @State private var isHovered = false
-    @State private var items: [Item] = []
 
     var body: some View {
         Button {
-            items = loadItems()
             isSwitcherOpen.toggle()
         } label: {
             StatusSegment(systemImage: systemImage) {
@@ -699,6 +709,38 @@ private struct SwitchableStatusSegment<Item: Hashable>: View {
         .onHover { isHovered = $0 }
         .popover(isPresented: $isSwitcherOpen, arrowEdge: .bottom) {
             ArcherMenuList(width: popoverWidth, maxHeight: popoverMaxHeight) {
+                SwitcherMenuContent(
+                    emptyMessage: emptyMessage,
+                    loadItems: loadItems,
+                    isCurrent: isCurrent,
+                    titleFor: titleFor,
+                    commandFor: commandFor,
+                    session: session,
+                    dismiss: { isSwitcherOpen = false }
+                )
+            }
+        }
+    }
+}
+
+/// Rows of a `SwitchableStatusSegment` popover. Owns the loaded inventory in
+/// its own `@State` and loads it in `.onAppear` once per presentation.
+/// [archer] ported from iAmCorey/kooky (v0.37.2).
+private struct SwitcherMenuContent<Item: Hashable>: View {
+    let emptyMessage: String
+    let loadItems: () -> [Item]
+    let isCurrent: (Item) -> Bool
+    let titleFor: (Item) -> String
+    let commandFor: (Item) -> String
+    let session: Session
+    let dismiss: () -> Void
+
+    @State private var items: [Item] = []
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            if loaded {
                 if items.isEmpty {
                     ArcherMenuRow(title: emptyMessage, isDisabled: true) {}
                 } else {
@@ -709,12 +751,92 @@ private struct SwitchableStatusSegment<Item: Hashable>: View {
                             isDisabled: current,
                             leading: { menuRowCheckmark(visible: current) }
                         ) {
-                            isSwitcherOpen = false
+                            dismiss()
                             session.engine.sendInput(commandFor(item))
                         }
                     }
                 }
             }
+        }
+        .onAppear {
+            items = loadItems()
+            loaded = true
+        }
+    }
+}
+
+/// Repo-name pill → popover: open the repo's web page, copy its URL,
+/// Reveal in Finder. [archer] ported from iAmCorey/kooky (v0.37.0).
+private struct GitRepoStatusSegment: View {
+    let repoRoot: String
+
+    @State private var isOpen = false
+    @State private var isHovered = false
+
+    var body: some View {
+        Button {
+            isOpen.toggle()
+        } label: {
+            StatusSegment(systemImage: "folder") {
+                Text((repoRoot as NSString).lastPathComponent)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(Theme.chromeForeground)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isHovered || isOpen ? Theme.chromeHover : .clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 4))
+        .help(repoRoot)
+        .onHover { isHovered = $0 }
+        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+            ArcherMenuList(width: 230, maxHeight: 320) {
+                GitRepoMenuContent(repoRoot: repoRoot, dismiss: { isOpen = false })
+            }
+        }
+    }
+}
+
+private struct GitRepoMenuContent: View {
+    let repoRoot: String
+    let dismiss: () -> Void
+
+    @State private var remote: GitRemoteWebInfo?
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            if loaded {
+                if let remote {
+                    ArcherMenuRow(title: "Open on \(remote.forgeName)") {
+                        dismiss()
+                        NSWorkspace.shared.open(remote.webURL)
+                    }
+                    Divider()
+                    ArcherMenuRow(title: "Copy Repo URL") {
+                        dismiss()
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(remote.webURL.absoluteString, forType: .string)
+                    }
+                } else {
+                    ArcherMenuRow(title: "No remote configured", isDisabled: true) {}
+                    Divider()
+                }
+                ArcherMenuRow(title: "Reveal in Finder") {
+                    dismiss()
+                    NSWorkspace.shared.selectFile(
+                        nil,
+                        inFileViewerRootedAtPath: repoRoot
+                    )
+                }
+            }
+        }
+        .onAppear {
+            remote = GitRemoteWebInfo.resolve(repoRoot: repoRoot)
+            loaded = true
         }
     }
 }
@@ -865,6 +987,16 @@ private struct PaneContextMenu: View {
             }
             ArcherMenuRow(title: "Paste", shortcut: "⌘V", isDisabled: !pasteAvailable) {
                 isPresented = false
+                // SSH workspace tab pasting a file/image: upload, then paste
+                // the remote path once it lands (mirrors ⌘V in the surface).
+                let engine = session.engine
+                if ArcherShellIntegration.pasteViaRemoteUpload(
+                    from: .general,
+                    host: session.sshWorkspaceHost,
+                    deliver: { engine.paste($0) }
+                ) {
+                    return
+                }
                 if let text = ArcherShellIntegration.readTerminalPasteText(from: .general),
                    !text.isEmpty
                 {

@@ -24,8 +24,26 @@ final class AgentTemplateTests: XCTestCase {
     }
 
     func testTerminalTemplateUsesUserDefaultShell() {
-        let expected = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        XCTAssertEqual(AgentTemplate.terminal.makeSessionConfig().command, expected)
+        // Plain terminal respects $SHELL when we have an integration wrapper.
+        // bash cannot keep `$SHELL` as `command` — libghostty login-shells
+        // strip `--rcfile`, so we re-exec through a temp launcher (see
+        // ArcherShellIntegration.bashLauncherPath). CI runners set
+        // SHELL=/bin/bash and used to fail a naive `command == $SHELL` assert.
+        let cmd = AgentTemplate.terminal.makeSessionConfig().command
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        switch ArcherShellIntegration.detectedUserShell {
+        case .bash:
+            XCTAssertTrue(
+                cmd.contains("archer-bash-launch-"),
+                "bash terminal must use launcher script, got: \(cmd)"
+            )
+        case .zsh:
+            XCTAssertEqual(cmd, ArcherShellIntegration.zshPath)
+        case .fish:
+            XCTAssertEqual(cmd, shell)
+        case .other:
+            XCTAssertEqual(cmd, shell)
+        }
     }
 
     func testAgentTemplatesPickAShellWithIntegrationWrapper() {

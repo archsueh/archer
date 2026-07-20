@@ -136,6 +136,31 @@ final class ArcherSettingsModel {
     /// icon + plain-click target. Persisted under `openin.lastUsed`.
     var lastOpenInAppId: String?
 
+    /// [archer] keep-awake dial — ported from iAmCorey/kooky (v0.36).
+    /// Persisted under `general.sleepGuard` (only when non-default).
+    var awakeMode: AwakeMode = .off
+
+    /// Single entry for the keep-awake dial. `runInstall: true` triggers the
+    /// one-time admin-authorization the first time `.always` is chosen.
+    @MainActor
+    func applyAwakeMode(_ mode: AwakeMode, runInstall: Bool = true) {
+        if mode == .always, runInstall, !ClosedLidSleep.isInstalled {
+            ClosedLidSleep.install { ok in
+                guard ok else {
+                    self.awakeMode = .auto
+                    SleepGuard.shared.refresh()
+                    return
+                }
+                self.awakeMode = .always
+                SleepGuard.shared.refresh()
+            }
+            awakeMode = .always
+            return
+        }
+        awakeMode = mode
+        SleepGuard.shared.refresh()
+    }
+
     private var saveWork: DispatchWorkItem?
 
     init() {
@@ -183,6 +208,7 @@ final class ArcherSettingsModel {
 
         let general = parsed["general"] as? [String: Any] ?? [:]
         showSearchPill = (general["showSearchPill"] as? Bool) ?? true
+        awakeMode = AwakeMode(rawValue: (general["sleepGuard"] as? String) ?? "") ?? .off
 
         let notifications = parsed["notifications"] as? [String: Any] ?? [:]
         notificationsEnabled = (notifications["enabled"] as? Bool) ?? true
@@ -363,6 +389,7 @@ final class ArcherSettingsModel {
 
         var general = parsed["general"] as? [String: Any] ?? [:]
         general["showSearchPill"] = showSearchPill ? nil : false
+        general["sleepGuard"] = awakeMode == .off ? nil : awakeMode.rawValue
         if general.isEmpty {
             parsed.removeValue(forKey: "general")
         } else {
@@ -672,6 +699,7 @@ struct ArcherSettingsView: View {
             .onChange(of: model.resumeConversations) { _, _ in model.scheduleSave() }
             .onChange(of: model.sshRemoteAgentDetection) { _, _ in model.scheduleSave() }
             .onChange(of: model.showSearchPill) { _, _ in model.scheduleSave() }
+            .onChange(of: model.awakeMode) { _, _ in model.scheduleSave() }
             .onChange(of: model.terminalPresets) { _, _ in model.scheduleSave() }
             .onChange(of: model.hiddenPresets) { _, _ in model.scheduleSave() }
             .onChange(of: model.statusBarItems) { _, _ in model.scheduleSave() }
@@ -848,6 +876,25 @@ struct ArcherSettingsView: View {
                     .labelsHidden()
                     .toggleStyle(.switch)
             }
+            SettingsHairline()
+            SettingsRow(label: "keep-awake") {
+                Picker("", selection: Binding(
+                    get: { model.awakeMode },
+                    set: { model.applyAwakeMode($0) }
+                )) {
+                    Text("Off").tag(AwakeMode.off)
+                    Text("Auto").tag(AwakeMode.auto)
+                    Text("Always").tag(AwakeMode.always)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+            Text("Auto holds an idle-sleep assertion while an agent or SSH session is active; Always never sleeps. The closed-lid tier prompts for a one-time authorization.")
+                .font(Theme.mono(11))
+                .foregroundStyle(Theme.chromeMuted)
+                .padding(.horizontal, 28)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
             SettingsHairline()
             // SSH remote agent detection lives here now (it was its own
             // one-toggle category before). The settings.json key stays

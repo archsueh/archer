@@ -56,17 +56,17 @@ Documents by year/project; code → `~/Developer/`; Pictures → `~/Pictures/` b
 
 ## 3. Open failures / 进行中(stage 1→2)
 
-**真实产品 backlog（2026-07-16 晚间核对，详 `docs/BACKLOG.md` 文首表）**:  
-A 未做= workspace-template + parallelTaskGroup + agent-interop-layer + kooky(ssh-workspace) + EdgeGlow P3 marquee。  
-A 本会话/近期落地= worktree ①②、EdgeGlow P1/P2（早已在仓，文档回填）、filetree M/A/D badges + porcelain 路径修。  
+**真实产品 backlog（2026-07-20 核对）**:  
+A 未做= workspace-template + parallelTaskGroup + agent-interop-layer + EdgeGlow P3 marquee。  
+A 本会话落地= **ssh-workspace 端口**（见 §5；未 commit）。此前= worktree ①②、EdgeGlow P1/P2、filetree M/A/D badges。  
 B 可选= yibie star / God Object 拆分。  
-C 已落地勿重做= session-recorder `4ba0020`、UnifiedListener `47043b6`、MemoryGraph `6f6e683`、sniffer `5d7b8bf/eca968a`、SkillsInjector `9210b60`、EdgeGlow P1/P2、filetree badges。
+C 已落地勿重做= session-recorder、UnifiedListener、MemoryGraph、sniffer、SkillsInjector、EdgeGlow P1/P2、filetree badges。
 
-**Heartbeat L1（已入库 `d531d31`）**: `loop/` 骨架齐——Gate / tick / seats / contract / standing-goal 模板。手跑: quiet=0、`--gate-only` PASS。**未做** L2+（cron / trust.tsv / goals 日验 / auto Installer）。
+**Heartbeat L1（已入库 `d531d31`）**: `loop/` 骨架齐。**未做** L2+（cron / trust.tsv / goals 日验 / auto Installer）。
 
-**WIP 勿卷**:分支 `archer/worktree-one-click` 上 `ParallelTaskSheet.swift` 有无关 WIP（Delegation Brief），与 Heartbeat/handoff 无关。
+**WIP 勿卷（他 agent）**: SleepGuard/ClosedLidSleep/CrashForensics + MemoryEntityGraph/MemorySemanticSearch 未提交且破 build — 勿与 ssh-workspace 混提。
 
-**Usage 线**:面板/session cost pills 已在 `10d952b` 移除；tokenscope 余 heatmap/donut/成本归因若还要做，先确认产品是否还要 Usage 视图。
+**Usage 线**:面板/session cost pills 已在 `10d952b` 移除。
 
 _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
@@ -85,6 +85,28 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 ---
 
 ## 5. Last session(stage 5 — resume,别 restart)
+
+**2026-07-20 · v1.0.9 kooky port + release（Grok）**
+
+- 从 `upstream/iAmCorey/kooky` 移植：SSH workspaces / keep-awake / crash black box / git-repo 状态栏 / status pill load 修 / privacy Info.plist / CI bash launcher 断言。
+- `swift test` **569/0**（+ Swift Testing 7）；未纳入无关 Memory* WIP（已移开未跟踪文件）。
+- Next：手测 SSH 真实主机；可选 appcast Sparkle 签名（需 ed key）。
+
+**2026-07-20 · SSH workspaces 端口（Grok · kooky v0.34 → Archer）**
+
+- **分支**:`main`（未 commit / 未 push）。
+- **来源**:`upstream/main` (iAmCorey/kooky) surgical port；Archer 品牌：`archer-ssh` / `ARCHER_*` / `ArcherKit`。
+- **实现**:
+  - Model: `Workspace.sshRemoteHost` 持久化；`Session.sshWorkspaceHost` 运行时 paste 路由；`RemoteLoginMarker.logoutTitle`（不再在 OSC 133;D 清 remoteHost）。
+  - Spawn: 新 tab / split / restore 全路径透传 host → `makeSessionConfig(sshHost:)` → `ARCHER_AGENT=archer-ssh host [-- agent…]`。
+  - Shell: 私有 `archer-ssh` 始终安装；公共 `ssh` 仍 setting-gated；ControlPath=`/tmp/archer-ssh-%C` 多路复用；远程 paste scp 到 `/tmp/archer-pastes-*`。
+  - UI: File → New SSH Workspace…、⌘P 项、`CreateSSHWorkspaceSheet`、sidebar network badge、tab menu "on SSH"。
+- **验证**:`swift build` 绿（SleepGuard/Memory 未提交 WIP 需 aside 或 stub）；`swift test --filter SSHWorkspaceTests` **11/0**。未跑全量 `swift test`（他 agent 文件破编译）。
+- **Next**:
+  1. 用户手测：建 SSH workspace → 新 tab 连同一 host → agent 远程启动 → paste 文件上传。
+  2. 单独 commit ssh-workspace（勿卷 SleepGuard/Memory）。
+  3. 可选：composer ⌘L remote paste（Archer 尚无 kooky Composer UI）；SSH 工作区禁 worktree 按钮。
+  4. 余 backlog：workspace-template / parallelTaskGroup / EdgeGlow P3 / agent-interop。
 
 **2026-07-16 · 夜航：doc drift 修 + filetree badges（Grok · 用户睡觉）**
 

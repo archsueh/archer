@@ -224,6 +224,10 @@ enum Theme {
     static let activityAttention = Color(.sRGB, red: 0.91, green: 0.69, blue: 0.40, opacity: 1)
     static let activityFailure = Color(.sRGB, red: 0.91, green: 0.40, blue: 0.40, opacity: 1)
 
+    /// Green used by the keep-awake status light + sidebar agent-running dot.
+    /// [archer] ported from iAmCorey/kooky (v0.36).
+    static let keepAwakeGreen = Color(.sRGB, red: 0.30, green: 0.78, blue: 0.47, opacity: 1)
+
     /// Git diff colors for the pane's bottom-right status — green for
     /// insertions, red for deletions. `gitDeletion` reuses the failure red so
     /// "red == something to look at" stays consistent across signals.

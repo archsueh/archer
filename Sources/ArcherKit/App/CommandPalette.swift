@@ -55,6 +55,8 @@ enum PaletteItemKind: Hashable {
     case createWorktree(workspaceId: UUID, windowId: UUID)
     /// Spawn a new tab with this agent / preset in the active workspace.
     case agent(templateId: String)
+    /// Open the SSH-workspace destination sheet in the active window.
+    case createSSHWorkspace
     /// [archer] open the ShowAgent session surface (aytzey/showagent).
     case showAgent
     /// [archer] Open a recently used project folder as a new workspace in the
@@ -125,6 +127,14 @@ enum PaletteIndex {
                 iconAsset: template.iconAsset
             ))
         }
+        items.append(PaletteItem(
+            id: "create-ssh-workspace",
+            title: "New SSH Workspace…",
+            subtitle: "workspace on a remote host",
+            kind: .createSSHWorkspace,
+            symbol: "network",
+            iconAsset: nil
+        ))
         // [archer] ShowAgent surface — open the session browser.
         items.append(PaletteItem(
             id: "showagent",

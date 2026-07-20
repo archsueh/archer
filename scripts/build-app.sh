@@ -214,6 +214,60 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
     <string>R8F+0R9LBA/JibvArSfUthDyrOFswtmgqMxeOEDbnvE=</string>
     <key>SUEnableAutomaticChecks</key>
     <false/>
+    <!-- TCC attributes a child process's privacy request to the terminal app
+         (the "responsible process"). Without the matching usage-description
+         key the request is silently denied: no prompt, no System Settings
+         entry (kooky #31). A terminal can't know what its children will touch,
+         so declare every category they can plausibly hit — same approach as
+         Terminal.app / iTerm2. [archer] ported from iAmCorey/kooky v0.37.1. -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>A program running in Archer wants to control another application.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>A program running in Archer wants to access your calendar.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>A program running in Archer wants to access your calendar.</string>
+    <key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+    <string>A program running in Archer wants to add events to your calendar.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>A program running in Archer wants to access your reminders.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>A program running in Archer wants to access your reminders.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>A program running in Archer wants to access your contacts.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>A program running in Archer wants to access your photo library.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>A program running in Archer wants to add photos to your photo library.</string>
+    <key>NSAppleMusicUsageDescription</key>
+    <string>A program running in Archer wants to access your music library.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>A program running in Archer wants to use the camera.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>A program running in Archer wants to use the microphone.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>A program running in Archer wants to capture system audio.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>A program running in Archer wants to use speech recognition.</string>
+    <key>NSLocationUsageDescription</key>
+    <string>A program running in Archer wants to access your location.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>A program running in Archer wants to access your location.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>A program running in Archer wants to find and connect to devices on your local network.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>A program running in Archer wants to use Bluetooth.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>A program running in Archer wants to access motion data.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>A program running in Archer wants to access files in your Desktop folder.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>A program running in Archer wants to access files in your Documents folder.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>A program running in Archer wants to access files in your Downloads folder.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>A program running in Archer wants to access files on a removable volume.</string>
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>A program running in Archer wants to access files on a network volume.</string>
 ${APPLE_ICON_PLIST_KEYS}
 </dict>
 </plist>

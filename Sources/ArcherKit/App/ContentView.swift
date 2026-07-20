@@ -123,6 +123,10 @@ struct ContentView: View {
             }
             InboxBell()
                 .padding(.trailing, 8)
+            // [archer] ported from iAmCorey/kooky (v0.36): keep-awake
+            // status light — rightmost on purpose, like a hardware power LED.
+            KeepAwakeButton()
+                .padding(.trailing, 8)
         }
         .frame(height: 48)
     }

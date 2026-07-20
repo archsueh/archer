@@ -279,25 +279,36 @@ struct SidebarWorkspaceRow: View {
             // and gives the worktree row the same visual weight a tab
             // pill carries — distinct from source rows without needing
             // an extra column or stripe.
-            let badgeColor = Theme.chromeForeground.opacity(0.82)
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(Theme.chromeBackground)
-                    .frame(width: 12, height: 12)
-                    .background(badgeColor, in: RoundedRectangle(cornerRadius: 3))
-                Text(branch)
-                    .font(Theme.mono(10.5, weight: .medium))
-                    .foregroundStyle(badgeColor)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+            subtitleBadge(glyph: "arrow.triangle.branch", glyphSize: 6, text: branch)
+        } else if let host = workspace.sshRemoteHost {
+            // SSH workspace — same badge language, network glyph. The host
+            // replaces the local path: these tabs live on the remote.
+            subtitleBadge(glyph: "network", glyphSize: 7, text: host)
         } else {
             Text((workspace.workingDirectory.path as NSString).abbreviatingWithTildeInPath)
                 .font(Theme.mono(10.5))
                 .foregroundStyle(Theme.chromeMuted)
                 .lineLimit(1)
                 .truncationMode(.head)
+        }
+    }
+
+    /// Shared subtitle badge: solid rounded tile with a reverse-cut glyph +
+    /// mono label — the worktree-branch and ssh-host rows differ only in
+    /// glyph and text.
+    private func subtitleBadge(glyph: String, glyphSize: CGFloat, text: String) -> some View {
+        let badgeColor = Theme.chromeForeground.opacity(0.82)
+        return HStack(spacing: 6) {
+            Image(systemName: glyph)
+                .font(.system(size: glyphSize, weight: .semibold))
+                .foregroundStyle(Theme.chromeBackground)
+                .frame(width: 12, height: 12)
+                .background(badgeColor, in: RoundedRectangle(cornerRadius: 3))
+            Text(text)
+                .font(Theme.mono(10.5, weight: .medium))
+                .foregroundStyle(badgeColor)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
     }
 

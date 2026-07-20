@@ -59,8 +59,17 @@ final class Session: Identifiable {
 
     /// Runtime-only SSH destination (`user@host` or bare `host`) reported by
     /// the ssh wrapper via an OSC title marker, shown in the pane status bar.
-    /// Not persisted (like `transientAgent`); cleared on command-finished.
+    /// Not persisted (like `transientAgent`); cleared only by the wrapper's
+    /// logout marker (not OSC 133;D — a remote shell's own integration emits
+    /// 133;D through the wire on every remote command).
     var remoteHost: String?
+    /// SSH destination this tab was *spawned against* — set only when archer
+    /// itself opened the connection (SSH workspace tabs), never by a manually
+    /// typed `ssh`. Stable for the tab's lifetime, which makes it the paste
+    /// routing signal: "upload pasted files to this host" must not flicker
+    /// with `remoteHost`'s marker/logout lifecycle. Not persisted —
+    /// restore re-derives it from `Workspace.sshRemoteHost` at spawn.
+    var sshWorkspaceHost: String?
     /// Latest Codex account rate-limit usage (5-hour + weekly windows), parsed
     /// from the active session's rollout file by `CodexUsageMonitor` and shown
     /// as a status-bar gauge. Only populated for Codex sessions; `nil` until

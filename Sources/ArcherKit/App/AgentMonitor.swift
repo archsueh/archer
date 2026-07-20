@@ -134,6 +134,24 @@ final class AgentMonitor {
         .sorted { $0.state < $1.state }
     }
 
+    /// True while any session is actively working or SSH-connected across every
+    /// window. SleepGuard's `auto` tier reads this so the idle-sleep
+    /// assertion tracks real work without re-aggregating per refresh.
+    /// [archer] ported from iAmCorey/kooky (v0.36) keep-awake.
+    var hasActiveWork: Bool {
+        _ = windowGeneration
+        return storesProvider().contains { store in
+            store.workspaces.contains { workspace in
+                workspace.root.allPanes.contains { pane in
+                    pane.tabs.contains { session in
+                        session.remoteHost != nil
+                            || (!session.displayAgent.isShell && session.activityState == .running)
+                    }
+                }
+            }
+        }
+    }
+
     private static func state(of session: Session) -> State {
         if session.activityState == .attention { return .attention }
         if let exit = session.lastCommandExit, exit != 0 { return .failed }

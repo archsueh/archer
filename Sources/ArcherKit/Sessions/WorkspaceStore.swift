@@ -250,16 +250,21 @@ final class WorkspaceStore {
         worktreeParent: Workspace? = nil,
         worktreeBranch: String? = nil,
         template: AgentTemplate = .terminal,
-        initialPrompt: String? = nil
+        initialPrompt: String? = nil,
+        sshRemoteHost: String? = nil
     ) -> Workspace {
+        // `inheritedFrom` is captured HERE, before `activeWorkspaceId` moves
+        // to the new workspace below — `active` later means the new one.
+        let inheritedFrom = workingDirectory == nil ? active : nil
         let dir = workingDirectory
-            ?? active?.workingDirectory
+            ?? inheritedFrom?.workingDirectory
             ?? URL(fileURLWithPath: NSHomeDirectory())
         let pane = Pane()
         let root = PaneNode(pane: pane)
         let workspace = Workspace(workingDirectory: dir, root: root)
         workspace.worktreeParentId = worktreeParent?.id
         workspace.worktreeBranch = worktreeBranch
+        workspace.sshRemoteHost = Self.normalizedSSHHost(sshRemoteHost)
         // Pin worktreePath at create time so `git worktree remove` always
         // targets the disk root, no matter where the user cd's later.
         // `.standardizedFileURL` resolves `/tmp` → `/private/tmp` etc. so
@@ -268,7 +273,7 @@ final class WorkspaceStore {
         if worktreeParent != nil {
             workspace.worktreePath = dir.standardizedFileURL
         }
-        let session = spawnSession(template: template, initialCwd: dir, initialPrompt: initialPrompt)
+        let session = spawnSession(template: template, initialCwd: dir, initialPrompt: initialPrompt, sshRemoteHost: workspace.sshRemoteHost)
         wireSessionCallbacks(engine: session.engine, session: session, workspace: workspace)
         pane.tabs.append(session)
         pane.activeTabId = session.id
@@ -291,10 +296,18 @@ final class WorkspaceStore {
         activeWorkspaceId = workspace.id
         scheduleSave()
         // [archer] Remember the project folder for File → Open Recent / ⌘P.
-        // `dir` is already resolved (home fallback, worktree path, or explicit
-        // cwd), so `RecentFolders.note` only needs to exclude HOME itself.
-        // Ported from iAmCorey/kooky (v0.35).
-        noteRecentFolder(dir)
+        // Skip worktree children (their dir dies with the worktree) and SSH
+        // workspaces (the local cwd is not where the project lives). Also skip
+        // when the directory was inherited from such a workspace (⌘N with one
+        // active). Ported from iAmCorey/kooky (v0.34 / v0.35).
+        let origin = inheritedFrom ?? workspaces.first(where: {
+            $0 !== workspace && $0.workingDirectory.standardizedFileURL.path == dir.standardizedFileURL.path
+        })
+        if worktreeParent == nil, workspace.sshRemoteHost == nil,
+           origin?.worktreeParentId == nil, origin?.sshRemoteHost == nil
+        {
+            noteRecentFolder(dir)
+        }
         return workspace
     }
 
@@ -425,6 +438,22 @@ final class WorkspaceStore {
     /// Parallel-task sheet request — right-click → "Parallel Task…" sets
     /// this so the sidebar can anchor the sheet on the row.
     var pendingParallelTaskRequest: Workspace?
+
+    /// File menu / command palette park it here for `SidebarView` to open the
+    /// destination sheet (same seam as `pendingCreateWorktreeRequest`; Bool
+    /// because the sheet needs no payload).
+    var pendingCreateSSHWorkspaceRequest = false
+
+    /// Park the SSH-workspace create request and reveal a hidden sidebar so
+    /// `SidebarView` exists to consume it (mirrors
+    /// `requestRenameActiveWorkspace`). Callers that want the reveal animated
+    /// wrap the call in `withAnimation` — the store stays SwiftUI-free.
+    func requestCreateSSHWorkspace() {
+        pendingCreateSSHWorkspaceRequest = true
+        if sidebarMode == .hidden {
+            setSidebarMode(.full)
+        }
+    }
 
     /// ⌘⇧R rename request, parked for `SidebarView` to act on. The active
     /// workspace's row may be unmounted — nested under a collapsed worktree
@@ -887,7 +916,7 @@ final class WorkspaceStore {
         let cwd = initialCwd
             ?? template.extraCwd.map { resolvedSpawnCwd(($0 as NSString).expandingTildeInPath) }
             ?? workspace.workingDirectory
-        let session = spawnSession(template: template, initialCwd: cwd, conversationId: conversationId, initialPrompt: initialPrompt)
+        let session = spawnSession(template: template, initialCwd: cwd, conversationId: conversationId, initialPrompt: initialPrompt, sshRemoteHost: workspace.sshRemoteHost)
         wireSessionCallbacks(engine: session.engine, session: session, workspace: workspace)
         target.tabs.append(session)
         target.activeTabId = session.id
@@ -1223,7 +1252,7 @@ final class WorkspaceStore {
         guard case let .pane(existing) = leafNode.content else { return nil }
         let template = existing.activeTab?.agent ?? .terminal
         let cwd = existing.activeTab?.currentDirectory ?? workspace.workingDirectory
-        let newSession = spawnSession(template: template, initialCwd: cwd)
+        let newSession = spawnSession(template: template, initialCwd: cwd, sshRemoteHost: workspace.sshRemoteHost)
         wireSessionCallbacks(engine: newSession.engine, session: newSession, workspace: workspace)
         let newPane = Pane(tabs: [newSession], activeTabId: newSession.id)
         let firstChild = PaneNode(pane: existing)
@@ -1500,7 +1529,8 @@ final class WorkspaceStore {
     private func restore(from state: PersistedState) {
         let fm = FileManager.default
         for ws in state.workspaces {
-            guard let root = restorePane(ws.root, fm: fm) else { continue }
+            let sshHost = Self.normalizedSSHHost(ws.sshRemoteHost)
+            guard let root = restorePane(ws.root, fm: fm, sshRemoteHost: sshHost) else { continue }
             let workspace = Workspace(
                 id: ws.id,
                 workingDirectory: URL(fileURLWithPath: ws.workingDirectoryPath),
@@ -1510,6 +1540,7 @@ final class WorkspaceStore {
             workspace.worktreeParentId = ws.worktreeParentId
             workspace.worktreeBranch = ws.worktreeBranch
             workspace.worktreePath = ws.worktreePath.map { URL(fileURLWithPath: $0) }
+            workspace.sshRemoteHost = sshHost
             // Wire engines now that workspace is constructed (engines need
             // the workspace ref for cwd-sync callbacks).
             for pane in workspace.root.allPanes {
@@ -1535,7 +1566,7 @@ final class WorkspaceStore {
         panelWidths = state.panelWidths ?? PanelWidths() // [archer]
     }
 
-    private func restorePane(_ persisted: PersistedPaneNode, fm: FileManager) -> PaneNode? {
+    private func restorePane(_ persisted: PersistedPaneNode, fm: FileManager, sshRemoteHost: String? = nil) -> PaneNode? {
         switch persisted.kind {
         case let .pane(p):
             let pane = Pane(id: p.id)
@@ -1545,7 +1576,8 @@ final class WorkspaceStore {
                     template: agent,
                     initialCwd: resolvedSpawnCwd(tab.currentDirectoryPath),
                     sessionId: tab.id,
-                    conversationId: tab.conversationId
+                    conversationId: tab.conversationId,
+                    sshRemoteHost: sshRemoteHost
                 )
                 session.customTitle = tab.customTitle
                 pane.tabs.append(session)
@@ -1555,8 +1587,8 @@ final class WorkspaceStore {
                 : pane.tabs.first?.id
             return PaneNode(pane: pane)
         case let .split(orientation, first, second, fraction):
-            guard let firstChild = restorePane(first, fm: fm),
-                  let secondChild = restorePane(second, fm: fm) else { return nil }
+            guard let firstChild = restorePane(first, fm: fm, sshRemoteHost: sshRemoteHost),
+                  let secondChild = restorePane(second, fm: fm, sshRemoteHost: sshRemoteHost) else { return nil }
             return PaneNode(
                 id: persisted.id,
                 content: .split(
@@ -1572,7 +1604,7 @@ final class WorkspaceStore {
     /// Spawns the engine + Session. Caller wires `onPwdChange` / `onFocus`
     /// after a workspace ref is available — `restore` builds sessions before
     /// the workspace exists, so callbacks can't capture it here.
-    private func spawnSession(template: AgentTemplate, initialCwd: URL, sessionId: UUID = UUID(), conversationId: String? = nil, initialPrompt: String? = nil) -> Session {
+    private func spawnSession(template: AgentTemplate, initialCwd: URL, sessionId: UUID = UUID(), conversationId: String? = nil, initialPrompt: String? = nil, sshRemoteHost: String? = nil) -> Session {
         let engine = engineFactory()
         // Resume gated by user setting AND session file existence. A missing
         // file makes Claude print "No conversation found" and exit — drop the
@@ -1580,16 +1612,23 @@ final class WorkspaceStore {
         // `resumeProvider()` checks the user toggle; `claudeSessionExists`
         // verifies the .jsonl is on disk. Unknown (can't read dir) → assume
         // exists so we never silently drop a valid resume.
+        // SSH workspace tabs drop resume regardless: conversation state lives
+        // on this machine, so `--resume <local-id>` on the remote would fail.
+        let sshHost = Self.normalizedSSHHost(sshRemoteHost)
         let resumeId: String?
-        if resumeProvider(), let cid = conversationId, !cid.isEmpty {
+        if sshHost == nil, resumeProvider(), let cid = conversationId, !cid.isEmpty {
             resumeId = Self.claudeSessionExists(cid) ? cid : nil
         } else {
             resumeId = nil
         }
+        // The template owns SSH composition (archer-ssh wrapping, dropping the
+        // local-only resume id, forcing a wrapped shell) — see
+        // `makeSessionConfig(sshHost:)`.
         var config = template.makeSessionConfig(
             extraOptions: optionsProvider(template.id),
             resumeId: resumeId,
-            initialPrompt: initialPrompt
+            initialPrompt: initialPrompt,
+            sshHost: sshHost
         )
         config.workingDirectory = initialCwd.path
         // A Claude-Code-based custom agent with an env block hands `claude`
@@ -1602,13 +1641,29 @@ final class WorkspaceStore {
             ArcherShellIntegration.archerEnvironment(for: sessionId, claudeCustomSettingsAgentId: claudeCustomId)
         ) { _, new in new }
         engine.start(config: config)
-        return Session(
+        let session = Session(
             id: sessionId,
             engine: engine,
             currentDirectory: initialCwd,
             agent: template,
             conversationId: conversationId
         )
+        if let sshHost {
+            session.sshWorkspaceHost = sshHost
+            // Optimistic: the remote shim's `running` marker confirms once
+            // the connection + rc replay settle; until then the tab already
+            // reads as "agent starting", matching the local launch feel.
+            if !template.isShell { session.activityState = .running }
+        }
+        return session
+    }
+
+    /// Trimmed, non-empty SSH destination or nil. Single gate for every
+    /// entry point (create sheet, persistence restore, spawn) so a
+    /// whitespace-only host can never mark a workspace remote. Same
+    /// blank-collapses-to-nil rule as titles — one rule, one place.
+    static func normalizedSSHHost(_ raw: String?) -> String? {
+        raw.flatMap(normalizedTitle)
     }
 
     /// Returns true when a `.jsonl` session file for `id` exists under
@@ -1644,6 +1699,11 @@ final class WorkspaceStore {
                 sessionID: session.id, cols: 80, rows: 24, engine: libghostty
             )
         }
+        // Paste-time upload routing. Deliberately `sshWorkspaceHost` (spawn
+        // pinned), NOT `remoteHost`: the latter is the status-bar display
+        // signal with a marker→logout lifecycle that a remote shell's own
+        // OSC 133;D must not clear mid-connection.
+        engine.pasteUploadHostProvider = { [weak session] in session?.sshWorkspaceHost }
         engine.onPwdChange = { [weak self, weak session, weak workspace] pwd in
             guard let session else { return }
             let url = URL(fileURLWithPath: pwd)
@@ -1689,9 +1749,15 @@ final class WorkspaceStore {
             guard let session else { return }
             // A `archer-remote-login:*` title is an ssh-destination marker, not
             // a visible title — record the host and stop before it reaches
-            // `terminalTitle`. Cleared on command-finished (ssh exit).
+            // `terminalTitle`. Cleared ONLY by the wrapper's logout marker
+            // below: OSC 133;D is not "ssh exited" (a remote shell's own
+            // integration emits it per remote command, through the wire).
             if let host = RemoteLoginMarker.parseTitle(title) {
                 session.remoteHost = host
+                return
+            }
+            if RemoteLoginMarker.isLogoutTitle(title) {
+                session.remoteHost = nil
                 return
             }
             // Any `archer-agent:*` title is a status marker, never a visible
@@ -1741,7 +1807,9 @@ final class WorkspaceStore {
                 session.transientAgent = nil
                 session.activityState = .idle
             }
-            session.remoteHost = nil
+            // Do NOT clear `remoteHost` here — a remote shell's OSC 133;D
+            // arrives through the wire on every remote command. Logout is
+            // signaled only by `RemoteLoginMarker.logoutTitle`.
             session.lastCommandExit = exit
             session.lastCommandDuration = duration
             // A non-zero exit on a backgrounded tab is worth a nudge;

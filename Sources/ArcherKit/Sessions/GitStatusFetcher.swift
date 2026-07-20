@@ -4,11 +4,15 @@ import Foundation
 /// `branch == nil` means "not in a repo" (or git unavailable / errored).
 struct GitStatus: Equatable {
     var branch: String?
+    /// Absolute worktree root (`rev-parse --show-toplevel`). Drives the
+    /// status bar's repo pill. Nil inside a bare repo / `.git` dir.
+    /// [archer] ported from iAmCorey/kooky (v0.37.0).
+    var repoRoot: String?
     var filesChanged: Int
     var insertions: Int
     var deletions: Int
 
-    static let empty = GitStatus(branch: nil, filesChanged: 0, insertions: 0, deletions: 0)
+    static let empty = GitStatus(branch: nil, repoRoot: nil, filesChanged: 0, insertions: 0, deletions: 0)
 }
 
 /// Spawns `git` on a background queue to populate `Session.gitStatus`.
@@ -39,10 +43,20 @@ final class GitStatusFetcher {
     }
 
     private nonisolated static func run(cwd: String) -> GitStatus {
-        // `--abbrev-ref HEAD` returns the branch name, or "HEAD" when detached.
-        // Failure here usually means cwd isn't inside a repo — fall through to
-        // empty so the footer hides cleanly.
-        guard let head = runGit(["-C", cwd, "--no-optional-locks", "rev-parse", "--abbrev-ref", "HEAD"]) else {
+        // One spawn answers both branch and repo root. Outside a healthy
+        // worktree the combined form fails — fall back to branch-only.
+        // [archer] ported from iAmCorey/kooky (v0.37.0).
+        let head: String
+        let repoRoot: String?
+        if let combined = runGit([
+            "-C", cwd, "--no-optional-locks", "rev-parse", "--abbrev-ref", "HEAD", "--show-toplevel",
+        ]), let newline = combined.firstIndex(of: "\n") {
+            head = String(combined[..<newline])
+            repoRoot = String(combined[combined.index(after: newline)...])
+        } else if let solo = runGit(["-C", cwd, "--no-optional-locks", "rev-parse", "--abbrev-ref", "HEAD"]) {
+            head = solo
+            repoRoot = nil
+        } else {
             return .empty
         }
         let branch: String
@@ -53,7 +67,7 @@ final class GitStatusFetcher {
         }
         let stat = runGit(["-C", cwd, "--no-optional-locks", "diff", "--shortstat", "HEAD"]) ?? ""
         let (files, ins, del) = parseShortstat(stat)
-        return GitStatus(branch: branch, filesChanged: files, insertions: ins, deletions: del)
+        return GitStatus(branch: branch, repoRoot: repoRoot, filesChanged: files, insertions: ins, deletions: del)
     }
 
     /// Runs `git <args>` with a 1-second timeout; returns trimmed stdout on
@@ -252,5 +266,72 @@ enum GitPorcelain {
         if hasA { return .added }
         if hasD { return .deleted }
         return nil
+    }
+}
+
+/// Browsable https page of a git remote, for the status bar's repo popover.
+/// [archer] ported from iAmCorey/kooky (v0.37.0).
+struct GitRemoteWebInfo: Equatable {
+    var webURL: URL
+
+    var host: String {
+        webURL.host ?? ""
+    }
+
+    var forgeName: String {
+        let h = host.lowercased()
+        if h.contains("github") { return "GitHub" }
+        if h.contains("gitlab") { return "GitLab" }
+        if h.contains("bitbucket") { return "Bitbucket" }
+        return host
+    }
+
+    static func resolve(repoRoot: String) -> GitRemoteWebInfo? {
+        let listing = GitStatusFetcher.runGit(["-C", repoRoot, "--no-optional-locks", "remote", "-v"]) ?? ""
+        return preferredRemoteURL(inRemoteListing: listing).flatMap(parse(remoteURL:))
+    }
+
+    static func preferredRemoteURL(inRemoteListing output: String) -> String? {
+        var first: String?
+        for line in output.split(whereSeparator: \.isNewline) {
+            guard line.hasSuffix(" (fetch)"), let tab = line.firstIndex(of: "\t") else { continue }
+            let url = line[line.index(after: tab)...]
+                .dropLast(" (fetch)".count)
+                .trimmingCharacters(in: .whitespaces)
+            if line[..<tab] == "origin" { return url }
+            if first == nil { first = url }
+        }
+        return first
+    }
+
+    static func parse(remoteURL raw: String) -> GitRemoteWebInfo? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let webOrigin: String
+        var path: String
+        if trimmed.contains("://") {
+            guard let url = URL(string: trimmed),
+                  let scheme = url.scheme?.lowercased(),
+                  ["https", "http", "ssh", "git"].contains(scheme),
+                  let host = url.host, !host.isEmpty
+            else { return nil }
+            if scheme == "http" || scheme == "https" {
+                webOrigin = "\(scheme)://\(host)" + (url.port.map { ":\($0)" } ?? "")
+            } else {
+                webOrigin = "https://\(host)"
+            }
+            path = url.path
+        } else if let colon = trimmed.firstIndex(of: ":") {
+            let head = String(trimmed[..<colon])
+            let host = head.split(separator: "@").last.map(String.init) ?? head
+            guard !host.isEmpty, !host.contains("/") else { return nil }
+            webOrigin = "https://\(host)"
+            path = String(trimmed[trimmed.index(after: colon)...])
+        } else {
+            return nil
+        }
+        path = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if path.lowercased().hasSuffix(".git") { path.removeLast(4) }
+        guard !path.isEmpty, let web = URL(string: "\(webOrigin)/\(path)") else { return nil }
+        return GitRemoteWebInfo(webURL: web)
     }
 }

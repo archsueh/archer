@@ -80,6 +80,13 @@ protocol TerminalEngine: AnyObject {
     var onSearchEnd: (() -> Void)? { get set }
     var onSearchTotal: ((Int) -> Void)? { get set }
     var onSearchSelected: ((Int) -> Void)? { get set }
+    /// SSH destination pasted files should be uploaded to before their path
+    /// is injected, or nil for plain local paste. Wired by `WorkspaceStore`
+    /// to the session's spawn-pinned `sshWorkspaceHost` — NOT the marker-
+    /// driven `remoteHost` status-bar signal, which the name deliberately
+    /// avoids. The engine asks at paste time instead of caching so tab moves
+    /// across panes/windows can't strand a stale host.
+    var pasteUploadHostProvider: (() -> String?)? { get set }
     /// PID of the foreground process inside the surface. Used only as an
     /// initial/fallback env snapshot before the prompt hook reports live
     /// `VIRTUAL_ENV` / `NVM_BIN`.

@@ -74,4 +74,36 @@ final class GitStatusFetcherTests: XCTestCase {
             "git switch 'fix/corey'\\''s-branch'\r"
         )
     }
+
+    // MARK: - GitRemoteWebInfo (kooky v0.37.0 port)
+
+    func testPreferredRemoteURLPrefersOrigin() {
+        let listing = """
+        upstream\tgit@example.com:other/repo.git (fetch)
+        upstream\tgit@example.com:other/repo.git (push)
+        origin\tgit@github.com:archsueh/archer.git (fetch)
+        origin\tgit@github.com:archsueh/archer.git (push)
+        """
+        XCTAssertEqual(
+            GitRemoteWebInfo.preferredRemoteURL(inRemoteListing: listing),
+            "git@github.com:archsueh/archer.git"
+        )
+    }
+
+    func testParseSCPRemoteURL() {
+        let info = GitRemoteWebInfo.parse(remoteURL: "git@github.com:archsueh/archer.git")
+        XCTAssertEqual(info?.webURL.absoluteString, "https://github.com/archsueh/archer")
+        XCTAssertEqual(info?.forgeName, "GitHub")
+    }
+
+    func testParseHTTPSRemoteURL() {
+        let info = GitRemoteWebInfo.parse(remoteURL: "https://gitlab.com/group/proj.git")
+        XCTAssertEqual(info?.webURL.absoluteString, "https://gitlab.com/group/proj")
+        XCTAssertEqual(info?.forgeName, "GitLab")
+    }
+
+    func testParseRejectsLocalPathRemote() {
+        XCTAssertNil(GitRemoteWebInfo.parse(remoteURL: "/local/path/to/repo"))
+        XCTAssertNil(GitRemoteWebInfo.parse(remoteURL: "file:///tmp/repo"))
+    }
 }
