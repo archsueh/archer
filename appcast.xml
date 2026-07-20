@@ -6,6 +6,28 @@
     <description>Archer release feed</description>
     <language>en</language>
     <item>
+      <title>Archer v1.0.9</title>
+      <pubDate>Mon, 20 Jul 2026 17:33:00 +0800</pubDate>
+      <sparkle:version>1.0.9</sparkle:version>
+      <sparkle:shortVersionString>1.0.9</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>v1.0.9</h2>
+        <ul>
+          <li><b>SSH workspaces</b> — File → New SSH Workspace… / ⌘P pins a workspace to a remote host; tabs and agents launch via archer-ssh; paste uploads to the remote first.</li>
+          <li><b>Keep-awake</b> — Off / Auto / Always dial (closed-lid helper with one-time admin auth).</li>
+          <li><b>Crash black box</b> — Dock launches write stderr to ~/Library/Logs/archer/stderr.log.</li>
+          <li><b>Git repo status pill</b> — open forge / copy URL / Reveal in Finder; status-bar menu load fix.</li>
+          <li><b>Privacy usage descriptions</b> — child processes can prompt for calendar, contacts, camera, etc.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/archsueh/archer/releases/download/v1.0.9/Archer-v1.0.9.dmg"
+        sparkle:edSignature="SkqVRMpf+4xtxE2KsfBohxz4YJgrnfnt7N1/8pGT9fxBQV2MTuXze8IQg4X5gTu4ardZsVZmTggKvZeOGMzdCw=="
+        length="18965036"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Archer v1.0.7</title>
       <pubDate>Sun, 06 Jul 2026 21:45:00 +0800</pubDate>
       <sparkle:version>1.0.7</sparkle:version>
