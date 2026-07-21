@@ -25,7 +25,7 @@
 ## P1 · 功能推进（commit 之后）
 
 - [x] **parallelTaskGroup 结果 Dashboard** — `ParallelGroupDashboardView/WindowController/Controller`; ⌘⇧G / palette / window menu
-- [ ] **Observability timeline** 最小岛已落地但缺数据源验证
+- [x] **Observability timeline** 最小岛已落地并接真实数据源；⌘⇧I / palette / window menu
 - [ ] Skills 视觉对齐 `archer-design-system`（design-system-refactor-plan PR3 一类）
 - [ ] 全量 `swift test` 绿后再谈 release 切片
 
