@@ -871,6 +871,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         case .showAgentBridge:
             // [archer] design bridge.html console — must pass storeProvider
             handleShowAgentBridge()
+        case .showObservability:
+            // [archer] observability timeline entry
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                ObservabilityWindowController.show(
+                    stores: { self.windowControllers.map { $0.store } },
+                    onDrillDown: { _ in }
+                )
+            }
         case .routeTask:
             // [archer] Execution-router advice (distilled from pi-workflow).
             // Prompt for a task description, run ExecutionRouter, show the memo.

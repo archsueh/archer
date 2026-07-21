@@ -69,6 +69,8 @@ enum PaletteItemKind: Hashable {
     /// task description, recommend single / parallel / workflow + role. Advisory
     /// only — archer never coerces routing.
     case routeTask
+    /// [archer] Open Observability window for multi-agent timeline.
+    case showObservability
 }
 
 struct PaletteItem: Identifiable, Hashable {
@@ -167,6 +169,14 @@ enum PaletteIndex {
             subtitle: "paste task → recommend single/parallel/workflow",
             kind: .routeTask,
             symbol: "figure.stand.line.dotted.figure.stand",
+            iconAsset: nil
+        ))
+        items.append(PaletteItem(
+            id: "observability",
+            title: "Observability — multi-agent timeline",
+            subtitle: "multi-agent",
+            kind: .showObservability,
+            symbol: "eye.trianglebadge.exclamationmark",
             iconAsset: nil
         ))
         // [archer] Recent project folders — skip ones already open as a workspace
