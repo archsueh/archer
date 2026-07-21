@@ -729,6 +729,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             selfRow("Sessions", #selector(handleShowSessions), "o", modifiers: [.command, .shift]),
             selfRow("Agent Bridge", #selector(handleShowAgentBridge), "b", modifiers: [.command, .shift]),
             selfRow("Observability", #selector(handleShowObservability), "i", modifiers: [.command, .shift]),
+            selfRow("Parallel Groups", #selector(handleShowParallelGroups), "g", modifiers: [.command, .shift]),
         ])
         mainMenu.addItem(submenu(windowMenu))
 
@@ -879,6 +880,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
                 ObservabilityWindowController.show(
                     stores: { self.windowControllers.map { $0.store } },
                     onDrillDown: { _ in }
+                )
+            }
+        case .showParallelGroups:
+            // [archer] parallel groups dashboard entry
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                ParallelGroupDashboardController.shared.show(
+                    stores: { self.windowControllers.map { $0.store } }
                 )
             }
         case .routeTask:
@@ -1236,6 +1245,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         ObservabilityWindowController.show(
             stores: { [weak self] in self?.windowControllers.map { $0.store } ?? [] },
             onDrillDown: { _ in }
+        )
+    }
+
+    @objc private func handleShowParallelGroups() {
+        // [archer] parallel groups dashboard
+        ParallelGroupDashboardController.shared.show(
+            stores: { [weak self] in self?.windowControllers.map { $0.store } ?? [] }
         )
     }
 

@@ -71,6 +71,8 @@ enum PaletteItemKind: Hashable {
     case routeTask
     /// [archer] Open Observability window for multi-agent timeline.
     case showObservability
+    /// [archer] Open Parallel Groups dashboard.
+    case showParallelGroups
 }
 
 struct PaletteItem: Identifiable, Hashable {
@@ -177,6 +179,14 @@ enum PaletteIndex {
             subtitle: "multi-agent",
             kind: .showObservability,
             symbol: "eye.trianglebadge.exclamationmark",
+            iconAsset: nil
+        ))
+        items.append(PaletteItem(
+            id: "parallel-groups",
+            title: "Parallel Groups — task-group dashboard",
+            subtitle: "multi-agent",
+            kind: .showParallelGroups,
+            symbol: "square.grid.2x2",
             iconAsset: nil
         ))
         // [archer] Recent project folders — skip ones already open as a workspace
