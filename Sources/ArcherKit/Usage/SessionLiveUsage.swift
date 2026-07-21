@@ -2,7 +2,7 @@ import Foundation
 
 // [archer] Per-agent-session cost/token totals for the pane status-bar pill.
 // Folded from UsageRecord rows that share a sessionID — same pricing path as
-// UsageCollector so the pill and Usage panel stay consistent.
+// UsageCollector so live session token fold stays consistent (no Usage window).
 
 /// Snapshot of one agent conversation's cumulative spend. // [archer]
 struct SessionLiveUsage: Equatable {
