@@ -276,13 +276,16 @@ enum ParallelGroupDashboardIndex {
 
     private static func members(for workspace: Workspace, in store: WorkspaceStore) -> [MemberViewModel] {
         let members = store.parallelTaskGroupMembers(groupId: workspace.parallelTaskGroupId!)
-        return members.compactMap { memberWs in
-            guard let tab = memberWs.root.allPanes.first?.tabs.first else { return nil }
-            return MemberViewModel(
-                id: tab.id,
-                tabTitle: tab.title,
-                agentTitle: tab.displayAgent.title
-            )
+        return members.flatMap { ws in
+            ws.root.allPanes.flatMap { pane in
+                pane.tabs.map { tab in
+                    MemberViewModel(
+                        id: tab.id,
+                        tabTitle: tab.title,
+                        agentTitle: tab.displayAgent.title
+                    )
+                }
+            }
         }
     }
 

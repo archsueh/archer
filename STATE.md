@@ -300,3 +300,11 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 - Stage 2 heatmap 收口:`YearHeatmapView` 此前已建但未接入 → `UsageView.body` 加 `heatmapPanel`,数据来自 `UsageViewModel.collectYearlyTokens()`(365 天轻量日聚合,Claude/Hermes SQLite + Grok jsonl,仅 day→sum 驻内存)。
 - `swift test`:**531 tests / 0 failures**(绿)。
 - Next:提交本切片(Usage Gemini 回退 + heatmap 接入 + 测试修正);donut 视图与 MCP/Skill 归因(Stage 3)仍待做;release 流程待跑。
+
+**2026-07-22 · Observability/Dashboard 落地 + 菜单/⌘P 闭环（本切片）**
+
+- **新增**:`Sources/ArcherKit/MultiAgent/ObservabilityView.swift` + `ObservabilityWindowController.swift` + `ParallelGroupDashboardView.swift` + `ParallelGroupDashboardController.swift`
+- **接线**:`CommandPalette` 增加 `showObservability` / `showParallelGroups`；`Window` 菜单 + ⌘⇧I / ⌘⇧G；`AppDelegate.activate(_:)` 接两入口
+- **数据源**:Dashboard 已接 `WorkspaceStore.parallelTaskGroupMembers(groupId:)` + `parallelTaskGroupActivity(groupId:)`
+- **验证**:`swift test` **618/0**；未 push
+- **Next**:Observability 时间线需进一步数据源接入；全量 release 切片待 Tus ⑦ 后再评估
