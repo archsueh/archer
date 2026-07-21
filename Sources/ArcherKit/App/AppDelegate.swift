@@ -728,6 +728,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             selfRow("Cockpit", #selector(handleShowCockpit), "k", modifiers: [.command, .shift]),
             selfRow("Sessions", #selector(handleShowSessions), "o", modifiers: [.command, .shift]),
             selfRow("Agent Bridge", #selector(handleShowAgentBridge), "b", modifiers: [.command, .shift]),
+            selfRow("Observability", #selector(handleShowObservability), "i", modifiers: [.command, .shift]),
         ])
         mainMenu.addItem(submenu(windowMenu))
 
@@ -1228,6 +1229,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     @objc private func handleShowAgentBridge() {
         // [archer] design bridge.html console — roster + log + type/keys/read/handoff
         BridgeConsoleLauncher.open(storeProvider: { [weak self] in self?.activeController?.store })
+    }
+
+    @objc private func handleShowObservability() {
+        // [archer] multi-agent observability timeline
+        ObservabilityWindowController.show(
+            stores: { [weak self] in self?.windowControllers.map { $0.store } ?? [] },
+            onDrillDown: { _ in }
+        )
     }
 
     /// Both resolve purely by session id via `dockTabLocation(for:)` — the
