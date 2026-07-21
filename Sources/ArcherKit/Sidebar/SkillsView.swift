@@ -353,7 +353,7 @@ struct SkillsView: View {
                 .font(Theme.display(24, weight: .semibold))
                 .foregroundStyle(Theme.chromeForeground)
 
-            Text("~/.claude · ~/.agents · ~/.codex · ~/.hermes · ~/.gemini — 触发统计 / 健康检查 / context 预算")
+            Text("~/.claude · ~/.agents · ~/.codex · ~/.hermes · ~/.gemini — 端点数 / 健康检查 / 更新")
                 .font(Theme.mono(11))
                 .foregroundStyle(Theme.chromeMuted)
         }

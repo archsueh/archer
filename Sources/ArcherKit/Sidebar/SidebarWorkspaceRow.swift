@@ -34,11 +34,9 @@ struct SidebarWorkspaceRow: View {
     var onGoToSource: (() -> Void)? = nil
     /// Non-nil on every workspace row — the right-click "Hand off to…"
     /// section spawns a fresh agent tab in *this* workspace's cwd under a
-    /// different agent CLI. It's a new session, not a resume: no shared
-    /// conversation id exists across agents, so the target agent starts
-    /// clean in the same directory. Lets a multi-CLI user throw Grok/Codex
-    /// at a background workspace without leaving the one they're in.
-    var onHandoff: ((AgentTemplate) -> Void)? = nil
+    /// different agent CLI. Optional brief string is the `initialPrompt`
+    /// (same seed path as Parallel Task / Ask). Empty brief = blank tab.
+    var onHandoff: ((AgentTemplate, String?) -> Void)? = nil
 
     /// Coding agents offered as hand-off targets — the same visible set the
     /// `+` tab menu shows, minus shells (handing a directory to a bare
@@ -51,6 +49,9 @@ struct SidebarWorkspaceRow: View {
     @State private var isContextMenuOpen = false
     @State private var isRenameOpen = false
     @State private var pendingRename = ""
+    @State private var isHandoffBriefOpen = false
+    @State private var handoffBrief = ""
+    @State private var pendingHandoffTemplate: AgentTemplate?
 
     var body: some View {
         let readout = workspace.sidebarReadout
@@ -111,7 +112,7 @@ struct SidebarWorkspaceRow: View {
                         onGoToSource()
                     }
                 }
-                if let onHandoff, !handoffTargets.isEmpty {
+                if onHandoff != nil, !handoffTargets.isEmpty {
                     ArcherMenuDivider()
                     ArcherMenuRow(title: "Hand off to…", isDisabled: true) {}
                     ForEach(handoffTargets) { template in
@@ -119,7 +120,10 @@ struct SidebarWorkspaceRow: View {
                             AgentIconView(asset: template.iconAsset, fallbackSymbol: template.symbol, size: 14)
                         } action: {
                             isContextMenuOpen = false
-                            onHandoff(template)
+                            pendingHandoffTemplate = template
+                            handoffBrief = ""
+                            // Defer so the context menu popover finishes dismiss.
+                            DispatchQueue.main.async { isHandoffBriefOpen = true }
                         }
                     }
                 }
@@ -138,6 +142,9 @@ struct SidebarWorkspaceRow: View {
                 onRename(pendingRename)
                 isRenameOpen = false
             }
+        }
+        .popover(isPresented: $isHandoffBriefOpen, arrowEdge: .trailing) {
+            handoffBriefPopover
         }
         .help(workspace.workingDirectory.path)
         .onChange(of: workspace.renameRequested) { _, requested in
@@ -172,6 +179,56 @@ struct SidebarWorkspaceRow: View {
         } else {
             isRenameOpen = true
         }
+    }
+
+    /// Optional brief for Hand off — empty is valid (opens a blank agent tab).
+    @ViewBuilder
+    private var handoffBriefPopover: some View {
+        let template = pendingHandoffTemplate
+        VStack(alignment: .leading, spacing: 10) {
+            Text(template.map { "HAND OFF · \($0.title.uppercased())" } ?? "HAND OFF")
+                .font(Theme.mono(10, weight: .semibold))
+                .tracking(1.2)
+                .foregroundStyle(Theme.chromeMuted)
+            Text("Optional brief becomes the agent’s initial prompt. Leave empty for a blank tab.")
+                .font(Theme.mono(10.5))
+                .foregroundStyle(Theme.chromeFaint)
+                .fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: $handoffBrief)
+                .font(Theme.mono(12))
+                .foregroundStyle(Theme.chromeForeground)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 88, maxHeight: 140)
+                .padding(8)
+                .background(Theme.chromeHover)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(Theme.chromeHairline, lineWidth: 1)
+                )
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                BracketButton("cancel") {
+                    isHandoffBriefOpen = false
+                    pendingHandoffTemplate = nil
+                    handoffBrief = ""
+                }
+                BracketButton("hand off") {
+                    guard let template, let onHandoff else {
+                        isHandoffBriefOpen = false
+                        return
+                    }
+                    let trimmed = handoffBrief.trimmingCharacters(in: .whitespacesAndNewlines)
+                    isHandoffBriefOpen = false
+                    pendingHandoffTemplate = nil
+                    handoffBrief = ""
+                    onHandoff(template, trimmed.isEmpty ? nil : trimmed)
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 320)
+        .background(Theme.chromeBackground)
+        .preferredColorScheme(Theme.chromeColorScheme)
     }
 
     private func fullBody(agents: [AgentTemplate], dotColor: Color?) -> some View {
@@ -274,12 +331,11 @@ struct SidebarWorkspaceRow: View {
         if let branch = workspace.worktreeBranch, !branch.isEmpty {
             // Worktree row's brand mark — a solid-filled rounded square
             // with the branch glyph reverse-cut in `chromeBackground`.
-            // The solid-fill-over-tint approach reads cleanly against
-            // both light and dark themes (no opacity haze on the glyph)
-            // and gives the worktree row the same visual weight a tab
-            // pill carries — distinct from source rows without needing
-            // an extra column or stripe.
-            subtitleBadge(glyph: "arrow.triangle.branch", glyphSize: 6, text: branch)
+            // Parallel Task siblings also get a "∥" prefix when tagged.
+            let label = workspace.parallelTaskGroupId == nil
+                ? branch
+                : "∥ \(branch)"
+            subtitleBadge(glyph: "arrow.triangle.branch", glyphSize: 6, text: label)
         } else if let host = workspace.sshRemoteHost {
             // SSH workspace — same badge language, network glyph. The host
             // replaces the local path: these tabs live on the remote.

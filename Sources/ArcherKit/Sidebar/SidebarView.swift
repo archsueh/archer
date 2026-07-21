@@ -274,6 +274,17 @@ struct MemoryBankSection: View {
                     newMemo()
                 }
                 .opacity(0.7)
+                HoverableIconButton(systemName: showGraph ? "circle.hexagongrid.fill" : "circle.hexagongrid", fontSize: 10, size: 18, help: L10n.string("Relation network")) {
+                    withAnimation(.easeOut(duration: 0.15)) { showGraph.toggle() }
+                }
+                .opacity(showGraph ? 1 : 0.55)
+                HoverableIconButton(systemName: semanticOn ? "magnifyingglass.circle.fill" : "magnifyingglass.circle", fontSize: 10, size: 18, help: L10n.string("Semantic search (local)")) {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        semanticOn.toggle()
+                        if semanticOn { try? semanticIndex.refresh(graph: graph) }
+                    }
+                }
+                .opacity(semanticOn ? 1 : 0.55)
             }
             .padding(.horizontal, Theme.space2)
             .padding(.vertical, 5)
@@ -305,6 +316,46 @@ struct MemoryBankSection: View {
                                     memoRow(memo, dimmed: true)
                                 }
                             }
+                            // 4) Relation network (mem0-inspired graph memory) — opt-in subview.
+                            if showGraph {
+                                sectionHeader(L10n.string("Relation network"), count: relations.count)
+                                ForEach(relations, id: \.id) { rel in
+                                    relationRow(rel)
+                                }
+                            }
+                            // 5) Semantic search results (local-first, degrades to Jaccard).
+                            if semanticOn {
+                                HStack(spacing: Theme.space1) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(Theme.chromeForeground.opacity(0.4))
+                                    TextField(L10n.string("Search memory"), text: $searchQuery)
+                                        .textFieldStyle(.plain)
+                                        .font(Theme.mono(10))
+                                        .foregroundStyle(Theme.chromeForeground.opacity(0.85))
+                                }
+                                .padding(.horizontal, Theme.space3)
+                                .padding(.vertical, 3)
+                                ForEach(semanticResults, id: \.id) { r in
+                                    HStack(spacing: Theme.space1) {
+                                        Text("•")
+                                            .font(Theme.mono(8))
+                                            .foregroundStyle(Theme.chromeForeground.opacity(0.3))
+                                        Text(r.title)
+                                            .font(Theme.mono(10))
+                                            .foregroundStyle(Theme.chromeForeground.opacity(0.8))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                        Spacer(minLength: 0)
+                                        Text(String(format: "%.2f", r.score))
+                                            .font(Theme.mono(8))
+                                            .foregroundStyle(Theme.chromeForeground.opacity(0.35))
+                                    }
+                                    .padding(.horizontal, Theme.space3)
+                                    .padding(.vertical, 2)
+                                    .onTapGesture { copyToPasteboard("[[\(r.title)]]") }
+                                }
+                            }
                         }
                         .padding(.horizontal, Theme.space2)
                         .padding(.vertical, Theme.space1)
@@ -315,11 +366,69 @@ struct MemoryBankSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.vertical, 2)
-        .onAppear { ensureMemoryDir(); graph = MemoryGraph(directory: memoryDir); graph.build() }
-        .onChange(of: focusedField) { _, _ in graph.build() }
+        .onAppear {
+            ensureMemoryDir()
+            graph = MemoryGraph(directory: memoryDir)
+            graph.build()
+            rebuildExtensions()
+        }
+        .onChange(of: focusedField) { _, _ in
+            graph.build()
+            rebuildExtensions()
+        }
+        .alert(L10n.string("Memory conflict"), isPresented: Binding(
+            get: { !dedupConflicts.isEmpty },
+            set: { if !$0 { dedupConflicts = []; pendingMemoTitle = nil } }
+        )) {
+            Button(L10n.string("Cancel"), role: .cancel) {
+                dedupConflicts = []
+                pendingMemoTitle = nil
+            }
+            Button(L10n.string("Create anyway"), role: .destructive) {
+                if let title = pendingMemoTitle { commitNewMemo(title) }
+                dedupConflicts = []
+                pendingMemoTitle = nil
+            }
+        } message: {
+            let top = dedupConflicts.first
+            Text("\(L10n.string("Similar existing memory")): \(top?.existingTitle ?? "")\n\(top?.reason ?? "")")
+        }
+    }
+
+    /// Rebuild the mem0-inspired extensions after the graph changes.
+    private func rebuildExtensions() {
+        entityGraph = MemoryEntityGraph(graph: graph)
+        semanticIndex = MemorySemanticIndex(directory: memoryDir, provider: OllamaEmbeddingProvider())
+        if semanticOn {
+            try? semanticIndex.refresh(graph: graph)
+        }
     }
 
     @State private var isExpanded = true
+
+    /// mem0-inspired extensions (offline, no LLM, manual-curation only):
+    /// Entity-relation graph derived from the current memory graph.
+    @State private var entityGraph = MemoryEntityGraph(graph: MemoryGraph(directory: FileManager.default.temporaryDirectory))
+    /// Show the relation-network subview.
+    @State private var showGraph = false
+    /// Opt-in semantic search (local-first; degrades to Jaccard when Ollama off).
+    @State private var semanticOn = false
+    @State private var searchQuery = ""
+    @State private var semanticIndex = MemorySemanticIndex(directory: FileManager.default.temporaryDirectory, provider: OllamaEmbeddingProvider())
+    /// Pending dedup conflict (from MemoryDedup) awaiting human confirmation.
+    @State private var dedupConflicts: [DedupMatch] = []
+    @State private var pendingMemoTitle: String?
+
+    /// Ranked relations for the relation-network subview.
+    private var relations: [MemoryRelation] {
+        entityGraph.relations(limit: 40, minWeight: 0)
+    }
+
+    /// Semantic search results (cosine when provider up, else Jaccard degrade).
+    private var semanticResults: [ScoredMemo] {
+        guard !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        return semanticIndex.search(searchQuery, limit: 8, graph: graph)
+    }
 
     // MARK: - Rows
 
@@ -373,13 +482,51 @@ struct MemoryBankSection: View {
         .padding(.vertical, 2)
     }
 
+    private func relationRow(_ rel: MemoryRelation) -> some View {
+        HStack(spacing: Theme.space1) {
+            Image(systemName: rel.kind == .linksTo ? "link"
+                : rel.kind == .sharesTag ? "tag" : "waveform")
+                .font(.system(size: 8))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.35))
+            Text(rel.from.replacingOccurrences(of: "tag:", with: "#"))
+                .font(Theme.mono(9))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.7))
+            Image(systemName: "arrow.right")
+                .font(.system(size: 7))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.3))
+            Text(rel.to.replacingOccurrences(of: "tag:", with: "#"))
+                .font(Theme.mono(9))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.7))
+            Spacer(minLength: 0)
+            Text(String(format: "%.2f", rel.weight))
+                .font(Theme.mono(8))
+                .foregroundStyle(Theme.chromeForeground.opacity(0.3))
+        }
+        .padding(.horizontal, Theme.space3)
+        .padding(.vertical, 2)
+    }
+
     // MARK: - Actions
 
     /// A-mem style new memo: atomic note with a `[[ ]]` placeholder and a
     /// #tag slot so the graph grows by explicit linking, not auto-capture.
+    /// Before writing, a deterministic dedup check (mem0-inspired) surfaces
+    /// conflicts; the human curator confirms rather than auto-merging.
     private func newMemo() {
         let stamp = ISO8601DateFormatter().string(from: Date()).prefix(19).replacingOccurrences(of: ":", with: "")
         let title = "memo-\(stamp)"
+        let candidate = MemoCandidate(title: title, tags: [], links: [], body: "")
+        let conflicts = MemoryDedup(graph: graph).check(candidate)
+        if let blocking = conflicts.first(where: { $0.verdict == .discard || $0.verdict == .merge }) {
+            dedupConflicts = conflicts
+            pendingMemoTitle = title
+            return
+        }
+        commitNewMemo(title)
+    }
+
+    /// Actually write the memo file and refresh.
+    private func commitNewMemo(_ title: String) {
         let url = memoryDir.appendingPathComponent("\(title).md")
         let template = """
         # \(title)
@@ -396,6 +543,7 @@ struct MemoryBankSection: View {
         """
         try? template.write(to: url, atomically: true, encoding: .utf8)
         graph.build()
+        rebuildExtensions()
         copyToPasteboard("[[\(title)]]")
     }
 
@@ -583,7 +731,10 @@ struct SidebarView: View {
                     onDuplicate: { store.duplicateWorkspace(worktree) },
                     onRename: { store.renameWorkspace(worktree, to: $0) },
                     onGoToSource: { store.activateWorkspace(parent) },
-                    onHandoff: { store.activateWorkspace(worktree); store.addTab(in: worktree, template: $0) }
+                    onHandoff: { template, brief in
+                        store.activateWorkspace(worktree)
+                        _ = try? store.openAgentTab(agentId: template.id, prompt: brief, in: worktree)
+                    }
                 )
             }
         }
@@ -888,7 +1039,10 @@ private struct SectionView: View {
                             onDuplicate: { store.duplicateWorkspace(worktree) },
                             onRename: { store.renameWorkspace(worktree, to: $0) },
                             onGoToSource: { onGoToSource(workspace) },
-                            onHandoff: { onActivate(worktree); store.addTab(in: worktree, template: $0) }
+                            onHandoff: { template, brief in
+                                onActivate(worktree)
+                                _ = try? store.openAgentTab(agentId: template.id, prompt: brief, in: worktree)
+                            }
                         )
                     }
                 }
@@ -961,15 +1115,22 @@ private struct DraggableWorkspaceRow: View {
             onCreateWorktree: onCreateWorktree,
             onParallelTask: onParallelTask,
             onGoToSource: onGoToSource,
-            onHandoff: { store.activateWorkspace(workspace); store.addTab(in: workspace, template: $0) }
+            onHandoff: { template, brief in
+                store.activateWorkspace(workspace)
+                _ = try? store.openAgentTab(agentId: template.id, prompt: brief, in: workspace)
+            }
         )
         .dropIndicator(active: isTargeted && !isSelfDrag, on: edge)
         .onDrag {
             draggingId = workspace.id
+            store.draggingWorkspaceId = workspace.id
             return NSItemProvider(object: workspace.id.uuidString as NSString)
         }
         .dropDestination(for: String.self) { dropped, _ in
-            defer { draggingId = nil }
+            defer {
+                draggingId = nil
+                store.draggingWorkspaceId = nil
+            }
             guard let id = dropped.first.flatMap(UUID.init),
                   let from = store.workspaces.firstIndex(where: { $0.id == id })
             else { return false }
