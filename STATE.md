@@ -22,6 +22,7 @@
 - **更新器 = Sparkle 2.9.4**(`2b7d20a`):`SPUUpdater` + 自定义 `ArcherUpdateUserDriver`/`UpdateFlowController`(保 glass 样式);仅手动检查(`SUEnableAutomaticChecks=false`),feed URL 由 `build-app.sh` 注入 Info.plist。旧 `UpdateChecker.swift`(GitHub releases API)已删。
 - **定价 = PricingProvider**(`9dc0bc9`):`Usage/PricingProvider.swift` 单一定价源(models.dev 动态 + 内置兜底),`UsageCollector`/`UsageView` 两处硬编码定价表已收敛。
 - **Memory 面板 A-mem 化(2026-07-09)**:`Sidebar/MemoryGraph.swift`(纯 Swift/Foundation,零依赖) + `SidebarView.MemoryBankSection` 重写。取代原傻瓜文件列表:解析 `[[wikilink]]`(支持 `[[T|alias]]`)与 `#tag`(先剥 ``` / `` 代码块),建前向/反向链接网络,按连接度(枢纽)排序、标签聚类、孤立项分组;`+` 按钮生成含 `[[ ]]` 占位与 `#记忆` 槽的原子 memo 模板,点击任意行复制 `[[标题]]` 供手动连网。**不自动改写文件、不引入 LLM**——贴合"人工高信噪策展 > 自动全量捕获"哲学。测试 `MemoryGraphTests` ×7 全绿;全量 529/0。memo 目录 `~/Library/Application Support/Archer/memory/claude/<branch>/`(原目录,内容为空时不显示)。
+- **mem0 灵感增强(2026-07-20,路径③原生 Swift 重实现)**:在 MemoryGraph 上落地三模块,纯 Foundation 零依赖无 LLM,不移植 mem0 栈——①`Sidebar/MemoryEntityGraph.swift`:实体-关系图(memo+tag 节点;linksTo/sharesTag/similar 三边,similar 用正文 Jaccard 超阈值建边);②`Sidebar/MemoryDedup.swift`:新建 memo 前确定性去重校验(标题冲突→discard / tag+link 一致→merge / 正文 Jaccard≥0.85→merge / 0.6–0.85→keep+警告),只返回建议不自动改文件;③`Sidebar/MemorySemanticSearch.swift`:可选 opt-in 语义检索,本地优先——Ollama 可达用嵌入余弦,否则降级 Jaccard,缓存落 `.memsem.json`,失败吞掉不报错。三者均带测试:`MemoryEntityGraphTests`×6 / `MemoryDedupTests`×5 / `MemorySemanticSearchTests`×5,共 16/0 绿。`MemoryBankSection` 已接:关系网络开关(hexagongrid 图标)、语义搜索开关(magnifyingglass 图标+搜索框+结果)、新建 memo 前调 Dedup 弹确认。哲学冲突规避:只采纳 mem0「结构」(图/去重/检索),不采纳「自动 ingest」。
 - **项目规则发现(2026-07-09,借 orbiteditor `.cursor/rules` 思路)**:`Sidebar/ProjectRulesSection.swift` 只读扫描当前 workspace 根的 `.archer/rules/*.md`,在侧边栏 Tool 区列出,点击复制 `@<绝对路径>` 供手动引用到 prompt。**不自动注入 agent system prompt、不改 agent 启动环境**——守 STATE §4 隔离边界 + 人工策展哲学。测试 `ProjectRulesSectionTests` ×3 全绿;全量 535/0。
 - **本地发布产物**:`./scripts/build-app.sh` → `dist/Archer.app` v1.0.7(adhoc 签名),已覆盖 `/Applications/Archer.app`(quarantine 已清);`dist/Archer-v1.0.7.dmg`(10M)。
 - **Skills/Usage 假数据闭环修复(2026-07-10)**:Skills 面板原 `seedTriggerInfo`(用 `name.hashValue % 6` 伪造"45 天触发/活跃数")已删;改为真实信号——`endpointCount`(跨端副本数,group pass 填 `max(1, presence.count)`)、`lastModified`(SKILL.md 真实 mtime)、`isSymlink`(relay 检测);`calculateStats` 活跃数=近 45 天 mtime 修改;表头/排序/行内/状态色"触发"→"端点数/修改时间"。Usage 面板 Claude 栏原写死假值(`getUsagePercentages` 返回 68/41、`resetsAt==nil` 显示"重置 14:30 · 1h 12m"/"重置 周一 09:00 · 3 天后")已改:`usage==nil` 返回可选 nil → Claude 面板显示"未连接 Anthropic 用量"空态 + `viewModel.error` 真实原因;`resetsAt==nil` 显示"重置时间未知"。实测 `~/.claude/skills` 210 个、skills.sh API 200、ai-workflow tree 200(安装/relay/更新闭环本来就通);`~/.claude/usage.db` 不存在 → Claude 栏走未连接态(符合预期)。Hermes/Grok 栏数据源(state.db/unified.jsonl)本就真实,仅修"基于最近 of API 会话统计"→"基于本地 state.db 会话统计"措辞。参考 yibie/skills-manager(原生 macOS 竞品,其 `Skill` 模型无 trigger 概念,只有 `isInstalled`/`compatibleAgents`,印证方向)。全量 535/0。
@@ -64,9 +65,9 @@ C 已落地勿重做= session-recorder、UnifiedListener、MemoryGraph、sniffer
 
 **Heartbeat L1（已入库 `d531d31`）**: `loop/` 骨架齐。**未做** L2+（cron / trust.tsv / goals 日验 / auto Installer）。
 
-**WIP 勿卷（他 agent）**: SleepGuard/ClosedLidSleep/CrashForensics + MemoryEntityGraph/MemorySemanticSearch 未提交且破 build — 勿与 ssh-workspace 混提。
+**WIP 勿卷（他 agent）**: SleepGuard/ClosedLidSleep/CrashForensics 未提交且破 build — 勿与 ssh-workspace 混提。mem0 三模块（MemoryEntityGraph/MemoryDedup/MemorySemanticSearch）已提交态、build 绿、已接 MemoryBankSection，不在此列。
 
-**Usage 线**:面板/session cost pills 已在 `10d952b` 移除。
+**Usage 线**:面板/session cost pills 已在 `10d952b` 移除。**2026-07-22 确认：Usage 窗不需要、不恢复**（Cockpit 假 Usage 入口已删；design `usage-dashboard` / PR4 作废）。`Usage/` 采集库仅供 Sessions 等只读。
 
 _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
@@ -85,6 +86,82 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 ---
 
 ## 5. Last session(stage 5 — resume,别 restart)
+
+**2026-07-22 · 工作日志 + TODO 落盘 · 交接 Hermes（Grok）**
+
+- **今日日志**: [`docs/worklogs/2026-07-22.md`](docs/worklogs/2026-07-22.md)
+- **活 TODO**: [`docs/TODO.md`](docs/TODO.md)（P0 T0–T5 / P1–P3 / 已完成 / 明确不做）
+- **Handoff**: [`docs/claude-handoffs/2026-07-22-bridge-console-to-hermes.md`](docs/claude-handoffs/2026-07-22-bridge-console-to-hermes.md)
+- **状态**: Bridge 指挥台 + @label handoff + parallel `∥` **代码齐、测绿、未 commit**；Memory* **勿混提**。
+- **Usage 窗**: 取消、不恢复。
+- **Next（Hermes）**: 按 `docs/TODO.md` P0 执行。
+
+**2026-07-22 · Skeptic 终验 + Usage 窗确认取消（Grok）**
+
+- **Skeptic 三项（现树逐条 + 测）**:
+  1. `BridgeActivityBar` L10 `let store`；L57–59 / L92–93 ↗ → `BridgeConsoleLauncher.open(store: store)`
+  2. `ContentView` L142 `BridgeActivityBar(store: store)`
+  3. `LogPanelWindowController.show(storeProvider:)` 必填；Sources 仅 launcher 两处 `show(storeProvider:)`；**0** bare `show()`
+- **回归**: `swift test --filter 'BridgeActionTests|BridgeHandoffTests'` → **13 XCT / 0 failures**
+- **Usage 窗**: 不恢复；采集库保留只读
+- **未 commit**（Memory* 勿混）
+
+**2026-07-22 · Bridge 指挥台 + roster + storeProvider 修复（Grok）**
+
+- **落地**:
+  - `BridgeConsoleView` + `BridgeAction`（design bridge.html）
+  - Window → **Agent Bridge** ⌘⇧B；`BridgeActivityBar(store:)` ↗ 必带 store
+  - `BridgeConsoleView.refreshLabels`：**无 store 时不 `sync(nil)`**（防清 registry）
+  - `AgentRosterStrip` 主窗顶 live `@labels`
+  - Usage 窗取消；Cockpit 假 Usage 删
+- **Workspace→tab 拖放**: `handleChromeDrop` / droptip「drop to open agent tab」
+- **Pane driven 描边**: active tab 有 `drivenByLabel` 时 running 色 inset ring
+- **parallelTaskGroup 起步**: `Workspace.parallelTaskGroupId` + launch 打标 + 侧栏 `∥ branch`
+
+**2026-07-21 · @label 桥接路线跑通（Grok）**
+
+- **产品立场**：桥 = `@label` 寻址，不是中央 chat room。
+- **落地**:
+  - `PaneRegistry`：登记**全部** non-shell tabs；`normalizeLabel` / `at` / `label(for:)`；`@` 前缀
+  - `Session.drivenByLabel`；`openAgentTab` 自动从来源 active tab 或 `from` 写入
+  - Tab：显示 registry `@label` + `←@source` 徽章
+  - Bridge 日志：`type → @x` / `handoff @a → @b · …`
+  - CLI：所有 label/agent 参数 strip `@`
+- **验证**: `swift build` 绿；相关测 15/0；全量见会话
+- **未 commit**（仍有 Memory* WIP 勿混）
+- **Next**: 手测 live handoff；Skills 视觉 PR（**无** Usage）；可选 commit 本切片
+
+**2026-07-21 · Bridge handoff 写路径闭环（Grok）**
+
+- **本切片**: `openAgentTab` + Bridge `handoff`/`open`/`agents` + CLI + GUI Hand off brief。
+- **落地**:
+  - `WorkspaceStore.openAgentTab(agentId:prompt:strictVisible:)` — 与 Parallel Task 同 seed 路径
+  - `BridgeServer`：`handoff` / `open` / `agents`；事件进 `BridgeEventLog`
+  - `archer-bridge handoff|open|agents`（`Sources/ArcherBridge/main.swift`）
+  - 侧栏 Hand off → brief popover → `openAgentTab`（三处 SidebarView 接线）
+  - 测：`BridgeHandoffTests`×4 + `WorkspaceStoreTests` openAgentTab×4
+- **验证**: `swift build` 绿；`swift test` 全绿（见会话输出）
+- **未 commit**。勿与 Memory* WIP 混提。
+- **Next**:
+  1. 手测 live：`archer-bridge handoff hermes --prompt "…"`（需 custom hermes id 与 settings 一致）
+  2. PR3/4 Skills/Usage 视觉；可选 multi-agent label 后缀与 registry 完全对齐
+  3. commit 切片：Bridge* / WorkspaceStore openAgentTab / Sidebar handoff / TabBar @label / docs
+
+**2026-07-21 · Design 视觉系统开干 + Bridge bar / @label（Grok）**
+
+- **判定执行**（用户「你来判定」）：整包视觉 = 分 PR；本切片 = PR0 文档 + PR1 局部 + PR2 活动条。
+- **冻结**：设计真源 `~/Downloads/archer-old-0357fb47`；不整仓复制；handoff wire 下一刀；Cockpit 暂留。
+- **落地**:
+  - `docs/design-tokens-matrix.md` + plan 状态更新
+  - `TabBarItem` 非 shell 显示 `@agentId`（Bridge 可寻址）
+  - `BridgeActivityBar` + `ContentView.mainPane` 接 `BridgeEventLog.shared`
+  - 顺手：`ExecutionRouter.swift` `scoreWorkflowFit(t:)` 标签错导致破 build（WIP 文件，最小修）
+- **验证**: `swift build` 绿；`swift test` **592 XCT + 7 Swift Testing / 0 fail**
+- **未 commit**；未 push。工作树仍有 Memory* / AppDelegate 等无关 WIP — 提交时勿混。
+- **Next**:
+  1. 手测：开 Archer → agent tab 见 `@…`；`archer-bridge type` 后 bar 出事件
+  2. `docs/bridge-handoff-project.md` Phase 0–2（openAgentTab + CLI handoff）
+  3. PR3/4 Skills/Usage 视觉（另会话）
 
 **2026-07-20 · v1.0.9 kooky port + release（Grok）**
 

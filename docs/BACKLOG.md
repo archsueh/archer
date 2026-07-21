@@ -12,9 +12,9 @@
 | 1 | ~~worktree 残余~~ | §worktree | **①② 均已落地**（合并回主树 + 跨 worktree diff 汇总） |
 | 2 | ~~边缘活动辉光（EdgeGlow）~~ | §边缘活动辉光 | **P1/P2 已落地**（代码 + Settings + 单测）；P3 marquee 仍待「running 持续态」 |
 | 3 | workspace-template（`.archer-workspace.yml`） | §tmux-ide | 仅 SDD |
-| 4 | 并行任务结果聚合（`parallelTaskGroup`） | §orbiteditor 思路 A | 仅 SDD（思路 B 已落地 `770194b`） |
-| 5 | agent-interop-layer（`AgentSessionProvider`） | §lemma 思路 A | 仅 SDD（showagent 桥 `ebb8d97` 已落地） |
-| 6 | kooky：~~filetree git diff badges~~；ssh-workspace | §kooky | **badges 已落地**；ssh-workspace 仍仅 SDD（Recent folders `1790455`） |
+| 4 | 并行任务结果聚合（`parallelTaskGroup`） | §orbiteditor 思路 A | **部分落地 2026-07-22**：`Workspace.parallelTaskGroupId` + 侧栏 `∥` 标记 + `parallelTaskGroupMembers/Activity`；结果 Dashboard 汇总仍待 |
+| 5 | agent-interop-layer（`AgentSessionProvider`） | §lemma 思路 A | 仅 SDD（showagent 桥 `ebb8d97` 已落地；Bridge `@label` 指挥台 2026-07-22） |
+| 6 | kooky：~~filetree git diff badges~~；~~ssh-workspace~~ | §kooky | **badges + ssh-workspace 已落地**（v1.0.9 `bf1b9b6`） |
 
 ### B. 可选增强（未排期）
 

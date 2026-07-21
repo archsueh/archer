@@ -54,6 +54,10 @@ final class Workspace: Identifiable {
     /// Captured at creation; the pane status bar still owns the live branch
     /// readout if the user checks out something else inside the worktree.
     var worktreeBranch: String?
+    /// Shared when created by Parallel Task — siblings share one id so the
+    /// sidebar can show a "∥ parallel" chip and later aggregate exit state.
+    /// Runtime-only (not in PersistedWorkspace); cleared if never set.
+    var parallelTaskGroupId: UUID?
     /// Disk root of this worktree, captured at creation. Distinct from
     /// `workingDirectory` because the latter follows OSC 7 cwd reports —
     /// `cd ~/Downloads` inside a worktree tab drifts `workingDirectory`

@@ -134,8 +134,12 @@ struct ContentView: View {
     private var mainPane: some View {
         VStack(spacing: 0) {
             if let workspace = store.active {
+                // [archer] Design interface.html `.agent-strip` (hides when no agents)
+                AgentRosterStrip(store: store)
                 PaneTreeView(node: workspace.root, workspace: workspace, store: store)
                     .id(workspace.id)
+                // [archer] Design interface.html `.bridgebar` — live BridgeEventLog
+                BridgeActivityBar(store: store)
             } else {
                 Color.clear
             }

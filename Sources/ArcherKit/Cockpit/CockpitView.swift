@@ -90,8 +90,8 @@ struct CockpitView: View {
 
             Divider().background(Theme.chromeHairline)
 
+            // Skills only — Usage panel was removed (10d952b); do not reintroduce.
             sidebarFooterItem("Skills", icon: "wand.and.stars")
-            sidebarFooterItem("Usage", icon: "chart.bar.xaxis")
         }
         .frame(width: 200)
     }

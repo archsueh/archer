@@ -9,6 +9,7 @@ struct TabBarView: View {
     let store: WorkspaceStore
 
     @State private var isAddMenuOpen = false
+    @State private var workspaceDropTargeted = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -37,11 +38,38 @@ struct TabBarView: View {
                 NSApplication.shared.keyWindow?.performZoom(nil)
             }
 
+            if store.draggingWorkspaceId != nil || workspaceDropTargeted {
+                Text("drop to open agent tab")
+                    .font(Theme.mono(10.5))
+                    .foregroundStyle(Theme.activityRunning)
+                    .padding(.trailing, 8)
+                    .transition(.opacity)
+            }
+
             // Split controls pinned to the trailing edge — outside the
             // ScrollView so they stay put while the tabs scroll.
             splitButtons
         }
         .frame(height: 40)
+        .background(
+            (store.draggingWorkspaceId != nil || workspaceDropTargeted)
+                ? Theme.activityRunning.opacity(0.08)
+                : Color.clear
+        )
+        .dropDestination(for: String.self) { dropped, _ in
+            guard let raw = dropped.first else { return false }
+            return withAnimation(.easeInOut(duration: 0.18)) {
+                store.handleChromeDrop(raw, to: pane, at: pane.tabs.count, in: workspace)
+            }
+        } isTargeted: { workspaceDropTargeted = $0 }
+        // Keep @labels current for tab chrome + bridge addressing.
+        .onAppear { PaneRegistry.shared.sync(workspace: workspace) }
+        .onChange(of: pane.tabs.count) { _, _ in
+            PaneRegistry.shared.sync(workspace: workspace)
+        }
+        .onChange(of: pane.activeTabId) { _, _ in
+            PaneRegistry.shared.sync(workspace: workspace)
+        }
     }
 
     /// Split-right / split-down buttons. Mirror ⌘D / ⌘⇧D exactly: Split
@@ -184,10 +212,9 @@ private struct AddTabButton: View {
             }
         }
         .dropDestination(for: String.self) { dropped, _ in
-            defer { store.draggingTabId = nil }
-            guard let id = dropped.first.flatMap(UUID.init) else { return false }
+            guard let raw = dropped.first else { return false }
             return withAnimation(.easeInOut(duration: 0.18)) {
-                store.handleTabDrop(droppedId: id, to: pane, at: pane.tabs.count, in: workspace)
+                store.handleChromeDrop(raw, to: pane, at: pane.tabs.count, in: workspace)
             }
         } isTargeted: { isTargeted = $0 }
     }
@@ -236,10 +263,9 @@ private struct DraggableTabRow: View {
             return NSItemProvider(object: tab.id.uuidString as NSString)
         }
         .dropDestination(for: String.self) { dropped, _ in
-            defer { store.draggingTabId = nil }
-            guard let id = dropped.first.flatMap(UUID.init) else { return false }
+            guard let raw = dropped.first else { return false }
             return withAnimation(.easeInOut(duration: 0.18)) {
-                store.handleTabDrop(droppedId: id, to: pane, at: myIndex, in: workspace)
+                store.handleChromeDrop(raw, to: pane, at: myIndex, in: workspace)
             }
         } isTargeted: { isTargeted = $0 }
     }

@@ -101,6 +101,11 @@ final class Session: Identifiable {
     /// conversation — `ARCHER_SURFACE_ID` already routes hook payloads to
     /// the correct Session, so multi-tab Claude users don't cross-attribute.
     var conversationId: String?
+
+    /// Bridge `@label` of the agent that handed this tab off (without `@`),
+    /// e.g. `"grok"` or `"claude-code"`. Set by `openAgentTab` / Hand off;
+    /// runtime-only, not persisted. GUI shows `←@source` on the tab.
+    var drivenByLabel: String?
     /// Exit status of the most recent command — populated from libghostty's
     /// `OSC 133;D` event. `nil` until the shell reports its first finish (or
     /// when it omits the exit field). Not persisted: each launch starts fresh.

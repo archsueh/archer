@@ -25,6 +25,27 @@ struct TabBarItem: View {
             Text(tab.title)
                 .font(Theme.display(12, weight: .regular))
                 .lineLimit(1)
+            // [archer] Bridge @label addressing — registry label (e.g. @codex-2)
+            // when multi-instance; shell tabs stay clean.
+            if !tab.displayAgent.isShell {
+                Text(PaneRegistry.at(bridgeLabel))
+                    .font(Theme.mono(10.5))
+                    .foregroundStyle(Theme.activityRunning)
+                    .lineLimit(1)
+                    .help("Bridge address · archer-bridge type \(PaneRegistry.at(bridgeLabel)) …")
+                if let src = tab.drivenByLabel, !src.isEmpty {
+                    Text("←\(PaneRegistry.at(src))")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.activityRunning)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .strokeBorder(Theme.activityRunning.opacity(0.45), lineWidth: 1)
+                        )
+                        .help("Handed off from \(PaneRegistry.at(src))")
+                }
+            }
             HoverableIconButton(
                 systemName: "xmark",
                 fontSize: 9,
@@ -124,6 +145,11 @@ struct TabBarItem: View {
         if isActive { return Theme.chromeActive }
         if isHovered { return Theme.chromeHover }
         return .clear
+    }
+
+    /// Live PaneRegistry label when synced; falls back to template id.
+    private var bridgeLabel: String {
+        PaneRegistry.shared.label(for: tab) ?? tab.displayAgent.id
     }
 
     /// Shows only on non-zero exit. Successful runs intentionally leave the

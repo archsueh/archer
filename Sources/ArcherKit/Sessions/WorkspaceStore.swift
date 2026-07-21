@@ -66,6 +66,9 @@ final class WorkspaceStore {
     /// all `TabBarView` instances so target panes can show drop indicators
     /// even when the source lives in a different pane.
     var draggingTabId: UUID?
+    /// Sidebar workspace row drag — tab bar shows "drop to open agent tab"
+    /// (design interface.html droptip). Cleared on drop / drag end.
+    var draggingWorkspaceId: UUID?
 
     var sidebarMode: SidebarMode = .full
     /// Right-side agent-overview sidebar — per-window collapse state, sharing
@@ -367,6 +370,8 @@ final class WorkspaceStore {
         }
         let parentDir = repoPath.deletingLastPathComponent()
         let repoName = repoPath.lastPathComponent
+        // One group id for this launch — sidebar "∥ parallel" chip + later aggregation.
+        let groupId = UUID()
         for slot in request.agents {
             let branchName = slot.branchName.trimmingCharacters(in: .whitespacesAndNewlines)
             let dirName = WorktreeManager.defaultDirectoryName(sourceName: repoName, branch: branchName)
@@ -377,15 +382,37 @@ final class WorkspaceStore {
             }.value
             if case let .failure(err) = result { return err.description }
             let prompt = slot.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-            addWorkspace(
+            let ws = addWorkspace(
                 workingDirectory: path,
                 worktreeParent: source,
                 worktreeBranch: branchName,
                 template: request.template,
                 initialPrompt: prompt.isEmpty ? nil : prompt
             )
+            ws.parallelTaskGroupId = groupId
         }
         return nil
+    }
+
+    /// Workspaces that share a Parallel Task group id (same launch).
+    func parallelTaskGroupMembers(groupId: UUID) -> [Workspace] {
+        workspaces.filter { $0.parallelTaskGroupId == groupId }
+    }
+
+    /// Running / attention / idle counts for a parallel group (sidebar summary).
+    func parallelTaskGroupActivity(groupId: UUID) -> (running: Int, attention: Int, idle: Int, total: Int) {
+        let members = parallelTaskGroupMembers(groupId: groupId)
+        var running = 0, attention = 0, idle = 0
+        for ws in members {
+            for tab in ws.root.allPanes.flatMap(\.tabs) {
+                switch tab.activityState {
+                case .running: running += 1
+                case .attention: attention += 1
+                case .idle: idle += 1
+                }
+            }
+        }
+        return (running, attention, idle, members.count)
     }
 
     /// One-click "open this agent in a fresh worktree" from the `+` menu —
@@ -927,6 +954,124 @@ final class WorkspaceStore {
         return session
     }
 
+    // MARK: - Bridge handoff / open agent tab
+
+    /// Result of `openAgentTab` — session plus the PaneRegistry `@label`
+    /// callers should use for subsequent `type` / `read` / `keys`.
+    struct OpenAgentTabResult {
+        let session: Session
+        let label: String
+        let agentId: String
+    }
+
+    enum OpenAgentTabError: Error, LocalizedError, Equatable {
+        case unknownAgent(String)
+        case noActiveWorkspace
+        case agentNotLaunchable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case let .unknownAgent(id):
+                return "unknown agent: \(id)"
+            case .noActiveWorkspace:
+                return "no active workspace"
+            case let .agentNotLaunchable(id):
+                return "agent not launchable (hidden or no command): \(id)"
+            }
+        }
+    }
+
+    /// Opens a coding-agent tab in `workspace` (default: active), optionally
+    /// seeding `initialPrompt` the same way Parallel Task / Ask does.
+    /// Shared by Bridge `handoff`/`open` and sidebar Hand off — one spawn path.
+    ///
+    /// - Parameters:
+    ///   - agentId: template `id` / binary slug; leading `@` accepted
+    ///   - sourceLabel: bridge `@label` of the handing-off agent (without or
+    ///     with `@`). When nil, uses the workspace's current non-shell active tab.
+    ///   - strictVisible: when true, only Settings-visible non-shell agents
+    @discardableResult
+    func openAgentTab(
+        agentId: String,
+        prompt: String? = nil,
+        in workspace: Workspace? = nil,
+        initialCwd: URL? = nil,
+        sourceLabel: String? = nil,
+        strictVisible: Bool = false
+    ) throws -> OpenAgentTabResult {
+        let key = PaneRegistry.normalizeLabel(agentId)
+        guard !key.isEmpty else { throw OpenAgentTabError.unknownAgent(agentId) }
+
+        let model = ArcherSettingsModel.shared
+        let template: AgentTemplate
+        if strictVisible {
+            let visible = AgentTemplate.visibleOrdered(model: model).filter { !$0.isShell }
+            guard let hit = Self.resolveTemplate(key: key, in: visible) else {
+                throw OpenAgentTabError.agentNotLaunchable(key)
+            }
+            template = hit
+        } else {
+            // Prefer launchable non-terminal templates (builtin + custom).
+            let launchable = AgentTemplate.all.filter {
+                $0.id != AgentTemplate.terminal.id && $0.initialCommand != nil
+            }
+            if let hit = Self.resolveTemplate(key: key, in: launchable) {
+                template = hit
+            } else if let any = Self.resolveTemplate(key: key, in: AgentTemplate.all),
+                      any.initialCommand != nil
+            {
+                template = any
+            } else if Self.resolveTemplate(key: key, in: AgentTemplate.all) != nil {
+                throw OpenAgentTabError.agentNotLaunchable(key)
+            } else {
+                throw OpenAgentTabError.unknownAgent(key)
+            }
+        }
+
+        guard let ws = workspace ?? active else {
+            throw OpenAgentTabError.noActiveWorkspace
+        }
+
+        if activeWorkspaceId != ws.id {
+            activateWorkspace(ws)
+        }
+
+        // Capture source @label before the new tab steals active.
+        PaneRegistry.shared.sync(workspace: ws)
+        let fromLabel: String?
+        if let explicit = sourceLabel {
+            let n = PaneRegistry.normalizeLabel(explicit)
+            fromLabel = n.isEmpty ? nil : n
+        } else if let active = ws.activeSession, !active.displayAgent.isShell {
+            fromLabel = PaneRegistry.shared.label(for: active)
+                ?? active.displayAgent.id
+        } else {
+            fromLabel = nil
+        }
+
+        let trimmed = prompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let seed = (trimmed?.isEmpty == false) ? trimmed : nil
+        let session = addTab(in: ws, template: template, initialCwd: initialCwd, initialPrompt: seed)
+        session.drivenByLabel = fromLabel
+
+        PaneRegistry.shared.sync(workspace: active ?? ws)
+        let label = PaneRegistry.shared.label(for: session) ?? template.id
+
+        return OpenAgentTabResult(session: session, label: label, agentId: template.id)
+    }
+
+    /// Match by template id first, then by launch binary slug (`initialCommand`).
+    private static func resolveTemplate(key: String, in pool: [AgentTemplate]) -> AgentTemplate? {
+        let k = PaneRegistry.normalizeLabel(key)
+        if let byId = pool.first(where: { $0.id == k }) { return byId }
+        if let byCmd = pool.first(where: { $0.initialCommand == k }) { return byCmd }
+        // claude-code template id vs "claude" binary
+        if k == "claude", let claude = pool.first(where: { $0.id == AgentTemplate.claudeCodeID }) {
+            return claude
+        }
+        return nil
+    }
+
     @discardableResult
     func duplicateTab(_ session: Session, in workspace: Workspace) -> Session? {
         guard let pane = pane(containing: session, in: workspace) else { return nil }
@@ -999,6 +1144,35 @@ final class WorkspaceStore {
             workspace.workingDirectory = session.currentDirectory
         }
         scheduleSave()
+    }
+
+    /// Drop of a UUID string from sidebar (workspace) or tab drag.
+    /// Workspace id → activate + open default agent tab (design droptip path).
+    /// Session id → existing tab move/reorder.
+    @discardableResult
+    func handleChromeDrop(_ raw: String, to destPane: Pane, at destIndex: Int, in workspace: Workspace) -> Bool {
+        defer {
+            draggingTabId = nil
+            draggingWorkspaceId = nil
+        }
+        guard let id = UUID(uuidString: raw) else { return false }
+        if workspaces.contains(where: { $0.id == id }) {
+            return openAgentTabFromWorkspaceDrag(workspaceId: id)
+        }
+        return handleTabDrop(droppedId: id, to: destPane, at: destIndex, in: workspace)
+    }
+
+    /// Design: drop workspace on tab bar → open a coding agent tab in that workspace.
+    @discardableResult
+    func openAgentTabFromWorkspaceDrag(workspaceId: UUID) -> Bool {
+        guard let ws = workspaces.first(where: { $0.id == workspaceId }) else { return false }
+        activateWorkspace(ws)
+        let model = ArcherSettingsModel.shared
+        let template = AgentTemplate.defaultLaunchTemplate(model: model)
+            ?? AgentTemplate.visibleOrdered(model: model).first { !$0.isShell }
+            ?? .claudeCode
+        _ = addTab(in: ws, template: template)
+        return true
     }
 
     /// One-shot drop handler for tab reorder gestures. Dispatches three ways:

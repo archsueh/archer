@@ -316,12 +316,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         // synchronously inside windowWillClose can crash AppKit mid-close.
         DispatchQueue.main.async { [weak self] in
             self?.windowControllers.removeAll { $0 === controller }
-            // Panel windows (Skills, Usage) sit outside windowControllers, so
-            // applicationShouldTerminateAfterLastWindowClosed never fires while
-            // they're open. Close them explicitly here so AppKit sees a true
-            // "all windows gone" state and terminates normally. Each panel's
-            // own windowWillClose still runs, letting isReleasedWhenClosed=false
-            // clean up correctly.
+            // Panel windows (Skills, Sessions, Log, …) sit outside
+            // windowControllers, so applicationShouldTerminateAfterLastWindowClosed
+            // never fires while they're open. Close them explicitly here so
+            // AppKit sees a true "all windows gone" state and terminates
+            // normally. Each panel's own windowWillClose still runs, letting
+            // isReleasedWhenClosed=false clean up correctly.
+            // [archer] Usage panel deleted 10d952b — do not re-add.
             guard let self, isLastWindow, !self.isTerminating else { return }
             for window in NSApp.windows where !self.windowControllers.contains(where: { $0.window === window }) {
                 window.close()
@@ -726,6 +727,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             .separator,
             selfRow("Cockpit", #selector(handleShowCockpit), "k", modifiers: [.command, .shift]),
             selfRow("Sessions", #selector(handleShowSessions), "o", modifiers: [.command, .shift]),
+            selfRow("Agent Bridge", #selector(handleShowAgentBridge), "b", modifiers: [.command, .shift]),
         ])
         mainMenu.addItem(submenu(windowMenu))
 
@@ -866,12 +868,54 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         case .showAgent:
             // [archer] ShowAgent surface — browse/convert local agent sessions.
             ShowAgentWindowController.shared.show()
+        case .showAgentBridge:
+            // [archer] design bridge.html console — must pass storeProvider
+            handleShowAgentBridge()
+        case .routeTask:
+            // [archer] Execution-router advice (distilled from pi-workflow).
+            // Prompt for a task description, run ExecutionRouter, show the memo.
+            presentRouteTaskAdvice()
         case let .openRecentFolder(path):
             // [archer] Open a recently used project folder as a new workspace in
             // the active window. Ported from iAmCorey/kooky (v0.35, issue #28).
             guard let store = activeStore else { return }
             store.addWorkspace(workingDirectory: URL(fileURLWithPath: path))
         }
+    }
+
+    /// [archer] Execution-router advice surface. Distilled from
+    /// github.com/AgwaB/pi-workflow's execution-router skill: given a task
+    /// description, recommend single / parallel / workflow + a role lane.
+    /// Advisory only — archer never coerces the user's routing choice.
+    private func presentRouteTaskAdvice() {
+        let input = NSAlert()
+        input.messageText = "任务路由建议"
+        input.informativeText = "粘贴任务描述，ExecutionRouter 会建议执行模式（单 Agent / 并行 / 工作流）+ 角色。仅供参考，不强制。"
+        input.alertStyle = .informational
+        input.addButton(withTitle: "分析")
+        input.addButton(withTitle: "取消")
+
+        let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 380, height: 120))
+        tv.isEditable = true
+        tv.isRichText = false
+        tv.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        tv.string = ""
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 120))
+        scroll.hasVerticalScroller = true
+        scroll.documentView = tv
+        input.accessoryView = scroll
+
+        guard input.runModal() == .alertFirstButtonReturn else { return }
+        let desc = tv.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !desc.isEmpty else { return }
+
+        let memo = ExecutionRouter.recommend(.init(desc))
+        let out = NSAlert()
+        out.messageText = "建议：\(memo.mode.description)"
+        out.informativeText = memo.summary
+        out.alertStyle = .informational
+        out.addButton(withTitle: "好")
+        out.runModal()
     }
 
     @objc private func handleOpenFolder() {
@@ -1170,6 +1214,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             onJump: { [weak self] row in self?.jumpToSessionDashboardRow(row) },
             onClose: { [weak self] row in self?.closeSessionDashboardRow(row) }
         )
+    }
+
+    @objc private func handleShowAgentBridge() {
+        // [archer] design bridge.html console — roster + log + type/keys/read/handoff
+        BridgeConsoleLauncher.open(storeProvider: { [weak self] in self?.activeController?.store })
     }
 
     /// Both resolve purely by session id via `dockTabLocation(for:)` — the

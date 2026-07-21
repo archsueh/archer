@@ -1,8 +1,10 @@
 # Usage × tokenscope 集成方案
 
-> 目标:把 [tokenscope](https://github.com/HduSy/tokenscope)(Tauri/Rust 菜单栏 app,仅 Claude)的**增量价值**搬进 archer 原生 Swift `Sources/ArcherKit/Usage/`。
-> 原则:借鉴数据源与算法,**不移植其外壳**(架构不兼容)。小 PR,逐 Stage 落地。
-> 状态:草案 · 待评审后实施 · 参 `STATE.md` §3(工作树未提交 Dashboard)
+> **SUPERSEDED 2026-07-22**：产品判定 **不需要 Usage 窗**（`UsageView` / panel 已于 `10d952b` 删除）。  
+> 本文件仅历史；勿据此恢复 Usage GUI。采集/定价库 `Sources/ArcherKit/Usage/` 可保留给 Sessions token 等。
+>
+> 原目标:把 [tokenscope](https://github.com/HduSy/tokenscope) 的增量价值搬进 archer `Usage/`。
+> 原状态:草案 · **GUI 方向作废**
 
 ## 0. 定位:archer 已有 vs tokenscope 增量
 

@@ -1362,6 +1362,104 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(cfg?.environment["ARCHER_AGENT"], "claude -- 'explain this'")
     }
 
+    // MARK: - openAgentTab (Bridge handoff)
+
+    func testOpenAgentTabSeedsPromptAndReturnsLabel() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(workingDirectory: projectA)
+        let result = try store.openAgentTab(agentId: "claude-code", prompt: "review auth")
+        XCTAssertEqual(result.agentId, "claude-code")
+        XCTAssertFalse(result.label.isEmpty)
+        XCTAssertEqual(result.session.id, ws.root.firstPane?.activeTabId)
+        let cfg = engine(result.session).startedConfigs.last
+        XCTAssertEqual(cfg?.environment["ARCHER_AGENT"], "claude -- 'review auth'")
+    }
+
+    func testOpenAgentTabResolvesClaudeSlug() throws {
+        let store = makeStore()
+        _ = store.addWorkspace(workingDirectory: projectA)
+        let result = try store.openAgentTab(agentId: "claude")
+        XCTAssertEqual(result.agentId, "claude-code")
+    }
+
+    func testOpenAgentTabAtPrefixAndDrivenByFromActive() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(workingDirectory: projectA)
+        _ = store.addTab(in: ws, template: .grok)
+        let result = try store.openAgentTab(agentId: "@claude-code", prompt: "go")
+        XCTAssertEqual(result.session.drivenByLabel, "grok")
+        XCTAssertEqual(result.label, "claude-code")
+    }
+
+    func testPaneRegistrySuffixesSecondSameAgent() {
+        let store = makeStore()
+        let ws = store.addWorkspace(workingDirectory: projectA)
+        let a = store.addTab(in: ws, template: .claudeCode)
+        let b = store.addTab(in: ws, template: .claudeCode)
+        PaneRegistry.shared.sync(workspace: ws)
+        let la = PaneRegistry.shared.label(for: a)
+        let lb = PaneRegistry.shared.label(for: b)
+        XCTAssertEqual(Set([la, lb]), Set(["claude-code", "claude-code-2"]))
+    }
+
+    func testChromeDropWorkspaceOpensAgentTab() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(workingDirectory: projectA)
+        let before = ws.root.allPanes.flatMap(\.tabs).count
+        let pane = try XCTUnwrap(ws.root.firstPane)
+        let ok = store.handleChromeDrop(ws.id.uuidString, to: pane, at: pane.tabs.count, in: ws)
+        XCTAssertTrue(ok)
+        let after = ws.root.allPanes.flatMap(\.tabs).count
+        XCTAssertEqual(after, before + 1)
+        XCTAssertNil(store.draggingWorkspaceId)
+    }
+
+    func testOpenAgentTabFromWorkspaceDragActivatesTarget() {
+        let store = makeStore()
+        let a = store.addWorkspace(workingDirectory: projectA)
+        let b = store.addWorkspace(workingDirectory: projectB)
+        store.activateWorkspace(a)
+        XCTAssertEqual(store.activeWorkspaceId, a.id)
+        XCTAssertTrue(store.openAgentTabFromWorkspaceDrag(workspaceId: b.id))
+        XCTAssertEqual(store.activeWorkspaceId, b.id)
+        XCTAssertFalse(b.root.allPanes.flatMap(\.tabs).isEmpty)
+    }
+
+    func testParallelTaskGroupMembersAndActivity() {
+        let store = makeStore()
+        let a = store.addWorkspace(workingDirectory: projectA)
+        let b = store.addWorkspace(workingDirectory: projectB)
+        let group = UUID()
+        a.parallelTaskGroupId = group
+        b.parallelTaskGroupId = group
+        XCTAssertEqual(store.parallelTaskGroupMembers(groupId: group).count, 2)
+        let act = store.parallelTaskGroupActivity(groupId: group)
+        XCTAssertEqual(act.total, 2)
+        XCTAssertGreaterThanOrEqual(act.idle + act.running + act.attention, 1)
+    }
+
+    func testOpenAgentTabUnknownAgentThrows() {
+        let store = makeStore()
+        _ = store.addWorkspace(workingDirectory: projectA)
+        XCTAssertThrowsError(try store.openAgentTab(agentId: "no-such-agent-xyz")) { err in
+            let e = err as? WorkspaceStore.OpenAgentTabError
+            XCTAssertEqual(e, .unknownAgent("no-such-agent-xyz"))
+        }
+    }
+
+    func testOpenAgentTabRequiresWorkspace() {
+        let store = makeStore(initial: PersistedState(workspaces: [], activeWorkspaceId: nil))
+        // No workspaces → no active
+        store.workspaces.forEach { store.closeWorkspace($0) }
+        // makeStore may restore empty; force empty active
+        while let ws = store.workspaces.first {
+            store.closeWorkspace(ws)
+        }
+        XCTAssertThrowsError(try store.openAgentTab(agentId: "claude-code")) { err in
+            XCTAssertEqual(err as? WorkspaceStore.OpenAgentTabError, .noActiveWorkspace)
+        }
+    }
+
     // MARK: - Multi-window teardown
 
     func testTerminateReleasesEverySessionEngine() {

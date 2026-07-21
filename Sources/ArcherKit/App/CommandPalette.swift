@@ -59,10 +59,16 @@ enum PaletteItemKind: Hashable {
     case createSSHWorkspace
     /// [archer] open the ShowAgent session surface (aytzey/showagent).
     case showAgent
+    /// [archer] Open Agent Bridge console (design bridge.html — @label type/keys/read/handoff).
+    case showAgentBridge
     /// [archer] Open a recently used project folder as a new workspace in the
     /// active window (ported from iAmCorey/kooky v0.35, issue #28 — "pick from
     /// my projects" without ⌘O).
     case openRecentFolder(path: String)
+    /// [archer] Execution-router advice (distilled from pi-workflow): given a
+    /// task description, recommend single / parallel / workflow + role. Advisory
+    /// only — archer never coerces routing.
+    case routeTask
 }
 
 struct PaletteItem: Identifiable, Hashable {
@@ -142,6 +148,25 @@ enum PaletteIndex {
             subtitle: "showagent",
             kind: .showAgent,
             symbol: "arrow.triangle.branch",
+            iconAsset: nil
+        ))
+        items.append(PaletteItem(
+            id: "agent-bridge",
+            title: "Agent Bridge — @label type / keys / read / handoff",
+            subtitle: "bridge · ⌘⇧B",
+            kind: .showAgentBridge,
+            symbol: "arrow.left.arrow.right",
+            iconAsset: nil
+        ))
+        // [archer] Execution-router advice — distilled from pi-workflow's
+        // execution-router skill. Advisory: recommends a mode + role for a
+        // pasted task description; archer never forces the choice.
+        items.append(PaletteItem(
+            id: "route-task",
+            title: "Route task — execution-mode advice",
+            subtitle: "paste task → recommend single/parallel/workflow",
+            kind: .routeTask,
+            symbol: "figure.stand.line.dotted.figure.stand",
             iconAsset: nil
         ))
         // [archer] Recent project folders — skip ones already open as a workspace

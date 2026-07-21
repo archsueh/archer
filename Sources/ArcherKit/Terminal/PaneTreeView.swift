@@ -48,6 +48,8 @@ private struct PaneView: View {
 
     var body: some View {
         let paneOpacity = isFocused ? 1.0 : Self.inactivePaneOpacity
+        // [archer] design `.pane.driven` — inset ring when active tab was handed off
+        let driven = pane.activeTab?.drivenByLabel != nil
         VStack(spacing: 0) {
             TabBarView(pane: pane, workspace: workspace, store: store)
             Rectangle().fill(Theme.chromeHairline).frame(height: 1)
@@ -149,6 +151,13 @@ private struct PaneView: View {
             }
         }
         .opacity(paneOpacity)
+        .overlay {
+            if driven {
+                Rectangle()
+                    .strokeBorder(Theme.activityRunning.opacity(0.4), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+        }
         .animation(Theme.chromeTransition, value: isFocused)
         .onChange(of: pane.activeTab.map { paneStatusBarHasData(session: $0) } ?? false) { _, _ in
             // Status-bar height transition. The bar is always present, so this
