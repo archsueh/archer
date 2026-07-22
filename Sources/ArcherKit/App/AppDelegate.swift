@@ -146,6 +146,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // [archer] Auto-open Observability on fresh launch to surface tonight's new UI.
+        ObservabilityWindowController.show(
+            stores: { windowControllers.map { $0.store } },
+            onDrillDown: { _ in }
+        )
         installMainMenu()
         // [archer] Open Recent submenu rebuilds from RecentFolders on open.
         openRecentMenu.delegate = openRecentMenuDelegate
