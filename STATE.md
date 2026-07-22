@@ -87,14 +87,18 @@ _(此处只列当前未决项;修完即移到 §1 或 §4。)_
 
 ## 5. Last session(stage 5 — resume,别 restart)
 
-**2026-07-22 · 工作日志 + TODO 落盘 · 交接 Hermes（Grok）**
+**2026-07-22 · 日志落盘（Grok 收口）**
 
-- **今日日志**: [`docs/worklogs/2026-07-22.md`](docs/worklogs/2026-07-22.md)
-- **活 TODO**: [`docs/TODO.md`](docs/TODO.md)（P0 T0–T5 / P1–P3 / 已完成 / 明确不做）
+- **项目日志**: [`docs/worklogs/2026-07-22.md`](docs/worklogs/2026-07-22.md)
+- **个人月志**: `~/Documents/Notes/日记/2026年07月工作日志.md` → `## 2026-07-22`
+- **活 TODO**: [`docs/TODO.md`](docs/TODO.md)
+- **状态**: Bridge / handoff / parallel Dashboard / Observability **已入库**；`swift test` 618/0 口径；Usage 窗取消。
+- **Next**: GUI 手测；Skills 视觉；`git status` 若 ahead 则补推文档 commit。
+
+**2026-07-22 · 工作日志 + TODO · 交接 Hermes（Grok）**
+
 - **Handoff**: [`docs/claude-handoffs/2026-07-22-bridge-console-to-hermes.md`](docs/claude-handoffs/2026-07-22-bridge-console-to-hermes.md)
-- **状态**: Bridge 指挥台 + @label handoff + parallel `∥` **代码齐、测绿、未 commit**；Memory* **勿混提**。
 - **Usage 窗**: 取消、不恢复。
-- **Next（Hermes）**: 按 `docs/TODO.md` P0 执行。
 
 **2026-07-22 · Skeptic 终验 + Usage 窗确认取消（Grok）**
 

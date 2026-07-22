@@ -5,29 +5,28 @@
 
 ---
 
-## P0 · 立刻（Hermes / 下一会话）
+## P0 · 立刻（下一会话）
 
-- [ ] **T0** 读 `STATE.md` + handoff；`git status` 分清 **Bridge** vs **Memory***
-- [ ] **T1** 复验：`swift test --filter 'BridgeActionTests|BridgeHandoffTests|PaneRegistryTests'`（期望 0 fail）
-- [ ] **T2** 手测清单  
-  - [ ] ⌘⇧B 开 Agent Bridge  
-  - [ ] 主窗 Bridge 条 ↗ / roster  
+- [x] ~~分片 commit Bridge / Memory*~~ — 已入库（见 worklog SHA 列表）
+- [x] ~~全量 `swift test`~~ — 618/0（会话口径）
+- [ ] **手测清单**  
+  - [ ] ⌘⇧B Agent Bridge  
+  - [ ] 主窗 ↗ / roster  
   - [ ] `archer-bridge agents` / `handoff … --prompt`  
   - [ ] 侧栏 Hand off + brief  
-  - [ ] workspace 拖到 tab bar  
-  - [ ] Parallel Task 后侧栏 `∥`
-- [ ] **T3** path-select **仅 stage Bridge**；`git diff --cached` 无 Memory*
-- [ ] **T4** 用户批准后 commit Bridge 切片（**默认不 push**）
-- [ ] **T5** Memory* 另会话处理或 stash，勿混提
+  - [ ] workspace → tab bar drop  
+  - [ ] Parallel Task · 侧栏 `∥` · ⌘⇧G Dashboard  
+  - [ ] ⌘⇧I Observability
+- [ ] 若 `git status` 显示 ahead of `origin/main`：确认是否补 push（文档/尾 commit）
 
 ---
 
-## P1 · 功能推进（commit 之后）
+## P1 · 功能推进
 
-- [x] **parallelTaskGroup 结果 Dashboard** — `ParallelGroupDashboardView/WindowController/Controller`; ⌘⇧G / palette / window menu
-- [x] **Observability timeline** 最小岛已落地并接真实数据源；⌘⇧I / palette / window menu
-- [ ] Skills 视觉对齐 `archer-design-system`（design-system-refactor-plan PR3 一类）
-- [ ] 全量 `swift test` 绿后再谈 release 切片
+- [x] **parallelTaskGroup 结果 Dashboard** — ⌘⇧G / palette / window menu
+- [x] **Observability timeline** — ⌘⇧I / palette / window menu
+- [ ] Skills 视觉对齐 `archer-design-system`（**无** Usage）
+- [ ] Observability 扩更多数据源（当前 tab + bridge log）
 
 ---
 
@@ -57,10 +56,12 @@
 - [x] ⌘⇧B / ⌘P showAgentBridge
 - [x] storeProvider 必填；Skeptic 三项测绿（13/0）
 - [x] chrome drop 开 agent tab
-- [x] parallelTaskGroupId + 侧栏 `∥`（标记起步）
+- [x] parallelTaskGroupId + 侧栏 `∥` + Dashboard
+- [x] Observability 岛（⌘⇧I）+ bridge log / token-delta
 - [x] **Usage 窗取消**（不恢复；docs/PR4 作废）
 - [x] design-system 计划 / tokens 矩阵文档
-- [x] Hermes handoff + 本日工作日志
+- [x] Hermes handoff + 本日工作日志（项目 + 个人月志）
+- [x] 主线 commit 入库 `main`
 
 ---
 
