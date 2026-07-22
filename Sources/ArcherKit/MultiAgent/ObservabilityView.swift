@@ -12,6 +12,8 @@ struct ObservabilityView: View {
     @State private var filter: SessionDashboardStatus? = nil
     @State private var selected: Int = 0
 
+    @State private var tokenScale: Double = 1.0
+
     private var filtered: [AgentObservabilityRow] {
         guard let filter else { return rows }
         return rows.filter { $0.status == filter }
@@ -128,14 +130,28 @@ struct ObservabilityView: View {
     }
 
     private var hintBar: some View {
-        HStack(spacing: 16) {
-            hint("j/k", "move")
-            hint("⏎", "drill")
-            hint("d", "drill")
-            Spacer()
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                hint("j/k", "move")
+                hint("⏎", "drill")
+                hint("d", "drill")
+                Spacer()
+            }
+            Divider().background(Theme.chromeHairline)
+            HStack(spacing: 12) {
+                Text("Token delta scale")
+                    .font(Theme.mono(10.5))
+                    .foregroundStyle(Theme.chromeMuted)
+                Slider(value: $tokenScale, in: 0.1 ... 5.0, step: 0.1)
+                    .frame(width: 180)
+                Text("×\(String(format: "%.1f", tokenScale))")
+                    .font(Theme.mono(10.5, weight: .medium))
+                    .foregroundStyle(Theme.chromeForeground.opacity(0.75))
+                    .frame(width: 36, alignment: .trailing)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
     }
 
     private func hint(_ key: String, _ action: String) -> some View {
@@ -182,11 +198,12 @@ struct ObservabilityView: View {
     }
 
     private func formattedTokenDelta(_ delta: Int) -> String {
-        switch delta {
+        let scaled = Double(delta) * tokenScale
+        switch scaled {
         case 0: return "0"
-        case 1_000_000...: return String(format: "+%.1fM", Double(delta) / 1_000_000)
-        case 1000...: return String(format: "+%.0fK", Double(delta) / 1000)
-        default: return "+\(delta)"
+        case 1_000_000...: return String(format: "+%.1fM", scaled / 1_000_000)
+        case 1000...: return String(format: "+%.0fK", scaled / 1000)
+        default: return String(format: "+%.0f", scaled)
         }
     }
 }
@@ -222,7 +239,11 @@ struct AgentObservabilityRow: Identifiable, Hashable {
 
 @MainActor
 enum ObservabilityIndex {
-    static func build(stores: [WorkspaceStore], usageLookup: (String) -> Int?) -> [AgentObservabilityRow] {
+    static func build(
+        stores: [WorkspaceStore],
+        usageLookup: (String) -> Int? = { _ in nil },
+        bridgeLog: BridgeEventLog? = BridgeEventLog.shared
+    ) -> [AgentObservabilityRow] {
         var rows: [AgentObservabilityRow] = []
         for store in stores {
             for workspace in store.workspaces {
@@ -243,6 +264,17 @@ enum ObservabilityIndex {
                         ))
                     }
                 }
+            }
+        }
+        if let bridgeLog {
+            for entry in bridgeLog.entries {
+                rows.append(AgentObservabilityRow(
+                    title: entry.summary,
+                    agentTitle: entry.category.rawValue,
+                    track: "bridge",
+                    status: .running,
+                    tokenDelta: nil
+                ))
             }
         }
         return rows

@@ -21,23 +21,25 @@ final class ObservabilityWindowController: NSWindowController {
     static func show(
         stores: @escaping () -> [WorkspaceStore],
         usageLookup: @escaping (String) -> Int? = { _ in nil },
+        bridgeLog: BridgeEventLog? = BridgeEventLog.shared,
         onDrillDown: @escaping (AgentObservabilityRow) -> Void = { _ in }
     ) {
         let controller = shared
-        controller.buildWindowIfNeeded(stores: stores, usageLookup: usageLookup, onDrillDown: onDrillDown)
+        controller.buildWindowIfNeeded(stores: stores, usageLookup: usageLookup, bridgeLog: bridgeLog, onDrillDown: onDrillDown)
         if controller.window?.isVisible != true { controller.window?.center() }
         controller.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        controller.startRefreshLoop(stores: stores, usageLookup: usageLookup, onDrillDown: onDrillDown)
+        controller.startRefreshLoop(stores: stores, usageLookup: usageLookup, bridgeLog: bridgeLog, onDrillDown: onDrillDown)
     }
 
     private func buildWindowIfNeeded(
         stores: @escaping () -> [WorkspaceStore],
         usageLookup: @escaping (String) -> Int?,
+        bridgeLog: BridgeEventLog? = BridgeEventLog.shared,
         onDrillDown: @escaping (AgentObservabilityRow) -> Void
     ) {
         guard window == nil else { return }
-        let rows = ObservabilityIndex.build(stores: stores(), usageLookup: usageLookup)
+        let rows = ObservabilityIndex.build(stores: stores(), usageLookup: usageLookup, bridgeLog: bridgeLog)
         let view = ObservabilityView(rows: rows, onDrillDown: onDrillDown)
         let host = NSHostingController(rootView: view)
         self.host = host
@@ -65,13 +67,14 @@ final class ObservabilityWindowController: NSWindowController {
     private func startRefreshLoop(
         stores: @escaping () -> [WorkspaceStore],
         usageLookup: @escaping (String) -> Int?,
+        bridgeLog: BridgeEventLog? = BridgeEventLog.shared,
         onDrillDown: @escaping (AgentObservabilityRow) -> Void
     ) {
         refreshTask?.cancel()
         refreshTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { break }
-                let rows = ObservabilityIndex.build(stores: stores(), usageLookup: usageLookup)
+                let rows = ObservabilityIndex.build(stores: stores(), usageLookup: usageLookup, bridgeLog: bridgeLog)
                 self.host?.rootView = ObservabilityView(rows: rows, onDrillDown: onDrillDown)
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
